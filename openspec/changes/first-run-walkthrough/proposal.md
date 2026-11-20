@@ -73,7 +73,8 @@ before 11):
    well; nothing in the app shows it. Only comparing the fingerprint at
    the desk catches it, and the dialog (R3) says so. The other option, a
    comparison the app enforces, needed the desk visit this way saves.
-11. **When the hint is due** (open, from the review of 2026-11-20). The
+11. **When the hint is due** (answered by Ezra, 2026-11-20: as picked,
+   due only while the map shows; from the review of 2026-11-20). The
    first terminal someone opens usually sits in a tab of one pane: the
    title bar shows no map there and a sideways swipe only bounces, so the
    hint would name gestures that do nothing. *Due only while the title bar
