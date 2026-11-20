@@ -332,12 +332,21 @@ the agents that need the person (agent-list); a tap on the tab's map opens
 the tab overview. The hint explains those three and nothing else, is built
 only after they are on main, and changes its words if they change.
 
+- **When.** Proposal decision 11 (open). Pick: due only while the title
+  bar shows the tab's map, that is for a terminal or chat in a tab of more
+  than one pane, so everything it names works where it shows; a terminal
+  in a tab of one pane leaves it due. Other: due on the first terminal or
+  chat, whatever its tab.
 - **Where.** A block directly under the title bar, the screen's width less
   its margins. It covers the terminal's or the chat's top rows only, never
   the bottom where the keys, the compose sheet and the chat's message box
   are; it does not open or close the keyboard and takes no input focus.
-  Touches outside it reach the screen as usual, so the gestures it names
-  work while it shows.
+  It never covers the terminal's cursor row, whatever decision 11 says: a
+  fresh prompt sits in the top rows, so when the cursor row falls under
+  the block, the block sits just above the keys instead, and it moves
+  again if the cursor moves under it. Touches outside it reach the screen
+  as usual, so the gestures it names work while it shows, and typing goes
+  to the terminal.
 - **Closing.** A tap anywhere on it closes it and sets the flag; it never
   shows again, in the terminal or the chat. Leaving the screen without
   that tap leaves it due, so it shows on the next open.
@@ -351,10 +360,15 @@ only after they are on main, and changes its words if they change.
   once more. Nothing in the app resets it; clearing the app's data does.
   People who update from a version without it see it once, which is
   wanted: the gestures are new to them too.
-- **TalkBack.** One element with the hint's whole text, read once when it
-  appears (announced politely, not again while it shows), focusable in
-  the reading order right after the title bar; its action is named "Got
-  it" and a double tap closes it like a tap. Focus is not moved to it.
+- **TalkBack.** With touch exploration on, swipes belong to TalkBack, so
+  the hint names the title bar's actions that `spaces-navigation` gives
+  for them ("Every step has a way without a swipe": "Next terminal",
+  "Previous terminal", "Next agent that needs you", "Previous agent that
+  needs you") and the map, as G6, in place of G2 to G4. One element with
+  the hint's whole text, read once when it appears (announced politely,
+  not again while it shows), focusable in the reading order right after
+  the title bar; its action is named "Got it" and a double tap closes it
+  like a tap. Focus is not moved to it.
 - **Animations.** With the system's animations off
   (`ANIMATOR_DURATION_SCALE` 0, read as `AgentsRoute.kt:53` and
   `ChatRoute.kt:139` already do), it appears and goes at once; otherwise
@@ -379,12 +393,16 @@ the password goes to whatever answers at the address. If that is not the
 desk (a hostile network, a spoofed name), whoever answered has the
 account's password: a full login, unlike the phone key, which runs only
 herdr-core. So the host key is settled before anything is sent, and the
-password goes only to that key. How it is settled is proposal decision 10
-(open). Pick (a): the confirm of render 8 with this way's words shows the
-fingerprint and the one line that prints it at the desk, for whoever wants
-to compare, and confirming is trust on first use; the password field shows
-after it. (b): the field shows only after a comparison, which the app can
-enforce only by asking for part of what the desk printed.
+password goes only to that key. Proposal decision 10, answered (a): the
+confirm of render 8 with this way's words shows the fingerprint and the
+one line that prints it at the desk, for whoever wants to compare;
+confirming is trust on first use, and the password field shows after it.
+
+**A wrong host key fails silently.** An impostor that relays to the real
+desk can use the password there to install the phone key itself; the
+phone key then connects, step 3 shows, and nothing in the app looks
+wrong. Only a comparison at the desk catches it. So R3 warns rather than
+reassures, and the README says the same (5.1).
 
 **The steps.**
 
@@ -401,16 +419,25 @@ enforce only by asking for part of what the desk printed.
    refusal (russh 0.65.2 `Handle::authenticate_none`, `AuthResult::Failure
    { remaining_methods, .. }`). No `password` and no `keyboard-interactive`
    (or a `none` that succeeds): "takes no password" (R10) with the command
-   still above, and no field. Otherwise it disconnects and the field
-   shows.
+   still above, and no field. With `keyboard-interactive` only, the probe
+   starts it and reads the first prompt's text, which becomes the field's
+   label after R6 (a machine whose first prompt asks for a code shows
+   that). A probe that meets another host key ends during key exchange
+   and shows the changed-key screen. Otherwise it disconnects and the
+   field shows.
 3. "Add the key" dials again, pinned. `HostKeyCheck::check_server_key`
    (`ssh.rs:519-533`) refuses any other key during key exchange, before
    any authentication message, so a changed key sends neither password
    nor user name and shows the changed-key screen. It signs in with
-   `password` when offered, else `keyboard-interactive`, answering one
-   prompt that does not echo with the password and empty rounds with
-   nothing, at most three rounds. A prompt that echoes, more than one
-   prompt, or `partial_success` (a second factor) stops: R11.
+   `password` when offered, else `keyboard-interactive`. The password is
+   sent at most once across all rounds: the first round's one prompt that
+   does not echo gets it, empty rounds get nothing, at most three rounds.
+   Any non-empty prompt after the password was sent (a code from a
+   second-factor module), a prompt that echoes, more than one prompt, or
+   `partial_success` stops: R11. A refusal counts toward a limit per visit
+   to step 2: after the second, the text is R15, which names lockouts
+   (`pam_faillock`, fail2ban) and points to the command; "Add the key"
+   stays for a typo, nothing retries by itself.
 4. On the session: one `exec` of `sh -s`, the script written to its
    standard input, then end of input. The script is `setup_command(spki,
    comment, None)` byte for byte: the Phone key variant of D3, whose
@@ -419,46 +446,63 @@ enforce only by asking for part of what the desk printed.
    the same restricted line. Through `sh -s`, the account's login shell
    (fish too) only starts sh. The script is one parenthesised command, so
    sh reads all of it before running any of it: a cut-off transfer is a
-   syntax error and changes nothing. Exit 0 is done; exit 1 with M11 or
-   M12 on standard error shows that line (R13); anything else shows its
-   code (R14). Then the session disconnects. It runs once per tap, with no
-   automatic retry, within 20 seconds to dial (as `link.rs:21`) and 60 in
-   all.
+   syntax error and changes nothing. Exit 0 is done; exit 1 with a line
+   of standard error exactly equal to M11 or M12 shows that line (R13);
+   anything else shows its code (R14), and no other standard error is
+   ever shown (shell start-up files may print anything). Then the session
+   disconnects. It runs once per tap, with no automatic retry, within 20
+   seconds to dial (as `link.rs:21`) and 60 in all; running out of time
+   after signing in reads as R12. The session asks for nothing but that
+   one `exec`: no pty, no environment variables, no agent or X11
+   forwarding, no port forwarding.
 5. Done: the app calls the hub's `retry`, the step reads "Connecting to
-   …" and moves on to step 3 as after the command.
+   …" and moves on to step 3 as after the command. Exit 0 does not prove
+   sshd reads that file (another `AuthorizedKeysFile`, StrictModes
+   refusing the home directory's modes, a `ForceCommand`): when the phone
+   key is still refused after a done run, step 2 shows R16, with "Try
+   again" and the command, and never offers the password again in that
+   visit.
 
 | Outcome | Step 2 shows |
 |---|---|
 | Not reached before signing in | the reach failure of D5, with "Try again" |
 | Another host key | the changed-key screen, nothing sent |
-| Wrong password | R9; field empty, "Add the key" again |
+| Wrong password | R9, R15 from the second refusal; field empty, "Add the key" again |
 | No password method | R10, no field |
 | More than a password | R11 |
-| Dropped after signing in | R12: whether the key went in is not known; repeating is harmless (D3) |
+| Dropped or out of time after signing in | R12: whether the key went in is not known; repeating is harmless (D3) |
 | The script refused | R13 with M11 or M12 |
 | Done | "Connecting to …", then step 3 |
+| Done, but the phone key is still refused | R16, never the password again |
 
 **The password.** Never stored, logged, copied or saved by Android:
-- the field is Compose Foundation's `BasicSecureTextField`: masked, cut
-  and copy disabled, the password keyboard, no reveal button. Its state
+- the field is Compose Foundation's `BasicSecureTextField`: masked with
+  `TextObfuscationMode.Hidden` (not even the last character shows), cut
+  and copy disabled, the password keyboard, no reveal button. While the
+  panel shows the window has `FLAG_SECURE`, cleared when it closes, so no
+  screenshot or screen recording holds the field. Its state
   is `remember { TextFieldState() }`, never `rememberTextFieldState()` or
   `rememberSaveable`, which keep text in the saved instance state; after
   a process death the field is empty;
 - autofill is off for it: the hosting view gets `importantForAutofill =
   IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS` while the panel shows
   (restored after), and `AutofillManager.cancel()` runs when it closes,
-  so no password manager fills it or offers to save it;
+  so no password manager fills it or offers to save it; the field's
+  semantics also carry the password content type, for Compose's own
+  autofill path (low confidence that it matters; 6.5 is the proof);
 - the text is cleared (`clearText()`) when "Add the key" starts the call,
   when the panel closes and when step 2 is left. JVM strings cannot be
   wiped, so the honest promise is: kudde keeps no reference after the
   call;
 - in Rust it is a type whose `Debug` prints `<redacted>`, with no
-  `Display`, never part of an `SshError` detail; kudde overwrites its own
-  copy before dropping it, by hand (no new dependency). russh zeroizes
-  the password method on drop and redacts it in `Debug` (0.65.2
-  `src/auth.rs`, `impl Drop for Method`); keyboard-interactive answers
-  travel as a plain `Vec<String>` it does not wipe, and kudde-mobile
-  installs no logger, so russh's `log` output goes nowhere;
+  `Display`, never part of an `SshError` detail, wiped on drop with
+  `zeroize` (1.9.1, already in `Cargo.lock` through russh, now a direct
+  dependency). russh zeroizes the password method on drop and redacts it
+  in `Debug` (0.65.2 `src/auth.rs`, `impl Drop for Method`). Not wiped,
+  said plainly: the uniffi `RustBuffer` that carries it across, and the
+  keyboard-interactive answers, which russh sends as a plain
+  `Vec<String>`. kudde-mobile installs no logger, so russh's `log` output
+  goes nowhere;
 - the app has no crash reporter; Recents keeps no picture on Android 13+
   (`MainActivity.kt:40`).
 
@@ -483,10 +527,10 @@ colour, no icon, no illustration, no logo on the welcome.
 | 18 | Step 3 | caption and heading; a machine card's head (dot, name, status line); the agent line; solid and outlined button; the alerts line in `secondary` dim |
 | 8 (changed) | Trust dialog | the same dialog, new first paragraph, one more `DialogNote` |
 | 1 (changed) | Home with an unfinished machine | the machine notice line of render 1, reading "workstation · finish setup" |
-| 19 | Title bar hint (draft; needs `spaces-navigation`'s signed-off title bar render) | a block under the title bar on the chrome background with a thin border; G1 in `rowName`, G2 to G4 one line each in `secondary`, G5 at its end in `secondary` dim; shown over a terminal and over a chat, with the keys and the message box in view and uncovered |
+| 19 | Title bar hint (draft; needs `spaces-navigation`'s signed-off title bar render) | a block under the title bar on the chrome background with a thin border; G1 in `rowName`, G2 to G4 one line each in `secondary`, G5 at its end in `secondary` dim, and the G6 variant for TalkBack; shown over a terminal and over a chat, clear of the cursor row, with the keys and the message box in view and uncovered |
 | 20 | Step 2 with the second way | render 16, then outlined "Run it from this phone" (R1) with R2 under it in `DialogNote` |
 | 21 | Trust before the password | render 8's dialog with R3, R4 and its line in `MonoBox`, D2's note and "Trust and continue" |
-| 22 | The password panel | render 20 with, in place of R1 and R2, render 15's field with R6 as its label; solid "Add the key", outlined "Cancel"; R8 while it runs; R9 to R14 as render 17's failure block |
+| 22 | The password panel | render 20 with, in place of R1 and R2, render 15's field with R6 as its label; solid "Add the key", outlined "Cancel"; R8 while it runs; R9 to R16 as render 17's failure block |
 
 Goldens for each in graphite and paper, and steps 1 to 3, the password
 panel and the hint at font size 2x. The numbers 13 to 23 are already taken by the
@@ -600,18 +644,19 @@ the "Getting around" screen's G1 to G6)
 | G3 | Swipe up: the next agent that needs you. Down: back. | new |
 | G4 | Tap the map: every pane of the tab. | new |
 | G5 | Got it (also the TalkBack action's name) | new |
+| G6 | With TalkBack, the title bar's actions move around: Next terminal, Previous terminal, Next agent that needs you. Double tap the map for every pane of the tab. (in place of G2 to G4 while touch exploration is on) | new |
 
-**Run it from this phone** (D12; drafts awaiting approval, R3 to R5 as
-for decision 10's pick)
+**Run it from this phone** (D12; drafts awaiting approval; decision 10
+answered (a))
 
 | Id | Text | Was |
 |---|---|---|
 | R1 | Run it from this phone | new |
 | R2 | kudde signs in once as %2$s with that account's password, adds the same key and signs out. The password is not stored. | new |
-| R3 | First connection to %1$s. kudde sends the password only to the machine with this host key. | new (dialog's first paragraph) |
+| R3 | First connection to %1$s. If this key is not your machine's, whoever answered gets the password, and setup can still look as if it worked. Trust it only if you are sure. | new (dialog's first paragraph) |
 | R4 | To compare, run this at %1$s: (then the line, e.g. `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`) | new |
 | R5 | Trust and continue | new |
-| R6 | Password for %2$s on %1$s | new (field label) |
+| R6 | Password for %2$s on %1$s | new (field label; with keyboard-interactive, followed by the machine's first prompt as it sent it) |
 | R7 | Add the key | new |
 | R8 | Adding the key on %1$s… | new |
 | R9 | %1$s did not accept the password for %2$s. / Check it and try again. Nothing was changed there. | new |
@@ -620,6 +665,8 @@ for decision 10's pick)
 | R12 | The connection to %1$s dropped while the key was being added. / kudde cannot tell whether it went in. Try again: adding it twice does no harm. | new |
 | R13 | The setup on %1$s stopped: / (M11 or M12, as the machine printed it) | new |
 | R14 | The setup on %1$s ended with code %2$d. / Run the command above at the machine to see why. | new |
+| R15 | %1$s refused the password again. / Some machines lock an account after a few wrong tries. To be safe, use the command above at the machine. | new |
+| R16 | kudde added the key, but %1$s still refuses it. / The SSH server may read keys from another file, or refuse the home directory's permissions (StrictModes). The setup guide's check script finds out which. | new |
 
 ## Risks / Trade-offs
 
@@ -634,13 +681,10 @@ for decision 10's pick)
   account's password. Decision 10 settles how much the person must check;
   on a VPN such as Tailscale, with its own keys, the risk is small, on a
   shared Wi-Fi it is not.
-- **An account barred from passwords that still offers them** (root under
-  `prohibit-password`, an account locked for passwords) reads as a wrong
-  password (R9). The command still works there.
-- **The hint names swipes.** With TalkBack on, swipes belong to TalkBack;
-  `spaces-navigation`'s "Every step has a way without a swipe" covers
-  those people, and the hint reads the same. Worth a look at text
-  approval.
+- **An account barred from passwords that still offers them** reads as a
+  wrong password (R9, then R15). Root is the common case: OpenSSH's
+  default `PermitRootLogin prohibit-password` offers `password` and
+  refuses it for root whatever is typed. The command still works there.
 - **Two words for one thing while both exist.** "Add machine" stays on the
   Machines screen and opens "Set up a machine". Accepted: the first is a
   list action, the second the flow's title.
