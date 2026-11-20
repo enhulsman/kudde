@@ -256,6 +256,16 @@
     <string name="compose_paste">Paste</string>
     <!-- A program without bracketed paste (a plain shell) would run each line (issue #22). -->
     <string name="compose_lines_refused">This program would take each line break as Enter. Paste one line at a time.</string>
+    <string name="compose_not_attached">Not sent: the terminal is not connected yet</string>
+    <!-- The title bar's screen-reader actions and what is said after one (spaces-navigation, design D9). -->
+    <string name="title_bar_next_terminal">Next terminal</string>
+    <string name="title_bar_previous_terminal">Previous terminal</string>
+    <string name="title_bar_next_needs_you">Next agent that needs you</string>
+    <string name="title_bar_previous_needs_you">Previous agent that needs you</string>
+    <string name="title_bar_moved">%1$s, %2$s</string>
+    <string name="title_bar_tab_end">No more terminals in this tab</string>
+    <string name="title_bar_none_need_you">No more agents need you</string>
+    <string name="title_bar_step_refused">Not moved: the compose text is kept</string>
     <!-- Alerts (M3): notification channels, as Android settings lists them. -->
     <string name="channel_needs_you">Needs you</string>
     <string name="channel_finished">Finished</string>

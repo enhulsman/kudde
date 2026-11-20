@@ -6,6 +6,7 @@ import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.setValue
 import dev.kudde.android.hub.HubHost
+import dev.kudde.android.ui.spaces.DeskOrder
 import dev.kudde.android.ui.terminal.attentionStep
 import uniffi.kudde_mobile.AgentAttention
 import uniffi.kudde_mobile.AgentRow
@@ -36,6 +37,13 @@ class AgentsHome(
         private set
 
     var othersExpanded by mutableStateOf(false)
+        private set
+
+    /**
+     * The open terminal was reached by a step ([tab], [step]), not opened from a
+     * row, the queue strip or an alert: it waits before it is attached (design D5).
+     */
+    var arrivedByStep by mutableStateOf(false)
         private set
 
     fun toggleOthers() {
@@ -134,37 +142,36 @@ class AgentsHome(
             val key = retrace.removeLast()
             if (row(snapshot, key) != null) {
                 other.addLast(current)
-                show(key)
+                show(key, byStep = true)
                 return true
             }
         }
         val next = attentionStep(snapshot.agents, current, forward, walk) ?: return false
         if (forward) behind.addLast(current) else ahead.addLast(current)
-        show(next)
+        show(next, byStep = true)
         return true
     }
 
     /**
-     * A sideways swipe on the title bar: the next ([next]) or previous agent in
-     * list order, whatever its state, like tabs (phone check round 2). The order
-     * is the walk's, so agents keep their places while the hub re-sorts; agents
-     * gone are skipped, agents listed since follow. False at either end.
+     * A sideways swipe on the title bar (spaces spec, "A sideways swipe on the
+     * title bar walks the open tab"): the next ([next]) or previous stop of the
+     * open terminal's own tab, in desk order, read from the snapshot as it is
+     * now (design D3). False at either end of the tab, in a tab of one pane and
+     * for a terminal in no tab: nothing opens.
      */
     fun tab(next: Boolean): Boolean {
         val current = openKey ?: return false
-        val listed = hubHost.snapshot.value.agents.map { AgentKey(it.machine, it.address) }
-        val present = listed.toSet()
-        val order = LinkedHashSet(walk).apply { addAll(listed) }.filter { it in present || it == current }
-        val at = order.indexOf(current)
-        val target = order.getOrNull(if (next) at + 1 else if (at < 0) -1 else at - 1) ?: return false
+        val stops = DeskOrder.stops(hubHost.snapshot.value, current)
+        val target = (if (next) DeskOrder.next(stops, current) else DeskOrder.previous(stops, current)) ?: return false
         // A new starting point for the queue's swipe down.
         behind.clear()
         ahead.clear()
-        show(target)
+        show(target.key, byStep = true)
         return true
     }
 
-    private fun show(key: AgentKey) {
+    private fun show(key: AgentKey, byStep: Boolean = false) {
+        arrivedByStep = byStep
         openKey = key
         val row = row(hubHost.snapshot.value, key)
         finishMarked = row?.attention == AgentAttention.DONE
@@ -174,6 +181,7 @@ class AgentsHome(
     fun close() {
         dropPending()
         openKey = null
+        arrivedByStep = false
         finishMarked = false
         walk = emptyList()
         behind.clear()

@@ -53,6 +53,13 @@ class TerminalSession(val key: AgentKey, private val main: Executor) {
     private var view: TerminalViewInterface? = null
     private var closed = false
 
+    /**
+     * Called before input when no view is attached yet (design D5): the route
+     * sets it to the opener's openNow, which attaches the view in the same call,
+     * so the input that ended a step's wait is delivered right after, once.
+     */
+    var onInputWithoutView: (() -> Unit)? = null
+
     val listener: TerminalListener = object : TerminalListener {
         override fun onFrame(frame: ByteArray) = main.execute { applyLive(frame) }
         override fun onState(state: TermState) = main.execute { if (!closed) this@TerminalSession.state = state }
@@ -84,7 +91,15 @@ class TerminalSession(val key: AgentKey, private val main: Executor) {
         return applyFrame(frame)
     }
 
+    /** The person's input: ends a step's wait first ([onInputWithoutView]). */
     private inline fun send(block: TerminalViewInterface.() -> Unit) {
+        if (closed) return
+        if (view == null) onInputWithoutView?.invoke()
+        view?.block()
+    }
+
+    /** The screen's own bookkeeping, not input: never ends a wait. */
+    private inline fun control(block: TerminalViewInterface.() -> Unit) {
         if (closed) return
         view?.block()
     }
@@ -92,8 +107,20 @@ class TerminalSession(val key: AgentKey, private val main: Executor) {
     fun type(text: String) = send { armed = typeText(text) }
     fun backspace() = send { armed = backspace() }
     fun tap(key: RowKeyTap) = send { armed = tap(key) }
-    /** False when the core refused it: a line break the program would take as Enter. */
-    fun paste(text: String): Boolean = if (closed) true else view?.paste(text) ?: true
+    /**
+     * [Paste.REFUSED] when the core refused it (a line break the program would
+     * take as Enter); [Paste.NOT_ATTACHED] when no terminal took it, so nothing
+     * reports text as sent that was not handed to an attached terminal.
+     */
+    fun paste(text: String): Paste {
+        if (closed) return Paste.NOT_ATTACHED
+        if (view == null) onInputWithoutView?.invoke()
+        val attached = view ?: return Paste.NOT_ATTACHED
+        return if (attached.paste(text)) Paste.SENT else Paste.REFUSED
+    }
+
+    /** The person asked to type (the chip above the keys): ends a step's wait. */
+    fun wantInput() = send { }
     fun scroll(rows: Int) = send { if (rows != 0) scroll(rows) }
 
     /** Takes over at the phone's size without typing (a tap while watching). */
@@ -103,13 +130,13 @@ class TerminalSession(val key: AgentKey, private val main: Executor) {
      * The terminal takes the phone's size only while it shows: under the chat
      * it watches at the desk's size, and shown again it takes over.
      */
-    fun follow(chat: Boolean) = send { if (chat) watch() else lead() }
+    fun follow(chat: Boolean) = control { if (chat) watch() else lead() }
 
     /** A tap on cell ([col], [row]) of the phone's grid; the core clicks a program that takes clicks. */
     fun click(col: Int, row: Int) = send { click(col.coerceIn(0, 0xFFFF).toUShort(), row.coerceIn(0, 0xFFFF).toUShort()) }
     fun live() = send { live() }
     fun interrupt() = send { interrupt() }
-    fun phoneSize(size: GridSize) = send {
+    fun phoneSize(size: GridSize) = control {
         phoneSize(size.cols.coerceIn(1, 0xFFFF).toUShort(), size.rows.coerceIn(1, 0xFFFF).toUShort())
     }
 
@@ -132,6 +159,9 @@ class TerminalSession(val key: AgentKey, private val main: Executor) {
         return if (painted) grid.toFullFrameOrNull() else null
     }
 }
+
+/** What became of the compose text (design D5). */
+enum class Paste { SENT, REFUSED, NOT_ATTACHED }
 
 /** Opened under the chat, the terminal watches at the desk's size (see [TerminalSession.follow]). */
 fun atPhoneSizeOnOpen(chat: Boolean) = !chat

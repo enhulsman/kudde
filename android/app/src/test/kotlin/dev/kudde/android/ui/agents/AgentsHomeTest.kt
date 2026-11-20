@@ -10,6 +10,11 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import uniffi.kudde_mobile.AgentAttention
+import uniffi.kudde_mobile.DeskCellView
+import uniffi.kudde_mobile.DeskPaneView
+import uniffi.kudde_mobile.DeskSpaceView
+import uniffi.kudde_mobile.DeskTabView
+import uniffi.kudde_mobile.DeskView
 import uniffi.kudde_mobile.HubListener
 import uniffi.kudde_mobile.HubSnapshot
 
@@ -300,38 +305,143 @@ class AgentsHomeTest {
         assertFalse("no trail from the earlier walk", home.step(forward = false))
     }
 
-    // Phone check round 2: a horizontal swipe walks every agent like tabs, in
-    // list order as it was when the walk started, whatever their state.
+    // spaces spec, "A sideways swipe on the title bar walks the open tab": the
+    // sideways swipe walks the open terminal's own tab in desk order and stops
+    // at its ends. This replaces the round-2 rule (every agent in list order),
+    // whose spec sentence is amended in task 1.1 (decision 1, answer b).
+    private fun cell(address: String) = DeskCellView(DeskPaneView.Terminal(address), 0f, 0f, 1f, 1f)
+    private fun tab(id: String, vararg addresses: String) = DeskTabView(id, id, addresses.map(::cell))
+    private fun deskSpace(id: String, vararg tabs: DeskTabView) = DeskSpaceView(id, id, 0u, tabs.toList())
+    private fun desk(vararg spaces: DeskSpaceView, loose: List<String> = emptyList()) =
+        listOf(connected("workstation").copy(desk = DeskView(spaces.toList(), loose, null)))
+
     @Test
-    fun tabsWalkEveryAgentInListOrder() {
+    fun tabsWalkTheOpenTabInDeskOrder() {
         val working = AgentAttention.WORKING
         val idle = AgentAttention.IDLE
-        val done = AgentAttention.DONE
-        publish(snapshot(ws, listOf(row("a", done), row("b", working), row("c", idle))))
+        val needs = AgentAttention.NEEDS_YOU
+        // c stands first in the list by state; the tab holds a, b and a shell.
+        val machines = desk(deskSpace("s", tab("t", "a", "b", "shell"), tab("u", "c")))
+        publish(snapshot(machines, listOf(row("c", needs), row("a", working), row("b", idle)), listOf(other("shell"))))
         home.open(key("a"))
-        // opening a re-sorts it below the others; the tabs keep their places
-        publish(snapshot(ws, listOf(row("b", working), row("a", idle), row("c", idle))))
         assertTrue(home.tab(next = true))
         assertEquals(key("b"), home.openKey)
         assertTrue(home.tab(next = true))
-        assertEquals(key("c"), home.openKey)
-        assertFalse("the last tab", home.tab(next = true))
+        assertEquals(key("shell"), home.openKey)
+        assertFalse("the tab's last pane", home.tab(next = true))
+        assertEquals(key("shell"), home.openKey)
         assertTrue(home.tab(next = false))
         assertTrue(home.tab(next = false))
         assertEquals(key("a"), home.openKey)
-        assertFalse("the first tab", home.tab(next = false))
+        assertFalse("the tab's first pane", home.tab(next = false))
+        assertEquals(key("a"), home.openKey)
     }
 
     @Test
-    fun tabsSkipAnAgentThatIsGoneAndIncludeOnesListedSince() {
+    fun tabsFollowTheLayoutAsItIsNow() {
         val idle = AgentAttention.IDLE
-        publish(snapshot(ws, listOf(row("a", idle), row("b", idle), row("c", idle))))
+        publish(snapshot(desk(deskSpace("s", tab("t", "a", "b", "c"))), listOf(row("a", idle), row("b", idle), row("c", idle))))
         home.open(key("a"))
-        publish(snapshot(ws, listOf(row("a", idle), row("c", idle), row("d", idle))))
+        publish(snapshot(desk(deskSpace("s", tab("t", "a", "c", "d"))), listOf(row("a", idle), row("c", idle), row("d", idle))))
         assertTrue(home.tab(next = true))
         assertEquals(key("c"), home.openKey)
         assertTrue(home.tab(next = true))
         assertEquals(key("d"), home.openKey)
+    }
+
+    @Test
+    fun tabsStopAtTheEndOfTheTab() {
+        val idle = AgentAttention.IDLE
+        publish(snapshot(desk(deskSpace("s", tab("t1", "a", "b"), tab("t2", "c"))), listOf(row("a", idle), row("b", idle), row("c", idle))))
+        home.open(key("b"))
+        hub.calls.clear()
+        assertFalse(home.tab(next = true))
+        assertEquals(key("b"), home.openKey)
+        assertEquals("nothing opened, nothing marked", emptyList<String>(), hub.calls)
+    }
+
+    @Test
+    fun tabsStopAtTheStartOfTheTab() {
+        val idle = AgentAttention.IDLE
+        publish(snapshot(desk(deskSpace("s", tab("t1", "c"), tab("t2", "a", "b"))), listOf(row("a", idle), row("b", idle), row("c", idle))))
+        home.open(key("a"))
+        hub.calls.clear()
+        assertFalse(home.tab(next = false))
+        assertEquals(key("a"), home.openKey)
+        assertEquals(emptyList<String>(), hub.calls)
+    }
+
+    @Test
+    fun aTabOfOnePaneHasNowhereToGo() {
+        val idle = AgentAttention.IDLE
+        publish(snapshot(desk(deskSpace("s", tab("t1", "a"), tab("t2", "b", "c"))), listOf(row("b", idle), row("a", idle), row("c", idle))))
+        home.open(key("a"))
+        hub.calls.clear()
+        assertFalse(home.tab(next = true))
+        assertFalse(home.tab(next = false))
+        assertEquals(key("a"), home.openKey)
+        assertEquals(emptyList<String>(), hub.calls)
+    }
+
+    @Test
+    fun aTerminalInNoPaneHasNowhereToGo() {
+        val idle = AgentAttention.IDLE
+        publish(snapshot(desk(deskSpace("s", tab("t", "b", "c")), loose = listOf("a")), listOf(row("a", idle), row("b", idle), row("c", idle))))
+        home.open(key("a"))
+        hub.calls.clear()
+        assertFalse(home.tab(next = true))
+        assertFalse(home.tab(next = false))
+        assertEquals(key("a"), home.openKey)
+        assertEquals(emptyList<String>(), hub.calls)
+    }
+
+    // spaces spec, "The layout changes during a swipe": the order is the one
+    // the hub holds when the finger lifts, so the snapshot is read in tab().
+    @Test
+    fun theLayoutChangingDuringASwipeIsReadWhenTheSwipeEnds() {
+        val idle = AgentAttention.IDLE
+        val rows = listOf(row("a", idle), row("b", idle), row("c", idle))
+        publish(snapshot(desk(deskSpace("s", tab("t", "a", "b", "c"))), rows))
+        home.open(key("a"))
+        // The desk reorders the tab while the finger is down; only the hub has seen it.
+        listener.onSnapshot(snapshot(desk(deskSpace("s", tab("t", "a", "c", "b"))), rows))
+        assertTrue(home.tab(next = true))
+        assertEquals(key("c"), home.openKey)
+    }
+
+    // spaces spec, "Passing through leaves the desk's sizes alone" (design D5):
+    // a terminal reached by a step, sideways or up and down, waits before it is
+    // attached; one opened from a row, the queue strip or an alert does not.
+    @Test
+    fun tabAndStepRecordTheArrivalAsAStep() {
+        val needs = AgentAttention.NEEDS_YOU
+        publish(snapshot(desk(deskSpace("s", tab("t", "a", "b"))), listOf(row("a", needs), row("b", needs))))
+        home.open(key("a"))
+        assertFalse(home.arrivedByStep)
+        assertTrue(home.tab(next = true))
+        assertEquals(key("b"), home.openKey)
+        assertTrue("sideways", home.arrivedByStep)
+        home.open(key("a"))
+        assertFalse(home.arrivedByStep)
+        assertTrue(home.step(forward = true))
+        assertEquals(key("b"), home.openKey)
+        assertTrue("up", home.arrivedByStep)
+    }
+
+    @Test
+    fun openingFromARowTheQueueStripOrAnAlertIsNotAStep() {
+        val needs = AgentAttention.NEEDS_YOU
+        publish(snapshot(desk(deskSpace("s", tab("t", "a", "b", "c"))), listOf(row("a", needs), row("b", needs), row("c", needs))))
+        home.open(key("a"))
+        assertTrue(home.tab(next = true))
+        // A row and the queue strip both open through open().
+        home.open(key("c"))
+        assertFalse("a row or the queue strip", home.arrivedByStep)
+        assertTrue(home.step(forward = false))
+        assertTrue(home.arrivedByStep)
+        home.openWhenListed(key("a"))
+        assertEquals(key("a"), home.openKey)
+        assertFalse("an alert", home.arrivedByStep)
     }
 
     // alerts spec, "Blocked while the app is closed": tapping the alert opens
