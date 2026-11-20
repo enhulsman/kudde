@@ -218,7 +218,7 @@ only the spaces' names.
   `android-client-v1` are amended in place (task 1.1), as `session-names`
   and `changes-view` did before.
 
-## Texts (each needs the owner's approval, task 1.2)
+## Texts (approved by Ezra, 2026-11-20, task 1.2)
 
 | Where | Text |
 |---|---|
