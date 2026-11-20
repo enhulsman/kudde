@@ -86,6 +86,18 @@ in v1.1.
 | `10-new-folders` | The sheet on a machine without spaces: folders, "as a new space", the agent row held while the check runs |
 | `11-new-error` | A start the core refused: the reason above Start; agents could not be checked, Terminal only |
 | `12-new-off` | Nothing connected: the + dimmed, a tap says "No machine connected" |
+| `13-changes-button` | **Superseded by `terminal-map`** (spaces-navigation): the Changes button before the switch in the title bar (changes-view, signed off 2026-11-16) |
+| `14-changes-list-dark`, `15-changes-list-light` | The Changes list: file, folder, status word, lines added and removed |
+| `16-changes-diff-dark`, `17-changes-diff-light` | A diff with wrapped lines (↪) |
+| `18-changes-long` | A long diff: "Show the whole diff (N lines)" |
+| `19-changes-none` | "No changes since the last commit" |
+| `20-changes-norepo` | "Not a git repository" |
+| `21-changes-error` | "Could not read the changes", git's first error line, Retry |
+| `22-changes-kinds` | Conflict, mode, new, repository rows and the 1,000-file cap |
+| `23-changes-notes` | The texts for the other cases, as a sheet of examples |
+| `spaces-dark`, `spaces-light` | The Spaces view (spaces-navigation; awaiting sign-off, task 4.2): the home switch with the Agents count, two machines, a space with a needs-you card, a tab of three panes and a placeholder, "Not in a space", an unreachable machine's rows marked "as of" |
+| `terminal-map` | The quieter title bar (awaiting sign-off, task 4.2), graphite and paper: the tab map, the gauge as today ("47%", "283k"), the view switch as an icon, the menu button and its open menu with "Changes"; at 412 dp and 130% font, and at 360 dp and 2x with the gauge hidden and the map kept; the three proposed icons |
+| `tab-overview` | The tab overview (awaiting sign-off, task 4.2): the space's tabs as maps, the chosen tab's tiles with a "Desk only" placeholder, and the row fallback for six panes side by side |
 
 ## Components
 
@@ -105,15 +117,28 @@ Each component below has its full spec in `design-tokens.json` under `components
 - notification
 - button
 - toggle
+- home switch (`homeSwitch`): "Agents" and "Spaces" as the top bar's title
+- tab map (`tabMap`): a tab's splits as cells, by state; the open terminal's cell marked in the title bar
+- space header (`spaceHeader`): the space's name and its most urgent state mark
+- tab line (`tabLine`): a tab's map and name; a tap opens the tab overview
+- pane tile (`paneTile`): the tab overview's tiles, "Desk only" for a placeholder
+- title bar menu (`titleBarMenu`): the three-dot button, last in the title bar, and its menu holding "Changes"
+- view switch icon (`viewSwitchIcon`): the chat and terminal icons in place of the worded switch
+
+The three new icons (the menu's three dots, the chat and the terminal) are
+proposed from lucide (ISC), in the stroke and caps of the set in
+`design/renders/icons/`; they wait for sign-off with `terminal-map`.
 
 ## Motion
 
 Nothing moves in an orchestrated way. The only motion is the working spinner,
 which turns every 900 ms as on the Mac. When an agent moves between sections,
-its row slides into place over 200 ms.
+its row slides into place over 200 ms. At a tab's end, a sideways swipe on the
+title bar bounces the bar's content about 12 dp in the swipe's direction and
+springs it back in about 200 ms, with the end haptic (`animations.titleBarBounce`).
 
-With reduced motion on, the spinner stays still as a quarter arc and rows move
-without sliding.
+With reduced motion on, the spinner stays still as a quarter arc, rows move
+without sliding, and the title bar does not bounce (the haptic stays).
 
 ## Accessibility
 

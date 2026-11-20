@@ -404,7 +404,7 @@
     "chip": "0 6 20 #00000066"
   },
   "animations": {
-    "choreography": "None orchestrated. The one moving thing is the working spinner, as on the Mac.",
+    "choreography": "None orchestrated. The one moving thing is the working spinner, as on the Mac; beside it, the title-bar bounce at a tab's end (titleBarBounce).",
     "spinner": {
       "period": "900ms",
       "easing": "linear",
@@ -415,10 +415,19 @@
       "easing": "standard",
       "note": "an agent moving between sections slides; no other list motion"
     },
+    "titleBarBounce": {
+      "use": "a sideways swipe on the title bar at either end of the open tab, or in a tab of one pane; never for the up and down walk or a refused step",
+      "moves": "the bar's content only, in the swipe's direction; the bar's background stays",
+      "distance": "12dp",
+      "duration": "200ms",
+      "easing": "out in about a third of the time (fast-out-slow-in), then a spring back to rest (medium-bouncy damping, medium stiffness)",
+      "haptic": "the end haptic (REJECT) with it",
+      "reducedMotion": "none, haptic only"
+    },
     "sheet": "platform bottom-sheet motion",
     "hero": {
       "archetype": "none (product app)",
-      "reducedMotionStrategy": "spinner static quarter arc; reorder instant"
+      "reducedMotionStrategy": "spinner static quarter arc; reorder instant; title-bar bounce: none, haptic only"
     },
     "duration": {
       "listReorder": "200ms",
@@ -431,6 +440,7 @@
     "patterns": [
       "working spinner",
       "list reorder slide",
+      "title-bar bounce",
       "platform bottom sheet"
     ]
   },
@@ -479,7 +489,8 @@
     },
     "terminalTitleBar": {
       "height": 64,
-      "parts": "back 48 target, agent mark, name 17/500 over 'space · machine' 13 dim; no state pill (issue 57: the screen below shows the state)"
+      "parts": "back 48 target, agent mark, name 17/500 over 'space · machine' 13 dim; no state pill (issue 57: the screen below shows the state); then, in this order (render terminal-map): the context gauge (chat only, text as today, in the place the bar keeps for it), the tab map (tabMap, a 48 dp button, only in a tab of more than one pane), the view switch (viewSwitchIcon), and the menu button (titleBarMenu) last. No Changes button and no pane dots",
+      "fit": "Height grows with the font size, so name and line are never cut. When the width runs out (360 dp, or 2x font): the gauge hides first, the map stays; then the name ends in an ellipsis down to eight of its characters, further only where that does not fit. The map, the switch and the menu button never hide"
     },
     "queueStrip": {
       "signature": true,
@@ -552,6 +563,54 @@
     "toggle": {
       "size": "44x26",
       "note": "Compose Switch styled with these colours"
+    },
+    "homeSwitch": {
+      "render": "spaces-dark, spaces-light",
+      "parts": "the top bar's title as two words, 'Agents' and 'Spaces', in screenTitle type, 18 apart; the chosen one fg, the other dim; each a touch target of at least 48",
+      "count": "while Spaces shows and an agent needs you, 'Agents' carries the count in sectionHeader type (13/500) in blocked",
+      "spoken": "'Agents, selected' / 'Spaces, selected'"
+    },
+    "tabMap": {
+      "render": "spaces-dark, spaces-light, terminal-map, tab-overview",
+      "size": "28x20 on a tab line, in an overview tab and in the title bar; larger above the overview's row fallback",
+      "cell": "one per pane, placed and sized by the splits; 1 border, radius 2, 1 gap",
+      "states": "needs you: filled blocked; finished unseen: filled done; working: outlined working; otherwise outlined border; placeholder: dashed border; in the title bar the open terminal's cell filled fg",
+      "titleBar": "a 48 dp button, spoken 'Tab overview, terminal N of M'; absent in a tab of one pane and for a terminal in no pane",
+      "spoken": "'Tab <name>, N terminals[, N needs you]'; counts stops only"
+    },
+    "spaceHeader": {
+      "render": "spaces-dark, spaces-light",
+      "minHeight": 48,
+      "parts": "name 16/500 fg, ellipsis; the space's most urgent state mark at the right in the row's 18 dp slot (needs you: 9 dp blocked dot; done dot; spinner; idle ring); no mark without agents",
+      "machineHeader": "with more than one machine, the machine's name heads its spaces as a sectionHeader in muted",
+      "unreadable": "'1 tab could not be read' / '%d tabs could not be read' in secondary type"
+    },
+    "tabLine": {
+      "render": "spaces-dark, spaces-light",
+      "minHeight": 48,
+      "parts": "tabMap 28x20 at the row's mark position, then the tab's name in secondary type, muted; 12 gap",
+      "action": "tap opens the tab overview"
+    },
+    "paneTile": {
+      "render": "tab-overview",
+      "minSize": "96x64; below that the overview lists rows under a larger tabMap instead",
+      "surface": "popover, 1 border, radius 12, 8 apart, padding 12",
+      "parts": "program mark 20 top left, state mark top right in the 18 dp slot (as spaceHeader), name 16 at the bottom, ellipsis",
+      "placeholder": "transparent, 1 dashed input border, 'Desk only' 13 dim, centred; does nothing on tap",
+      "tabs": "the space's tabs above the tiles as 48 dp chips (tabMap and name, 14.5); chosen: selected background, ring border, fg text"
+    },
+    "titleBarMenu": {
+      "render": "terminal-map",
+      "button": "48 dp, last in the title bar, three-dot icon 22 muted (selected background while open), spoken 'More options'",
+      "icon": "lucide ellipsis-vertical (ISC), stroke 2: circles r 1 at (12,5), (12,12), (12,19)",
+      "menu": "popover, 1 border, radius 12, shadow chip, under the button at the right; min width 184",
+      "item": "48 high, padding 0 16, the Changes icon 20 muted, then the word in rowName (16) fg; one item, 'Changes', spoken the same"
+    },
+    "viewSwitchIcon": {
+      "render": "terminal-map",
+      "button": "48 dp, icon 22 muted, role button; replaces the 'Terminal' / 'Chat' pill in the title bar (the chat's body keeps its worded buttons)",
+      "icons": "chat (in the terminal): lucide message-square-text (ISC), 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z', 'M13 8H7', 'M17 12H7'; terminal (in the chat): lucide square-terminal (ISC), rect 3,3 18x18 r 2, 'm7 11 2-2-2-2', 'M11 13h4'; stroke 1.8",
+      "spoken": "'Chat' in the terminal, 'Terminal' in the chat"
     }
   },
   "accessibility": {

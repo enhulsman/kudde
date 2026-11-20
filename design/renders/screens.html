@@ -216,6 +216,56 @@ button{font-family:inherit;color:inherit}
 .empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:0 40px;text-align:center}
 .empty .t{font-size:17px;font-weight:500}
 .empty .s{font-size:14px;color:var(--muted);line-height:1.45}
+/* spaces-navigation (2026-11, task 4.1): Spaces view, tab map, the quieter title bar, tab overview */
+.hswitch{display:flex;align-items:baseline;gap:18px}
+.hswitch span{color:var(--dim)}
+.hswitch span.on{color:var(--fg)}
+.hswitch b{font-size:13px;font-weight:500;color:var(--blocked);margin-left:6px;letter-spacing:0}
+.tmap{position:relative;display:block;flex:none}
+.tmap i{position:absolute;box-sizing:border-box;border:1px solid var(--border);border-radius:2px}
+.tmap i.blocked{background:var(--blocked);border-color:var(--blocked)}
+.tmap i.done{background:var(--done);border-color:var(--done)}
+.tmap i.working{border-color:var(--working)}
+.tmap i.ph{border-style:dashed}
+.tmap i.mark{background:var(--fg);border-color:var(--fg)}
+.shdr{display:flex;align-items:center;gap:12px;min-height:48px;padding:6px 12px 0;font-size:16px;font-weight:500}
+.shdr .grow{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.st .blocked{width:9px;height:9px;border-radius:50%;background:var(--blocked)}
+.tline{display:flex;align-items:center;gap:12px;min-height:48px;padding:0 12px;font-size:13px;color:var(--muted);border-radius:12px}
+.orow-ic{width:20px;height:20px;flex:none;color:var(--muted)}
+.orow-ic svg{width:20px;height:20px;display:block}
+.qbar{flex:none;display:flex;align-items:center;min-height:64px;padding:6px 4px;background:var(--chrome);color:var(--fg);font-size:calc(16px * var(--fs,1))}
+.qbar .qmark{width:20px;height:20px;margin:0 12px 0 6px;flex:none}
+.qbar .txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.qbar .name{font-size:calc(17px * var(--fs,1));font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.qbar .sub{font-size:calc(13px * var(--fs,1));color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.qbar .qgauge{font-size:calc(13px * var(--fs,1));color:var(--dim);flex:none;padding:8px 6px;margin-left:6px}
+.qbtn{width:48px;height:48px;flex:none;border:0;background:transparent;border-radius:12px;display:flex;align-items:center;justify-content:center;color:var(--muted);padding:0}
+.qbtn svg{width:22px;height:22px}
+.qbtn.open{background:var(--selected);color:var(--fg)}
+.qbar .qbtn.map{margin-left:6px}
+.qmenu{position:absolute;right:8px;top:62px;min-width:184px;background:var(--popover);border:1px solid var(--border);border-radius:12px;box-shadow:0 6px 20px #00000066;padding:4px 0;z-index:2}
+.qitem{display:flex;align-items:center;gap:12px;min-height:48px;padding:0 16px;font-size:calc(16px * var(--fs,1));color:var(--fg)}
+.qitem svg{width:20px;height:20px;color:var(--muted);flex:none}
+.board{display:grid;grid-template-columns:412px 412px;gap:28px 40px;padding:32px;background:#0b0c0e;width:max-content}
+.board .cell{display:flex;flex-direction:column;gap:8px}
+.board .lab{font:500 12.5px Geist,sans-serif;color:#98999b}
+.board .strip{position:relative;overflow:hidden;border-radius:4px}
+.board .wide{grid-column:1/-1}
+.icset{display:flex;gap:24px;align-items:center;padding:16px 20px;background:var(--chrome);color:var(--muted);border-radius:4px}
+.icset span{display:flex;flex-direction:column;align-items:center;gap:8px;font:500 12px Geist,sans-serif;color:var(--dim)}
+.icset .big svg{width:48px;height:48px}
+.icset .small svg{width:22px;height:22px}
+.otabs{display:flex;gap:8px;padding:8px 16px 12px;flex:none}
+.otab{min-height:48px;display:flex;align-items:center;gap:10px;padding:0 14px;border-radius:12px;border:1px solid var(--input);font-size:14.5px;color:var(--muted)}
+.otab.on{background:var(--selected);border-color:var(--ring);color:var(--fg)}
+.otiles{position:relative;margin:4px 16px 0;flex:none}
+.otile{position:absolute;box-sizing:border-box;background:var(--popover);border:1px solid var(--border);border-radius:12px;padding:12px;display:flex;flex-direction:column;justify-content:space-between}
+.otile .ohead{display:flex;align-items:center;justify-content:space-between}
+.otile .ohead img{width:20px;height:20px}
+.otile .nm{font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.otile.ph{background:transparent;border:1px dashed var(--input);align-items:center;justify-content:center;color:var(--dim);font-size:13px}
+.omap{margin:4px 16px 8px;padding:12px;border-radius:12px;background:var(--canvas);border:1px solid var(--border);flex:none}
 </style>
 </head>
 <body>
@@ -251,6 +301,7 @@ const row = (a) => `
       ${a.pr!=null?`<div class="bar"><i style="width:${a.pr}%"></i></div>`:''}
     </div>
     ${a.off?'<span class="offline">offline</span>':''}
+    ${a.asof?`<span class="offline">${a.asof}</span>`:''}
     <span class="when">${a.w}</span>
     ${st(a.s)}
   </div>`;
@@ -586,6 +637,8 @@ function newOff(){
 // ---------- changes-view: the Changes button and screen ----------
 ico.changes = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M12 10.5v5M9.5 13h5M9.5 17.5h5"/></svg>';
 // The terminal and chat title bar as it is since chat-view, with the Changes button before the switch.
+// Superseded by terminal-map (spaces-navigation, decisions 7 and 8): Changes moves into the
+// overflow menu and the switch becomes an icon. Kept unchanged for render 13, which is retired.
 const ctitle = (view, hint=false) => `
   <div class="ttop">
     <button class="iconbtn" aria-label="Back" style="color:var(--fg)">${ico.back}</button>
@@ -745,6 +798,139 @@ function changesSmall(){
   </div>`;
 }
 
+// ---------- spaces-navigation: Spaces view, tab map, quieter title bar, tab overview (task 4.1) ----------
+// Proposed line icons, lucide (ISC) in the style of the set above: the menu's three dots
+// (ellipsis-vertical), the chat (message-square-text) and the terminal (square-terminal) for the switch.
+ico.more = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>';
+ico.chat = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M13 8H7M17 12H7"/></svg>';
+ico.term = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="m7 11 2-2-2-2M11 13h4"/></svg>';
+// A tab map: cells as [x, y, w, h, kind] in fractions of the tab, kind one of
+// blocked | done | working | none (outlined in the border colour) | ph (placeholder, dashed) | mark (the open terminal).
+const tmap = (cells, W=28, H=20) => `<span class="tmap" style="width:${W}px;height:${H}px">${cells.map(([x,y,w,h,k])=>
+  `<i class="${k}" style="left:${(x*W+.5).toFixed(2)}px;top:${(y*H+.5).toFixed(2)}px;width:${(w*W-1).toFixed(2)}px;height:${(h*H-1).toFixed(2)}px"></i>`).join('')}</span>`;
+// website / main: Pricing page copy on the left; og tags, a shell and a mod pane (placeholder) stacked on the right.
+const MAIN = (a='blocked', b='working', c='none') => [[0,0,.5,1,a],[.5,0,.5,1/3,b],[.5,1/3,.5,1/3,c],[.5,2/3,.5,1/3,'ph']];
+const homeTop = (view, need=0) => `<div class="top"><h1 class="hswitch">
+      <span class="${view==='agents'?'on':''}">Agents${need&&view!=='agents'?`<b>${need}</b>`:''}</span>
+      <span class="${view==='spaces'?'on':''}">Spaces</span></h1>
+      <button class="iconbtn" aria-label="New terminal">${ico.plus}</button>
+      <button class="iconbtn" aria-label="Machines">${ico.server}<span class="badge"></span></button>
+    </div>`;
+const shdr = (name, s) => `<div class="shdr"><span class="grow">${name}</span>${s?st(s):''}</div>`;
+const tline = (cells, name) => `<div class="tline">${tmap(cells)}<span>${name}</span></div>`;
+const orow = (o) => `
+  <div class="row">
+    <span class="orow-ic">${ico.shell}</span>
+    <div class="txt"><span class="name">${o.n}</span><span class="sub">${o.space} · ${o.m}</span></div>
+    ${o.asof?`<span class="offline">${o.asof}</span>`:''}
+  </div>`;
+function spaces(theme){
+  return `<div class="phone ${theme}">
+    ${sysbar()}
+    ${homeTop('spaces', 1)}
+    <div class="notice"><span class="ring"></span><span style="flex:1"><span style="color:var(--fg)">server</span> unreachable · last connected 2h ago</span>${ico.right}</div>
+    <div class="list">
+      ${sec('workstation','muted','')}
+      ${shdr('website','blocked')}
+      ${tline(MAIN(),'main')}
+      ${card({p:'claude',n:'Pricing page copy',space:'website / main',m:'workstation',w:'<1m',kind:'Permission',msg:'Bash: npm run build'})}
+      ${row({p:'codex',n:'og tags',space:'website / main',m:'workstation',w:'2m',s:'working',pr:60})}
+      ${orow({n:'zsh',space:'website / main',m:'workstation'})}
+      ${sec('Not in a space','dim','')}
+      ${row({p:'codex',n:'changelog',space:'docs',m:'workstation',w:'9m',s:'working'})}
+      ${sec('server','muted','')}
+      ${shdr('infra','idle')}
+      ${tline([[0,0,1,1,'none']],'1')}
+      ${row({p:'claude',n:'backup notes',space:'infra / 1',m:'server',w:'2h',s:'idle',asof:'as of 12:05'})}
+    </div>
+    ${navbar()}
+  </div>`;
+}
+
+// The quieter title bar (decisions 7, 8 and 10): back, mark, name over its line, then the gauge (chat
+// only, text as today, in the place kept for it), the tab's map (only in a tab of more than one pane),
+// the view switch as an icon, and the menu button last. fs = the phone's font scale.
+const qbar = (o) => `<div class="qbar" style="--fs:${o.fs||1}">
+    <button class="qbtn" aria-label="Back" style="color:var(--fg)">${ico.back}</button>
+    <img class="qmark" src="icons/${o.p}.svg" alt="">
+    <div class="txt"><span class="name">${o.n}</span><span class="sub">${o.sub}</span></div>
+    ${o.gauge?`<span class="qgauge">${o.gauge}</span>`:''}
+    ${o.map?`<button class="qbtn map" aria-label="${o.mapSays}">${tmap(o.map)}</button>`:''}
+    <button class="qbtn" aria-label="${o.view==='chat'?'Terminal':'Chat'}">${o.view==='chat'?ico.term:ico.chat}</button>
+    <button class="qbtn${o.open?' open':''}" aria-label="More options">${ico.more}</button>
+  </div>`;
+const TERM = {p:'claude', n:'Pricing page copy', sub:'website / main · workstation', view:'terminal',
+  map:[[0,0,.5,1,'mark'],[.5,0,.5,.5,'working'],[.5,.5,.5,.5,'none']], mapSays:'Tab overview, terminal 1 of 3'};
+const CODEX = {p:'codex', n:'api tests', sub:'api / 2 · workstation', view:'chat', gauge:'47%',
+  map:[[0,0,.5,1,'none'],[.5,0,.5,1,'mark']], mapSays:'Tab overview, terminal 2 of 2'};
+const CLAUDE = {...TERM, view:'chat', gauge:'283k'};
+const strip = (theme, w, inner, lab) => `<div class="cell"><span class="lab">${lab}</span>
+    <div class="strip phone ${theme}" style="width:${w}px;height:auto;display:block">${inner}</div></div>`;
+const menuOpen = (o) => `${qbar({...o, open:true})}
+    <div style="height:200px;background:var(--bg);overflow:hidden">${terminal(53,12.2)}</div>
+    <div class="qmenu" role="menu"><div class="qitem" role="menuitem">${ico.changes}<span>Changes</span></div></div>`;
+const icset = (theme) => `<div class="cell"><span class="lab">Icons: more options, chat, terminal (22 and 48 dp)</span>
+    <div class="icset ${theme}">${['more','chat','term'].map(k=>`<span class="small">${ico[k]}</span>`).join('')}
+      ${['more','chat','term'].map(k=>`<span class="big">${ico[k]}</span>`).join('')}</div></div>`;
+function terminalMap(){
+  const col = (t) => [
+    strip(t, 412, qbar({...TERM, fs:1.3}), `Terminal · ${t} · 412 dp, 130% font · tab map, second pane working`),
+    strip(t, 412, qbar({...CODEX, fs:1.3}), `Chat, Codex · ${t} · 412 dp, 130% · gauge as today`),
+    strip(t, 412, qbar({...CLAUDE, fs:1.3}), `Chat, Claude Code · ${t} · 412 dp, 130% · gauge as today`),
+    strip(t, 412, `<div style="position:relative">${menuOpen({...TERM, fs:1.3})}</div>`, `Menu open · ${t} · 412 dp, 130%`),
+    strip(t, 360, qbar({...TERM, fs:2}), `Terminal · ${t} · 360 dp, 2x font`),
+    strip(t, 360, qbar({...CLAUDE, gauge:null, fs:2}), `Chat · ${t} · 360 dp, 2x · gauge hidden, map kept, name shrinks`),
+    icset(t),
+  ];
+  const g = col('graphite'), p = col('paper');
+  return `<div class="board">${g.map((x,i)=>x+p[i]).join('')}</div>`;
+}
+
+// Tab overview: a sub-screen with the Changes screen's back bar, titled with the space's name.
+const otab = (cells, name, on=false) => `<span class="otab${on?' on':''}">${tmap(cells)}<span>${name}</span></span>`;
+const TAB2 = [[0,0,1,1,'done']];
+const BUILD = [0,1,2,3,4,5].map(i=>[i/6,0,1/6,1,['working','none','none','done','none','none'][i]]);
+const otabs = (on) => `<div class="otabs">${otab(MAIN(),'main',on==='main')}${otab(TAB2,'2',on==='2')}${otab(BUILD,'build',on==='build')}</div>`;
+function otiles(W, H, tiles){
+  const g = 8;
+  return `<div class="otiles" style="width:${W}px;height:${H}px">${tiles.map(([x,y,w,h,t])=>{
+    const pos = `left:${x*W+g/2}px;top:${y*H+g/2}px;width:${w*W-g}px;height:${h*H-g}px`;
+    if (t.ph) return `<div class="otile ph" style="${pos}">Desk only</div>`;
+    return `<div class="otile" style="${pos}"><div class="ohead">${t.p==='shell'?`<span class="orow-ic">${ico.shell}</span>`:`<img src="icons/${t.p}.svg" alt="">`}${t.s?st(t.s):'<span class="st"></span>'}</div><span class="nm">${t.n}</span></div>`;
+  }).join('')}</div>`;
+}
+function tabOverview(){
+  const tiles = `<div class="phone graphite">
+    ${sysbar()}
+    ${ctop('website','workstation')}
+    ${otabs('main')}
+    ${otiles(380, 520, [
+      [0,0,.5,1,{p:'claude',n:'Pricing page copy',s:'blocked'}],
+      [.5,0,.5,1/3,{p:'codex',n:'og tags',s:'working'}],
+      [.5,1/3,.5,1/3,{p:'shell',n:'zsh'}],
+      [.5,2/3,.5,1/3,{ph:true}],
+    ])}
+    <div style="flex:1"></div>
+    ${navbar()}
+  </div>`;
+  const rows = `<div class="phone graphite">
+    ${sysbar()}
+    ${ctop('website','workstation')}
+    ${otabs('build')}
+    <div class="omap">${tmap(BUILD, 354, 72)}</div>
+    <div class="list">
+      ${row({p:'claude',n:'build fixes',space:'website / build',m:'workstation',w:'1m',s:'working'})}
+      ${orow({n:'npm run dev',space:'website / build',m:'workstation'})}
+      ${orow({n:'npm test',space:'website / build',m:'workstation'})}
+      ${row({p:'codex',n:'flaky test',space:'website / build',m:'workstation',w:'5m',s:'done'})}
+      ${orow({n:'htop',space:'website / build',m:'workstation'})}
+      ${orow({n:'zsh',space:'website / build',m:'workstation'})}
+    </div>
+    ${navbar()}
+  </div>`;
+  return `<div style="display:flex;gap:40px">${tiles}${rows}</div>`;
+}
+
 const SCREENS = [
   ['1-home-dark','1 Agent list (graphite)',()=>home('graphite')],
   ['2-home-light','2 Agent list (paper)',()=>home('paper')],
@@ -759,7 +945,7 @@ const SCREENS = [
   ['10-new-folders','10 New terminal: no spaces, checking agents',newFolders],
   ['11-new-error','11 New terminal: could not start',newError],
   ['12-new-off','12 New, nothing connected',newOff],
-  ['13-changes-button','13 Changes button in the title bar',changesButton],
+  ['13-changes-button','13 Changes button in the title bar (superseded by terminal-map)',changesButton],
   ['14-changes-list-dark','14 Changes list (graphite)',()=>changesList('graphite')],
   ['15-changes-list-light','15 Changes list (paper)',()=>changesList('paper')],
   ['16-changes-diff-dark','16 A diff, wrapped (graphite)',()=>changesDiff('graphite')],
@@ -770,6 +956,10 @@ const SCREENS = [
   ['21-changes-error','21 Could not read the changes',()=>changesState('error')],
   ['22-changes-kinds','22 Other kinds and the 1,000 cap',changesKinds],
   ['23-changes-notes','23 Texts for the other cases (sheet of examples)',changesSmall],
+  ['spaces-dark','Spaces view (graphite)',()=>spaces('graphite')],
+  ['spaces-light','Spaces view (paper)',()=>spaces('paper')],
+  ['terminal-map','The quieter title bar: tab map, menu, icon switch, gauge (graphite and paper; 412 dp at 130%, 360 dp at 2x)',terminalMap],
+  ['tab-overview','Tab overview: tiles, and the row fallback for six panes',tabOverview],
 ];
 const want = new URLSearchParams(location.search).get('s');
 document.body.className = want ? 'single' : 'gallery';
