@@ -635,7 +635,7 @@ turned on, and SHALL NOT ask for the notification permission.
 ### Requirement: The title bar explains itself once
 The app SHALL show a hint under the title bar the first time a terminal
 or its chat opens while the title bar shows the tab's map, that is in a
-tab of more than one pane (decision 11, open; the scenarios follow its
+tab of more than one pane (decision 11, answered as picked; the scenarios follow its
 pick). The hint SHALL name the bar's gestures as capability
 spaces (change `spaces-navigation`) and agent-list define them, and no
 others: a sideways swipe walks the panes of the open tab and the bar

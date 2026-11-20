@@ -332,7 +332,7 @@ the agents that need the person (agent-list); a tap on the tab's map opens
 the tab overview. The hint explains those three and nothing else, is built
 only after they are on main, and changes its words if they change.
 
-- **When.** Proposal decision 11 (open). Pick: due only while the title
+- **When.** Proposal decision 11 (answered as picked). Due only while the title
   bar shows the tab's map, that is for a terminal or chat in a tab of more
   than one pane, so everything it names works where it shows; a terminal
   in a tab of one pane leaves it due. Other: due on the first terminal or
