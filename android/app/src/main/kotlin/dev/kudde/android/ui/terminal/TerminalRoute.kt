@@ -65,12 +65,25 @@ fun TerminalRoute(app: KuddeApp, home: AgentsHome, key: AgentKey) {
     // sent: the desk keeps its size under a permission prompt. Back applies the last one.
     var heldGrid by remember(key) { mutableStateOf<GridSize?>(null) }
     val opener = remember(key, generation) {
-        TerminalOpener(session) { size ->
+        // Reached by a step: wait before taking the desk's terminal (design D5). A reopen
+        // after the background does not wait; nor does an open from a row, the strip or an alert.
+        val dwell = if (generation == 0 && home.arrivedByStep) TerminalOpener.STEP_DWELL_MS else 0L
+        TerminalOpener(session, arrivalMs = SystemClock.uptimeMillis(), dwellMs = dwell) { size ->
             // Opened at the phone's size (phone check round 2) unless the chat shows over it;
             // closing lets the desk take its size back.
             val lead = atPhoneSizeOnOpen(switch.chat)
             app.hubHost.hub?.openTerminal(key.machine, key.address, size.cols.toUShort(), size.rows.toUShort(), lead, session.listener)
         }
+    }
+    // Input during the wait opens the terminal first, then goes to it (design D5).
+    DisposableEffect(opener) {
+        session.onInputWithoutView = { opener.openNow(SystemClock.uptimeMillis()) }
+        onDispose { opener.dispose() }
+    }
+    LaunchedEffect(opener) {
+        val wait = opener.dueAtMs - SystemClock.uptimeMillis()
+        if (wait > 0) delay(wait)
+        opener.tick(SystemClock.uptimeMillis())
     }
     var phone by remember(key) { mutableStateOf<GridSize?>(null) }
     // A reopened generation opens again at the last phone size.
@@ -160,13 +173,16 @@ fun TerminalRoute(app: KuddeApp, home: AgentsHome, key: AgentKey) {
 
     val ui = remember(snapshot, key, res) { terminalUi(snapshot, key, res) }
     val actions = remember(key, home) {
-        TerminalActions(
+        terminalActions(
+            screen,
             onBack = home::close,
             onOpen = home::open,
             onSwipe = home::step,
             onTab = home::tab,
             onPhoneGrid = { if (changesOpen) heldGrid = it else phone = it },
             onWatchView = { app.terminalZoom[key] = it.zoom },
+            // Read after a step: the terminal it opened, as its title bar will show it.
+            openHeader = { home.openKey?.let { terminalUi(app.hubHost.snapshot.value, it, res).header } },
         )
     }
     // Under the chat the desk keeps its size; the terminal shown takes the phone's.
@@ -230,12 +246,25 @@ fun terminalUi(snapshot: HubSnapshot, key: AgentKey, res: android.content.res.Re
  * Opens the terminal once the screen first knows the phone's grid (the core
  * needs it to type at phone size), then hands later sizes to a [SizeSettler],
  * so the phone size goes out once the keyboard has settled.
+ *
+ * A terminal reached by a step waits [dwellMs] ([STEP_DWELL_MS]) from
+ * [arrivalMs] before it is opened (design D5): it opens on the first
+ * [onPhoneGrid] or [tick] at or after [dueAtMs], or at once on [openNow] (the
+ * person's input). Passing through never attaches, so the desk keeps its sizes.
+ * Once [dispose]d (the terminal was left) it never opens.
  */
 class TerminalOpener(
     private val session: TerminalSession,
+    arrivalMs: Long = 0,
+    dwellMs: Long = 0,
     private val open: (GridSize) -> TerminalViewInterface?,
 ) {
     private var settler: SizeSettler? = null
+    private var grid: GridSize? = null
+    private var disposed = false
+
+    /** When the wait ends; the route ticks then. */
+    val dueAtMs: Long = arrivalMs + dwellMs
 
     fun onPhoneGrid(size: GridSize, nowMs: Long) {
         val settle = settler
@@ -243,13 +272,68 @@ class TerminalOpener(
             settle.offer(size, nowMs)
             return
         }
-        // Without a running hub there is nothing to open yet; the next layout tries again.
+        grid = size
+        if (nowMs >= dueAtMs) openAt(size)
+    }
+
+    fun tick(nowMs: Long) {
+        val settle = settler
+        if (settle != null) {
+            settle.tick(nowMs)
+            return
+        }
+        val size = grid ?: return
+        if (nowMs >= dueAtMs) openAt(size)
+    }
+
+    /** Input during the wait: opens now if the phone's grid is known. */
+    @Suppress("UNUSED_PARAMETER")
+    fun openNow(nowMs: Long) {
+        if (settler != null) return
+        openAt(grid ?: return)
+    }
+
+    fun dispose() {
+        disposed = true
+    }
+
+    private fun openAt(size: GridSize) {
+        if (disposed) return
+        // Without a running hub there is nothing to open yet; the next layout or input tries again.
         val view = open(size) ?: return
         session.attach(view)
         settler = SizeSettler(TerminalMetrics.SETTLE_MS, opened = size, send = session::phoneSize)
     }
 
-    fun tick(nowMs: Long) {
-        settler?.tick(nowMs)
+    companion object {
+        /** How long a terminal reached by a step shows its last screen before it is opened. */
+        const val STEP_DWELL_MS = 400L
     }
 }
+
+/**
+ * The route's title-bar actions, shared by the terminal and the chat over it: a
+ * step in any direction is refused while [screen]'s compose sheet holds text
+ * (design D4), so a draft is never left behind by a swipe.
+ */
+internal fun terminalActions(
+    screen: TerminalScreenState,
+    onBack: () -> Unit,
+    onOpen: (AgentKey) -> Unit,
+    onSwipe: (forward: Boolean) -> Boolean,
+    onTab: (next: Boolean) -> Boolean,
+    onPhoneGrid: (GridSize) -> Unit,
+    onWatchView: (WatchView) -> Unit = {},
+    openHeader: () -> TerminalHeader? = { null },
+    announce: ((String) -> Unit)? = null,
+) = TerminalActions(
+    onBack = onBack,
+    onOpen = onOpen,
+    onSwipe = onSwipe,
+    onPhoneGrid = onPhoneGrid,
+    onWatchView = onWatchView,
+    onTab = onTab,
+    stepRefused = { screen.composeText.isNotEmpty() },
+    openHeader = openHeader,
+    announce = announce,
+)

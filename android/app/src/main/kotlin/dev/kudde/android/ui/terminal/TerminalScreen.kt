@@ -1,7 +1,15 @@
 package dev.kudde.android.ui.terminal
 
+import android.content.Context
+import android.provider.Settings
 import android.view.HapticFeedbackConstants
 import android.widget.Toast
+import androidx.annotation.StringRes
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -42,6 +50,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -56,13 +65,17 @@ import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -89,9 +102,9 @@ import dev.kudde.android.ui.theme.KuddeTheme
 import dev.kudde.android.ui.theme.KuddeType
 import uniffi.kudde_mobile.RowKeyTap
 import uniffi.kudde_mobile.TermPhase
-import kotlin.math.abs
 import kotlin.math.floor
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 // The terminal screen (renders 3, 4, 4b, 5; terminal-view and terminal-input
 // specs): the title bar, the queue strip, the grid watched at desk size or
@@ -119,8 +132,14 @@ class TerminalActions(
     val onPhoneGrid: (GridSize) -> Unit,
     /** The person zoomed or panned while watching. */
     val onWatchView: (WatchView) -> Unit = {},
-    /** A sideways swipe on the title bar: the next or previous agent, like tabs; false at the end. */
+    /** A sideways swipe on the title bar: the next or previous stop of the open tab; false at its end. */
     val onTab: (next: Boolean) -> Boolean = { false },
+    /** True while a step must be refused: the compose sheet holds text (design D4). */
+    val stepRefused: () -> Boolean = { false },
+    /** The open terminal's header after a step, for the screen reader's announcement (design D9). */
+    val openHeader: () -> TerminalHeader? = { null },
+    /** Speaks a screen-reader announcement; null: the view's announceForAccessibility. */
+    val announce: ((String) -> Unit)? = null,
 )
 
 /** What the screen itself remembers while it is open. */
@@ -144,15 +163,19 @@ class TerminalScreenState(zoom: Float? = null) {
     }
 
     /**
-     * Pastes the compose text and closes the sheet; false, with the sheet and
-     * its text kept, when [paste] refused it (a line break the program would
-     * take as Enter, issue #22).
+     * Pastes the compose text and closes the sheet, only once it was sent; the
+     * sheet and its text are kept when [paste] refused it (a line break the
+     * program would take as Enter, issue #22) or no terminal was attached to
+     * take it (design D5).
      */
-    fun sendCompose(paste: (String) -> Boolean): Boolean {
-        if (composeText.isNotEmpty() && !paste(composeText)) return false
+    fun sendCompose(paste: (String) -> Paste): Paste {
+        if (composeText.isNotEmpty()) {
+            val result = paste(composeText)
+            if (result != Paste.SENT) return result
+        }
         composeOpen = false
         composeText = ""
-        return true
+        return Paste.SENT
     }
 }
 
@@ -223,14 +246,22 @@ fun TerminalScreen(
                     screen.composeText = ""
                 },
                 onPaste = {
-                    if (!screen.sendCompose(session::paste)) {
-                        Toast.makeText(context, R.string.compose_lines_refused, Toast.LENGTH_LONG).show()
+                    composeNotSent(screen.sendCompose(session::paste))?.let {
+                        Toast.makeText(context, it, Toast.LENGTH_LONG).show()
                     }
                 },
                 focus = composeFocus,
             )
         }
     }
+}
+
+/** The message for compose text that was not sent; null once it was. */
+@StringRes
+fun composeNotSent(result: Paste): Int? = when (result) {
+    Paste.SENT -> null
+    Paste.REFUSED -> R.string.compose_lines_refused
+    Paste.NOT_ATTACHED -> R.string.compose_not_attached
 }
 
 /** Shows and hides the terminal keyboard (TerminalInputView); a no-op in previews. */
@@ -255,7 +286,66 @@ interface TerminalInputHandle {
 internal fun TitleBar(header: TerminalHeader, actions: TerminalActions, trailing: @Composable RowScope.() -> Unit = {}) {
     val c = KuddeTheme.colors
     val view = LocalView.current
-    val threshold = with(LocalDensity.current) { SWIPE_STEP.toPx() }
+    val context = LocalContext.current
+    val density = LocalDensity.current
+    val threshold = with(density) { SWIPE_STEP.toPx() }
+    val bounceBy = with(density) { TITLE_BAR_BOUNCE_DISTANCE.toPx() }
+    // The bar's content, moved at a tab's end and sprung back (design D3); the background stays.
+    val bounce = remember { Animatable(0f) }
+    val scope = rememberCoroutineScope()
+    // Plays a step's result: the haptic, and the bounce at a tab's end (design D3, D4).
+    val play: (TitleBarStep?) -> Unit = { step ->
+        if (step != null) {
+            view.performHapticFeedback(
+                if (step == TitleBarStep.Moved) HapticFeedbackConstants.CLOCK_TICK else HapticFeedbackConstants.REJECT,
+            )
+        }
+        val direction = (step as? TitleBarStep.End)?.bounce
+        if (direction != null) {
+            scope.launch {
+                bounce.snapTo(0f)
+                bounce.animateTo(
+                    if (direction == Bounce.LEFT) -bounceBy else bounceBy,
+                    tween(TITLE_BAR_BOUNCE_MS / 3, easing = FastOutSlowInEasing),
+                )
+                bounce.animateTo(0f, spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessMedium))
+            }
+        }
+    }
+    // The four screen-reader actions do what the four swipes do and say what came of it (design D9).
+    val tabEnd = stringResource(R.string.title_bar_tab_end)
+    val noneNeedYou = stringResource(R.string.title_bar_none_need_you)
+    val refusedText = stringResource(R.string.title_bar_step_refused)
+    val stepActions = listOf(
+        R.string.title_bar_next_terminal to (true to true),
+        R.string.title_bar_previous_terminal to (true to false),
+        R.string.title_bar_next_needs_you to (false to true),
+        R.string.title_bar_previous_needs_you to (false to false),
+    ).map { (label, how) ->
+        val (sideways, forward) = how
+        CustomAccessibilityAction(stringResource(label)) {
+            // Finger left is next, finger up is forward: as the swipe in that direction.
+            val towards = if (forward) -1f else 1f
+            val step = titleBarStep(
+                dx = if (sideways) towards else 0f,
+                dy = if (sideways) 0f else towards,
+                threshold = 1f,
+                refused = actions.stepRefused(),
+                animationsOn = animationsOn(context),
+                onTab = actions.onTab,
+                onSwipe = actions.onSwipe,
+            )
+            play(step)
+            val said = when (step) {
+                TitleBarStep.Moved -> actions.openHeader()?.let { context.getString(R.string.title_bar_moved, it.name, it.lineTwo) }
+                is TitleBarStep.End -> if (sideways) tabEnd else noneNeedYou
+                TitleBarStep.Refused -> refusedText
+                null -> null
+            }
+            if (said != null) (actions.announce ?: view::announceForAccessibility)(said)
+            true
+        }
+    }
     Row(
         Modifier
             .fillMaxWidth()
@@ -264,7 +354,8 @@ internal fun TitleBar(header: TerminalHeader, actions: TerminalActions, trailing
             .background(c.chrome)
             .pointerInput(actions) {
                 // Up and down step through the agents that want you; sideways through
-                // every agent, like tabs. The longer direction of the drag decides.
+                // the open tab's panes. The longer direction of the drag decides, and
+                // the result is decided by titleBarStep (design D4), only played here.
                 var dx = 0f
                 var dy = 0f
                 detectDragGestures(
@@ -273,16 +364,14 @@ internal fun TitleBar(header: TerminalHeader, actions: TerminalActions, trailing
                         dy = 0f
                     },
                     onDragEnd = {
-                        val moved = when {
-                            abs(dx) > abs(dy) && abs(dx) >= threshold -> actions.onTab(dx < 0)
-                            abs(dy) >= abs(dx) && abs(dy) >= threshold -> actions.onSwipe(dy < 0)
-                            else -> null
-                        }
-                        if (moved != null) {
-                            view.performHapticFeedback(
-                                if (moved) HapticFeedbackConstants.CLOCK_TICK else HapticFeedbackConstants.REJECT,
-                            )
-                        }
+                        val step = titleBarStep(
+                            dx, dy, threshold,
+                            refused = actions.stepRefused(),
+                            animationsOn = animationsOn(context),
+                            onTab = actions.onTab,
+                            onSwipe = actions.onSwipe,
+                        )
+                        play(step)
                     },
                 ) { change, drag ->
                     change.consume()
@@ -290,7 +379,8 @@ internal fun TitleBar(header: TerminalHeader, actions: TerminalActions, trailing
                     dy += drag.y
                 }
             }
-            .padding(start = KuddeSpacing.s4, end = KuddeSpacing.s12),
+            .padding(start = KuddeSpacing.s4, end = KuddeSpacing.s12)
+            .graphicsLayer { translationX = bounce.value },
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
@@ -306,13 +396,21 @@ internal fun TitleBar(header: TerminalHeader, actions: TerminalActions, trailing
             ChevronIcon(Chevron.Left, 22.dp, c.fg)
         }
         ProgramMark(header.icon, Modifier.padding(end = 6.dp), size = 20.dp)
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        // One node for the name, its line and the four steps; Back and the trailing controls stay their own.
+        Column(
+            Modifier.weight(1f).semantics(mergeDescendants = true) { customActions = stepActions },
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
             BasicText(header.name, style = KuddeType.terminalTitle.copy(color = c.fg), maxLines = 1, overflow = TextOverflow.Ellipsis)
             BasicText(header.lineTwo, style = KuddeType.secondary.copy(color = c.dimText), maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         trailing()
     }
 }
+
+/** The system's animations are on (`ANIMATOR_DURATION_SCALE` not 0), read as ChatRoute reads it. */
+private fun animationsOn(context: Context): Boolean =
+    Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) != 0f
 
 /** `.queue`: 34 dp, the blocked edge, "N more needs you · next: <agent>, <kind>"; a tap opens that agent. */
 @Composable
@@ -537,6 +635,8 @@ private fun BoxScope.StatusChip(
             .background(c.popover)
             .border(KuddeBorder.thin, c.border, shape)
             .clickable(role = Role.Button) {
+                // Ends a step's wait, so the keyboard types into an attached terminal.
+                session.wantInput()
                 screen.inputOpen = true
                 input.show()
             }

@@ -63,6 +63,7 @@ class TerminalTouchTest {
     private val keyboard = Keyboard()
     private val swipes = mutableListOf<String>()
     private val tabs = mutableListOf<String>()
+    private lateinit var actions: TerminalActions
 
     private fun open(phase: TermPhase, cols: Int, rows: Int, typing: Boolean): Triple<FakeTerminalView, TerminalScreenState, TerminalSession> {
         val view = FakeTerminalView()
@@ -73,12 +74,14 @@ class TerminalTouchTest {
         val screen = TerminalScreenState().apply {
             this.typing = typing
         }
-        val actions = TerminalActions(
+        // Built as TerminalRoute builds them, so a step reads this screen's compose text.
+        actions = terminalActions(
+            screen,
             onBack = {},
             onOpen = {},
             onSwipe = { swipes += if (it) "up" else "down"; true },
-            onPhoneGrid = {},
             onTab = { tabs += if (it) "next" else "previous"; true },
+            onPhoneGrid = {},
         )
         activity.setContent {
             KuddeTheme(dark = true) {
@@ -268,5 +271,85 @@ class TerminalTouchTest {
         dragOnTitle(midX, midX + 20f, dy = -300f)
         assertEquals(listOf("up"), swipes)
         assertEquals(emptyList<String>(), tabs)
+    }
+
+    // spaces spec, "A draft in the compose sheet": a step in any direction is
+    // refused while the compose sheet holds text (design D4); TerminalRoute
+    // reads the screen's own compose text, so the refusal ends once it is sent
+    // or cleared.
+    @Test
+    fun aStepIsRefusedWhileTheComposeTextIsNotEmptyInTheTerminal() {
+        val (_, screen, session) = open(TermPhase.Typing, 53, 40, typing = true)
+        assertFalse(actions.stepRefused())
+        screen.composeOpen = true
+        screen.composeText = "ls -la"
+        idle()
+        assertTrue(actions.stepRefused())
+        assertEquals(Paste.SENT, screen.sendCompose(session::paste))
+        idle()
+        assertFalse("sent", actions.stepRefused())
+
+        screen.composeOpen = true
+        screen.composeText = "git status"
+        idle()
+        assertTrue(actions.stepRefused())
+        // A tap on the scrim above the sheet cancels it and clears the text.
+        tap(midX, terminalTop() + 40f)
+        assertFalse(screen.composeOpen)
+        assertFalse("cleared", actions.stepRefused())
+    }
+
+    @Test
+    fun aStepIsRefusedWhileTheComposeTextIsNotEmptyUnderTheChat() {
+        val (_, screen, _) = open(TermPhase.Typing, 53, 40, typing = true)
+        val images = object : dev.kudde.android.ui.chat.ChatImageSource {
+            override fun cached(key: String) = null
+            override suspend fun load(key: String) = null
+        }
+        // The chat over the terminal shares its title bar's actions (TerminalRoute).
+        activity.setContent {
+            KuddeTheme(dark = true) {
+                dev.kudde.android.ui.chat.ChatScreen(
+                    terminalUi(hub, key, activity.resources).header, actions, poll = null, state = dev.kudde.android.ui.chat.ChatState(),
+                    images = images, now = { 0L }, onTerminal = {}, onPick = {}, onSend = {}, animate = false,
+                )
+            }
+        }
+        idle()
+        screen.composeText = "a draft kept from the terminal"
+        idle()
+        assertTrue(actions.stepRefused())
+        dragOnTitle(midX + 200f, midX - 200f)
+        dragOnTitle(midX, midX + 20f, dy = -300f)
+        assertEquals("refused: neither walk is asked", emptyList<String>(), tabs)
+        assertEquals(emptyList<String>(), swipes)
+
+        screen.composeText = ""
+        idle()
+        assertFalse("cleared", actions.stepRefused())
+        dragOnTitle(midX + 200f, midX - 200f)
+        assertEquals(listOf("next"), tabs)
+    }
+
+    // spaces spec, "Input during the wait is never lost": a tap on the chip
+    // above the keys, shown while the terminal attaches, ends the wait too.
+    @Test
+    fun aTapOnTheChipDuringTheWaitAsksToOpen() {
+        val session = TerminalSession(key) { it.run() }
+        var asked = 0
+        session.onInputWithoutView = { asked++ }
+        val screen = TerminalScreenState()
+        actions = terminalActions(screen, onBack = {}, onOpen = {}, onSwipe = { true }, onTab = { true }, onPhoneGrid = {})
+        activity.setContent {
+            KuddeTheme(dark = true) {
+                TerminalScreen(terminalUi(hub, key, activity.resources), session, screen, actions, keyboard, composeFocus = false)
+            }
+        }
+        idle()
+        val d = activity.resources.displayMetrics.density
+        val bottomBar = activity.window.decorView.rootWindowInsets?.getInsets(android.view.WindowInsets.Type.systemBars())?.bottom ?: 0
+        tap(midX, activity.window.decorView.height - bottomBar - 36 * d)
+        assertEquals(listOf("show"), keyboard.asked)
+        assertEquals(1, asked)
     }
 }

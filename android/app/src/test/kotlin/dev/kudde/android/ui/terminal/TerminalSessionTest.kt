@@ -112,12 +112,12 @@ class TerminalSessionTest {
     fun aRefusedPasteKeepsTheComposeSheetAndItsText() {
         val screen = TerminalScreenState().apply { composeOpen = true; composeText = "make clean\nrm -rf build" }
         view.pasteTaken = false
-        assertFalse(screen.sendCompose(session::paste))
+        assertEquals(Paste.REFUSED, screen.sendCompose(session::paste))
         assertTrue(screen.composeOpen)
         assertEquals("make clean\nrm -rf build", screen.composeText)
         view.pasteTaken = true
         screen.composeText = "make clean"
-        assertTrue(screen.sendCompose(session::paste))
+        assertEquals(Paste.SENT, screen.sendCompose(session::paste))
         assertFalse(screen.composeOpen)
         assertEquals("", screen.composeText)
         assertEquals(listOf("paste make clean\nrm -rf build", "paste make clean"), view.calls)
@@ -126,7 +126,7 @@ class TerminalSessionTest {
     @Test
     fun anEmptyComposeClosesWithoutAPaste() {
         val screen = TerminalScreenState().apply { composeOpen = true }
-        assertTrue(screen.sendCompose(session::paste))
+        assertEquals(Paste.SENT, screen.sendCompose(session::paste))
         assertFalse(screen.composeOpen)
         assertTrue(view.calls.isEmpty())
     }
@@ -180,6 +180,109 @@ class TerminalSessionTest {
         assertFalse(damage.all)
         assertEquals(setOf(1, 2), damage.rows)
         assertTrue(session.damage.take().isEmpty)
+    }
+
+    // spaces spec, "Input during the wait is never lost" (design D5): input to
+    // a session without a view first asks the route to open it (the opener's
+    // openNow), then goes to the view that opening attached, once and in order.
+    private val waiting = TerminalSession(AgentKey("workstation", "b"), main)
+    private val opened = FakeTerminalView()
+    private var openable = true
+    private var asked = 0
+
+    init {
+        waiting.onInputWithoutView = {
+            asked++
+            if (openable) waiting.attach(opened)
+        }
+    }
+
+    @Test
+    fun typingWithoutAViewOpensFirstThenDeliversOnce() {
+        waiting.type("y")
+        assertEquals(1, asked)
+        assertEquals(listOf("type y"), opened.calls)
+    }
+
+    @Test
+    fun twoKeysInARowOpenOnceAndArriveInOrder() {
+        waiting.tap(RowKeyTap.Esc)
+        waiting.tap(RowKeyTap.Down)
+        assertEquals(1, asked)
+        assertEquals(listOf("tap Esc", "tap Down"), opened.calls)
+    }
+
+    @Test
+    fun aTapOnTheTerminalOpensAndIsNoClick() {
+        waiting.lead()
+        assertEquals(1, asked)
+        assertEquals(listOf("lead"), opened.calls)
+    }
+
+    @Test
+    fun everyKindOfInputEndsTheWait() {
+        val inputs: List<TerminalSession.() -> Unit> = listOf(
+            { type("y") }, { backspace() }, { tap(RowKeyTap.Enter) }, { interrupt() }, { lead() },
+            { click(1, 1) }, { scroll(-3) }, { live() }, { wantInput() }, { paste("x") },
+        )
+        for (input in inputs) {
+            val session = TerminalSession(AgentKey("workstation", "b"), main)
+            var calls = 0
+            session.onInputWithoutView = { calls++ }
+            session.input()
+            assertEquals(1, calls)
+        }
+    }
+
+    @Test
+    fun followingTheChatAndThePhoneSizeAreNotInput() {
+        waiting.follow(chat = true)
+        waiting.follow(chat = false)
+        waiting.phoneSize(GridSize(53, 31))
+        assertEquals(0, asked)
+        assertEquals(emptyList<String>(), opened.calls)
+    }
+
+    @Test
+    fun theComposeTextIsPastedOnceAndTheSheetCloses() {
+        val screen = TerminalScreenState().apply { composeOpen = true; composeText = "run the tests" }
+        assertEquals(Paste.SENT, screen.sendCompose(waiting::paste))
+        assertEquals(listOf("paste run the tests"), opened.calls)
+        assertFalse(screen.composeOpen)
+        assertEquals("", screen.composeText)
+    }
+
+    @Test
+    fun whenNothingCanBeOpenedTheTextStaysAndIsNotReportedSent() {
+        openable = false
+        val screen = TerminalScreenState().apply { composeOpen = true; composeText = "run the tests" }
+        val result = screen.sendCompose(waiting::paste)
+        assertEquals(Paste.NOT_ATTACHED, result)
+        assertTrue(screen.composeOpen)
+        assertEquals("run the tests", screen.composeText)
+        assertEquals(dev.kudde.android.R.string.compose_not_attached, composeNotSent(result))
+        assertEquals(dev.kudde.android.R.string.compose_lines_refused, composeNotSent(Paste.REFUSED))
+        assertNull(composeNotSent(Paste.SENT))
+        waiting.type("y")
+        waiting.lead()
+        assertEquals("keys and taps do nothing", emptyList<String>(), opened.calls)
+    }
+
+    @Test
+    fun inputThenLeavingDeliversOnceAndNothingAfter() {
+        waiting.type("y")
+        waiting.close()
+        waiting.type("z")
+        assertEquals(Paste.NOT_ATTACHED, waiting.paste("late"))
+        assertEquals(1, asked)
+        assertEquals(listOf("type y", "detach", "destroy"), opened.calls)
+    }
+
+    @Test
+    fun leavingWithoutInputNeverOpens() {
+        waiting.close()
+        assertEquals(0, asked)
+        assertEquals(emptyList<String>(), opened.calls)
     }
 }
 
