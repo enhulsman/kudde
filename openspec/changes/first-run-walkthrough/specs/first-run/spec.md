@@ -359,20 +359,34 @@ send no password and no user name to a machine before its host key is
 confirmed: for a machine whose host key is not confirmed yet it SHALL first
 show the trust dialog with that key's type and fingerprint and the one
 line that prints it at the machine, and confirming it SHALL be the same
-trust as "Trust and connect" (how the comparison is asked for is open
-decision 10; the scenarios follow its pick). Every connection on this path
+trust as "Trust and connect" (decision 10, answered: confirmed on the
+phone, trust on first use). The dialog SHALL say that a key that is not
+the machine's gives the password away and that setup can still look as if
+it worked. Every connection on this path
 SHALL accept only the confirmed key and SHALL end before authentication
 when another key is presented. Before showing the password field the app
 SHALL learn from the machine which sign-in methods it offers; with neither
 `password` nor `keyboard-interactive` it SHALL say so in plain words and
-point to the command, without a field. Signing in SHALL use `password`
-when offered, else `keyboard-interactive` answering one non-echoing prompt
-with the password; a prompt that echoes, several prompts or a second
-factor SHALL stop with a plain refusal. Once signed in, the app SHALL run,
-once, exactly the Phone key variant of the setup command (the command of
-"One command at the machine" without the host key part, byte for byte)
-through `sh -s`, then disconnect; it SHALL NOT retry by itself. The line it
-installs SHALL be the same restricted line. While this way's panel shows,
+point to the command, without a field; with `keyboard-interactive` only,
+the field's label SHALL carry the machine's first prompt as it sent it.
+Signing in SHALL use `password` when offered, else `keyboard-interactive`.
+The password SHALL be sent at most once across all rounds, to a single
+non-echoing prompt; any non-empty prompt after it, a prompt that echoes,
+several prompts or a second factor SHALL stop with a plain refusal. From
+the second refused password in one visit to step 2 the refusal SHALL warn
+that machines may lock the account and point to the command. Once signed
+in, the app SHALL run, once, exactly the Phone key variant of the setup
+command (the command of "One command at the machine" without the host key
+part, byte for byte) through `sh -s`, and request nothing else on the
+session (no pty, environment, agent, X11 or port forwarding), then
+disconnect; it SHALL NOT retry by itself. Of the machine's standard error
+it SHALL show only a line exactly equal to one of the command's own two
+refusals. Running out of time after signing in SHALL read as a dropped
+connection whose result is unknown. The line it installs SHALL be the same
+restricted line. When the phone key is still refused after a run that
+ended well, the step SHALL say that kudde added the key but the machine
+still refuses it, name the likely causes, and SHALL NOT offer the password
+again in that visit. While this way's panel shows,
 the hub's "key not accepted" SHALL show as the panel, not as the text of
 "After trust, each outcome says what to do"; a connection SHALL open step 3
 and drop the panel. On success the hub SHALL retry at once with the phone
@@ -383,6 +397,40 @@ nothing on this path.
 - **GIVEN** step 2 for workstation, whose machine takes passwords, and the host key not confirmed yet
 - **WHEN** the person taps "Run it from this phone", confirms the fingerprint, types the right password and taps "Add the key"
 - **THEN** `authorized_keys` for dev holds the restricted line exactly as the command adds it, the session ends, step 2 reads "Connecting to workstation…", and step 3 shows
+
+#### Scenario: The dialog warns
+- **WHEN** the trust dialog of "Run it from this phone" shows
+- **THEN** it reads that if the key is not the machine's, whoever answered gets the password and setup can still look as if it worked, and it shows the line that prints the fingerprint at the machine
+
+#### Scenario: Keyboard-interactive only
+- **GIVEN** the machine offers only `keyboard-interactive`, with one prompt "Password:" that does not echo
+- **WHEN** the person confirms the fingerprint, types the right password and taps "Add the key"
+- **THEN** the field was labelled with "Password:", the password was sent once, the setup ran, and step 3 shows
+
+#### Scenario: A code is asked first
+- **GIVEN** the machine's first keyboard-interactive prompt asks for a verification code
+- **WHEN** the person types into the field labelled with that prompt and a second non-empty prompt follows
+- **THEN** that second prompt gets no answer, the session ends, and step 2 reads "workstation asks for more than a password, such as a code."
+
+#### Scenario: A second wrong password
+- **GIVEN** the machine refused the password once in this visit
+- **WHEN** it refuses it again
+- **THEN** step 2 reads "workstation refused the password again." with the lockout warning and the command, and nothing is retried by itself
+
+#### Scenario: The probe meets another key
+- **GIVEN** fingerprint A is confirmed
+- **WHEN** the probe connection meets fingerprint B
+- **THEN** it ends during key exchange with no user name sent, no field shows, and the changed-key screen shows with both fingerprints
+
+#### Scenario: Added, but still refused
+- **GIVEN** the setup ran with exit 0, and the machine's SSH server reads keys from another file
+- **WHEN** the hub's retry with the phone key is refused
+- **THEN** step 2 reads "kudde added the key, but workstation still refuses it." with the likely causes, "Try again" and the command, and no password field
+
+#### Scenario: Other output is never shown
+- **GIVEN** dev's shell start-up file prints a line on standard error
+- **WHEN** the setup ends with code 2
+- **THEN** step 2 reads "The setup on workstation ended with code 2." and that line is not shown
 
 #### Scenario: Wrong password
 - **WHEN** the machine refuses the password
@@ -420,7 +468,7 @@ nothing on this path.
 #### Scenario: The network drops mid-way
 - **GIVEN** the password was accepted
 - **WHEN** the connection ends before the setup's exit status arrives
-- **THEN** step 2 reads "The connection to workstation dropped while the key was being added." with "Try again", and a script cut off in transfer ran no part of itself
+- **THEN** step 2 reads "The connection to workstation dropped while the key was being added." with "Try again", and a script cut off in transfer ran no part of itself; running out of time after signing in reads the same
 
 #### Scenario: The setup refuses at the machine
 - **GIVEN** dev's `~/.ssh` is a link
@@ -429,13 +477,14 @@ nothing on this path.
 
 #### Scenario: One run, then gone
 - **WHEN** the setup finishes, whatever its outcome
-- **THEN** exactly one session ran exactly one `sh -s` with the Phone key variant of the command, and it has been disconnected
+- **THEN** exactly one session ran exactly one `sh -s` with the Phone key variant of the command, requested no pty, environment, agent, X11 or port forwarding, and has been disconnected
 
 ### Requirement: The password is never kept
 The password SHALL be used for the one sign-in and SHALL NOT be stored,
 logged, put on the clipboard, put into a crash report, an error text or the
-saved state of a screen. Its field SHALL be masked, SHALL NOT allow cut or
-copy, SHALL be excluded from autofill so no password manager fills it or
+saved state of a screen. Its field SHALL be masked without showing even the
+last character typed, SHALL NOT allow cut or copy, SHALL keep the window
+out of screenshots and screen recording while it shows, SHALL be excluded from autofill so no password manager fills it or
 offers to save it, and SHALL be emptied when "Add the key" starts, when the
 panel closes and when step 2 is left. After a process death the field
 SHALL be empty. Code that holds it SHALL print it as `<redacted>` when
@@ -446,6 +495,11 @@ formatted for debugging. TalkBack SHALL name the field "Password for
 - **GIVEN** a password manager is the phone's autofill service
 - **WHEN** the person types the password, taps "Add the key" and setup finishes
 - **THEN** the manager offers neither to fill the field nor to save the password
+
+#### Scenario: No screenshot
+- **GIVEN** the password panel shows
+- **WHEN** the person takes a screenshot
+- **THEN** Android refuses it or records no content of the window
 
 #### Scenario: Copy is refused
 - **WHEN** the person long-presses the typed password
@@ -579,26 +633,42 @@ turned on, and SHALL NOT ask for the notification permission.
 - **THEN** the step says so in the words of the failure table and keeps "Done"; it does not go back to step 2
 
 ### Requirement: The title bar explains itself once
-The first time a terminal or its chat opens, the app SHALL show a hint
-directly under the title bar that names the bar's gestures as capability
+The app SHALL show a hint under the title bar the first time a terminal
+or its chat opens while the title bar shows the tab's map, that is in a
+tab of more than one pane (decision 11, open; the scenarios follow its
+pick). The hint SHALL name the bar's gestures as capability
 spaces (change `spaces-navigation`) and agent-list define them, and no
 others: a sideways swipe walks the panes of the open tab and the bar
 bounces at its ends; a swipe up opens the next agent that needs the
 person and down goes back; a tap on the tab's map opens the tab overview.
 The hint SHALL NOT cover the keys, the compose sheet or the chat's message
-box, SHALL NOT open or close the keyboard or take the input focus, and
-touches outside it SHALL reach the screen as usual. A tap on it SHALL close
+box, SHALL NOT cover the terminal's cursor row (it moves to just above
+the keys when the cursor sits under it), SHALL NOT open or close the
+keyboard or take the input focus, and touches outside it and typing SHALL
+reach the screen as usual. A tap on it SHALL close
 it and store one "seen" flag in the app's private preferences, after which
 it SHALL NOT show again in a terminal or a chat; leaving without that tap
-SHALL leave it due. TalkBack SHALL read it once when it appears, and it
-SHALL stay focusable, with a double tap closing it like a tap. With the
+SHALL leave it due. With touch exploration on, it SHALL name the title
+bar's actions that replace the swipes and the map, not the swipes.
+TalkBack SHALL read it once when it appears, and it SHALL stay focusable,
+with a double tap closing it like a tap. With the
 system's animations off it SHALL appear and go without animation. It SHALL
 be built only once those gestures are on main.
 
 #### Scenario: The first terminal
 - **GIVEN** the hint has never been closed
-- **WHEN** the person opens a terminal on workstation
+- **WHEN** the person opens a terminal on workstation in a tab of two panes
 - **THEN** the hint shows under the title bar, and the keys at the bottom stay in view and usable
+
+#### Scenario: A tab of one pane
+- **GIVEN** the hint has never been closed
+- **WHEN** the person opens a terminal in a tab of one pane, where the title bar shows no map
+- **THEN** no hint shows, and it is still due for the first terminal in a tab of more panes
+
+#### Scenario: Typing in a terminal
+- **GIVEN** the hint is due and a fresh terminal's prompt sits in its top row
+- **WHEN** the hint appears and the person types a command with the keys
+- **THEN** the cursor row and the typed text stay in view, uncovered, and the text goes to the terminal
 
 #### Scenario: Closed for good
 - **GIVEN** the hint shows
@@ -607,7 +677,7 @@ be built only once those gestures are on main.
 
 #### Scenario: Left without a tap
 - **GIVEN** the hint shows
-- **WHEN** the person goes back without tapping it and opens a chat
+- **WHEN** the person goes back without tapping it and opens a chat in a tab of two panes
 - **THEN** the hint shows over the chat, and its message box is not covered
 
 #### Scenario: The gestures work under it
@@ -626,7 +696,7 @@ be built only once those gestures are on main.
 
 #### Scenario: With TalkBack
 - **WHEN** the hint appears with TalkBack on
-- **THEN** TalkBack reads it once, it can be reached by swiping through the screen, and a double tap closes it
+- **THEN** TalkBack reads it once, naming the actions "Next terminal", "Previous terminal" and "Next agent that needs you" and the map instead of swipes; it can be reached by swiping through the screen, and a double tap closes it
 
 #### Scenario: Animations off
 - **GIVEN** the system's animations are off

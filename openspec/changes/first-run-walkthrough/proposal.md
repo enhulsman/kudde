@@ -8,12 +8,12 @@ not the pick), so there is no "Getting around" screen. The command's exact
 text, the other decisions and the words and renders (8) are still open, so
 task 1.1 stays open. Also 2026-11-20, asked by Ezra: step 2 gains a second
 way, where kudde signs in once with the account's password and does what
-the command does (D12). How the host key is checked before the password is
-sent is decision 10, open.
+the command does (D12); 10, the fingerprint confirmed on the phone (trust
+on first use), as picked. Decision 11, when the hint is due, is open.
 
 **Decisions that are yours** (my pick first in each; nothing is built into
-the app's screens before 1, 2 and 8 are answered, and nothing of the
-password way's screens before 10):
+the app's screens before 1, 2 and 8 are answered, and the hint not
+before 11):
 
 1. **The order of setup.** *Where the machine is, then one visit to the
    machine, then connected* (pick). The phone reaches the machine first,
@@ -58,22 +58,29 @@ password way's screens before 10):
    tab's map for the tab overview). One tap closes it, and it never shows
    again: one stored "seen" flag (D11). Its texts are drafts. It explains
    the gestures of `spaces-navigation`, so it is built after them.
-10. **The host key before the password** (open, asked 2026-11-20). With
-   the command, the fingerprint to compare is on the desk's own screen and
-   nothing secret crosses the network. When kudde runs the setup itself
-   (D12), the password goes to whatever answers at the address: if that is
-   not the desk, whoever answered has the account's password, a full login,
-   far more than the restricted phone key. So the host key is checked
-   before the password is sent, and kudde sends it only to that key.
-   *The app shows the fingerprint and you confirm it before the password
-   field shows (trust on first use), with the one line that prints it at
-   the desk shown for whoever wants to compare* (pick): it keeps the visit
-   to the desk optional, which is the point of this way. Or: the
-   fingerprint must be compared before the password field shows. The app
-   cannot tell whether a comparison happened unless you type part of what
-   the desk printed (the form D4 set aside), and that needs the desk visit
-   this way is meant to save; without it, this option is the pick with
-   sterner words.
+10. **Answered: the fingerprint is confirmed on the phone** (Ezra,
+   2026-11-20, as picked: trust on first use). With the command, the
+   fingerprint to compare is on the desk's own screen and nothing secret
+   crosses the network. When kudde runs the setup itself (D12), the
+   password goes to whatever answers at the address, so the host key is
+   confirmed before anything is sent, and kudde sends the password only to
+   that key. The app shows the fingerprint, with the one line that prints
+   it at the desk for whoever wants to compare, and the person confirms it
+   before the password field shows. What this accepts, plainly: **a wrong
+   host key fails silently.** Someone who answers at the address and
+   relays to the real desk gets the password, can use it there to install
+   the phone key themselves, and setup still ends on step 3 as if all was
+   well; nothing in the app shows it. Only comparing the fingerprint at
+   the desk catches it, and the dialog (R3) says so. The other option, a
+   comparison the app enforces, needed the desk visit this way saves.
+11. **When the hint is due** (open, from the review of 2026-11-20). The
+   first terminal someone opens usually sits in a tab of one pane: the
+   title bar shows no map there and a sideways swipe only bounces, so the
+   hint would name gestures that do nothing. *Due only while the title bar
+   shows the tab's map, that is in a tab of more than one pane* (pick):
+   the hint shows where all it names works, maybe days after setup. Or:
+   due on the first terminal, whatever its tab. Either way it never covers
+   the terminal's cursor row (D11).
 
 **What changes for the person using the app:** the first screen says what
 kudde is and the three things setup needs, with one button to start.
@@ -171,7 +178,9 @@ theirs.
   cross the uniffi boundary. The throwaway-sshd tests run the command in
   sh, bash and zsh. A one-shot password session (D12) with russh's own
   password and keyboard-interactive methods, tested against an in-process
-  russh server; no new dependency.
+  russh server. `zeroize` (1.9.1, already in `Cargo.lock` through russh)
+  becomes a direct dependency of kudde-mobile; no new crate enters the
+  lock.
 - Android: `MachineFlows` (one `Setup` screen in place of `AddMachine`
   and `PhoneKey`), the form, the home's empty states and notices, the
   machine card's texts and links, `strings.xml`. No new permission, no
