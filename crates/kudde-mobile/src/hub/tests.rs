@@ -22,6 +22,7 @@ mod desk;
 mod desk_timing;
 mod questions;
 mod screen;
+mod first_run;
 mod starting;
 #[cfg(feature = "vt")]
 mod term;
@@ -38,6 +39,8 @@ const WAIT: Duration = Duration::from_secs(600);
 /// Why a dial fails, for hosts told to fail.
 #[derive(Clone, Copy, Debug)]
 enum Fail {
+    Reach(ReachKind),
+    Unconfirmed,
     Unreachable,
     NeedsUserAuth,
     Rejected,
@@ -198,7 +201,18 @@ impl Dialer for FakeDialer {
         s.dials.push((target.host.clone(), Instant::now()));
         let presented = s.keys.get(&target.host).cloned().unwrap_or_default();
         let result = match (s.fail.get(&target.host), &target.host_key) {
-            (Some(Fail::Unreachable), _) => Err(DialError::Failed("connection refused".into())),
+            (Some(Fail::Unreachable), _) => Err(DialError::Failed {
+                kind: ReachKind::Refused,
+                detail: "connection refused".into(),
+            }),
+            (Some(Fail::Reach(kind)), _) => Err(DialError::Failed {
+                kind: *kind,
+                detail: "reason".into(),
+            }),
+            (Some(Fail::Unconfirmed), _) => Err(DialError::HostKeyUnconfirmed {
+                presented,
+                algorithm: ALGORITHM.into(),
+            }),
             (Some(Fail::NetworkOff), _) => Err(DialError::NetworkOff),
             // The host key is checked before anything is signed, as russh does.
             (_, None) => Err(DialError::HostKeyUnconfirmed {
@@ -662,7 +676,7 @@ async fn a_command_that_ends_otherwise_is_unreachable_with_its_stderr() {
     let s = rig
         .until_state(WS, |st| matches!(st, MachineState::Unreachable { .. }))
         .await;
-    let Some(MachineState::Unreachable { detail }) = state(&s, WS) else {
+    let Some(MachineState::Unreachable { detail, .. }) = state(&s, WS) else {
         unreachable!()
     };
     assert!(detail.contains("socket refused"), "{detail}");

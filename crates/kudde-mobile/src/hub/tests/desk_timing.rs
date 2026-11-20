@@ -16,6 +16,13 @@ use std::os::fd::OwnedFd;
 use std::os::unix::net::UnixStream;
 use std::process::{Command, Stdio};
 
+fn failed(e: impl std::fmt::Display) -> DialError {
+    DialError::Failed {
+        kind: ReachKind::Other,
+        detail: e.to_string(),
+    }
+}
+
 struct LocalDialer;
 
 impl Dialer for LocalDialer {
@@ -24,25 +31,21 @@ impl Dialer for LocalDialer {
         _target: Target,
     ) -> Pin<Box<dyn Future<Output = Result<Link, DialError>> + Send>> {
         Box::pin(async move {
-            let (ours, theirs) =
-                UnixStream::pair().map_err(|e| DialError::Failed(e.to_string()))?;
+            let (ours, theirs) = UnixStream::pair().map_err(failed)?;
             let mut cmd = Command::new("herdr-core");
             cmd.arg("connect");
             for (k, _) in std::env::vars().filter(|(k, _)| k.starts_with("HC_")) {
                 cmd.env_remove(k);
             }
-            let out = theirs
-                .try_clone()
-                .map_err(|e| DialError::Failed(e.to_string()))?;
+            let out = theirs.try_clone().map_err(failed)?;
             let child = cmd
                 .stdin(Stdio::from(OwnedFd::from(theirs)))
                 .stdout(Stdio::from(OwnedFd::from(out)))
                 .stderr(Stdio::null())
                 .spawn()
-                .map_err(|e| DialError::Failed(e.to_string()))?;
+                .map_err(failed)?;
             ours.set_nonblocking(true).unwrap();
-            let s = tokio::net::UnixStream::from_std(ours)
-                .map_err(|e| DialError::Failed(e.to_string()))?;
+            let s = tokio::net::UnixStream::from_std(ours).map_err(failed)?;
             let (r, w) = tokio::io::split(s);
             let (tx, rx) = oneshot::channel::<Exit>();
             Ok(Link {
