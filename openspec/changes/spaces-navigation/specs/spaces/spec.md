@@ -262,7 +262,11 @@ A tab map SHALL draw one cell for each pane of its tab, placed and sized as
 the splits place it. A cell SHALL show its terminal's state: needs you,
 finished and unseen, working, or none; a placeholder and a vacant pane SHALL
 be drawn apart from terminal cells. A map SHALL have a spoken name that gives the tab's
-name, how many terminals it holds and how many need the person.
+name, how many terminals it holds and how many need the person. Wherever
+this capability counts a tab's terminals (a map's spoken name, "terminal 2
+of 3"), it SHALL count the tab's stops only: the terminal cells the phone
+lists, in desk order. Placeholders and vacant panes are drawn but SHALL NOT
+be counted.
 
 #### Scenario: One pane beside two
 - **GIVEN** a tab with one pane on the left and two stacked on the right
@@ -278,6 +282,11 @@ name, how many terminals it holds and how many need the person.
 - **GIVEN** a tab with one pane
 - **WHEN** its map is drawn
 - **THEN** the map is one cell
+
+#### Scenario: A placeholder is drawn, not counted
+- **GIVEN** the tab "main" with terminal A, a mod pane and terminal B, in that order
+- **WHEN** its map is drawn
+- **THEN** the map shows three cells, the middle one as a placeholder, and its spoken name is "Tab main, 2 terminals"
 
 ### Requirement: A sideways swipe on the title bar walks the open tab
 From an open terminal or its chat, a sideways swipe on the title bar SHALL
@@ -399,8 +408,9 @@ distance. The app SHALL NOT keep the system from taking a swipe at the
 screen's edges (no gesture exclusion). A drag that starts on the terminal,
 the chat, the keys row, the queue strip or a sheet SHALL never step,
 whatever its direction. While text is being selected a step SHALL end the
-selection. While the compose sheet holds text a step SHALL be refused with
-the end haptic.
+selection. While the compose sheet holds text a step in any direction SHALL
+be refused with the end haptic and without the bounce; the bounce means the
+end of the tab only.
 
 #### Scenario: A swipe from the screen's edge
 - **GIVEN** the phone uses gesture navigation
@@ -429,7 +439,7 @@ the end haptic.
 #### Scenario: A draft in the compose sheet
 - **GIVEN** the compose sheet is open with text in it
 - **WHEN** the person swipes sideways or up or down on the title bar
-- **THEN** no step is taken, the end haptic is given and the text is kept
+- **THEN** no step is taken, the end haptic is given, the title bar does not bounce, and the text is kept
 
 #### Scenario: A short drag
 - **WHEN** the person drags 20 dp on the title bar
@@ -438,9 +448,12 @@ the end haptic.
 ### Requirement: Passing through leaves the desk's sizes alone
 A terminal reached by a step SHALL show its last screen at once and SHALL be
 opened (attached, and at the phone's size where that applies) once it has
-been on screen for 400 ms, counted from the step that showed it. A terminal
-left before 400 ms have passed SHALL NOT be attached or resized. A terminal
-opened by a tap SHALL open at once, as today.
+been on screen for 400 ms, counted from the step that showed it. A step here
+is every step on the title bar: sideways inside the tab, and up or down
+through the agents that need the person; and each of the four screen-reader
+actions that open a terminal. A terminal left before 400 ms have passed
+SHALL NOT be attached or resized. A terminal opened by a tap SHALL open at
+once, as today.
 
 #### Scenario: Three quick steps
 - **GIVEN** the terminals A, B, C, D in one tab, in that order, and A open
@@ -451,6 +464,16 @@ opened by a tap SHALL open at once, as today.
 - **GIVEN** the terminals A, B, C, D in one tab, in that order, and A open
 - **WHEN** the person steps to B at 0 ms, to C at 450 ms and to D at 900 ms
 - **THEN** B was opened at 400 ms and C at 850 ms, each is detached when it is left, and D is opened at 1300 ms
+
+#### Scenario: Two quick steps up
+- **GIVEN** the agents P, Q and R need the person, in different spaces, and P is open
+- **WHEN** the person swipes up on the title bar at 0 ms, to Q, and again at 200 ms, to R, and stays on R
+- **THEN** R is opened at 600 ms, and Q was never attached and kept its desk size
+
+#### Scenario: A screen-reader step waits too
+- **GIVEN** a screen reader is on and the open terminal has a next stop B in its tab
+- **WHEN** the person chooses the action "Next terminal" at 0 ms and stays on B
+- **THEN** B shows its last screen at once and is opened at 400 ms
 
 #### Scenario: Left just before the wait ends
 - **GIVEN** the person stepped to B at 0 ms
@@ -517,7 +540,8 @@ attached, and is detached on leaving as today.
 ### Requirement: The title bar shows where the terminal sits
 The title bar of the terminal and of its chat SHALL show the tab's map, with
 the open terminal's cell marked, while that terminal sits in a tab with more
-than one pane. A tap on the map SHALL open the tab overview. In a
+than one pane and the title bar has room for it ("The title bar fits its
+controls"). A tap on the map SHALL open the tab overview. In a
 tab of one pane, and for a terminal in no pane, the title bar SHALL show no
 map. The title bar SHALL NOT show pane dots, beside the map or in its place.
 The line under the name SHALL stay as capability agent-names sets it.
@@ -526,6 +550,11 @@ The line under the name SHALL stay as capability agent-names sets it.
 - **GIVEN** the open terminal is the second of three panes in its tab
 - **WHEN** the title bar shows
 - **THEN** it shows the tab's map with the second cell marked, spoken as "Tab overview, terminal 2 of 3", and no pane dots
+
+#### Scenario: Counted over the stops
+- **GIVEN** a tab with terminal A, a mod pane and terminal B, in that order, and B open
+- **WHEN** the title bar shows
+- **THEN** the map shows three cells with the third marked, and it is spoken as "Tab overview, terminal 2 of 2"
 
 #### Scenario: A step moves the mark
 - **GIVEN** the title bar shows the second cell marked
@@ -589,11 +618,16 @@ the same way. With a screen reader on, the title bar SHALL offer the actions
 "Next terminal", "Previous terminal", "Next agent that needs you" and
 "Previous agent that needs you", which do what the four swipes do (the
 first two inside the open tab, as the sideways swipe); after one of them
-the app SHALL say the new terminal's name and place once, or "No more
-terminals in this tab" when a sideways action opened nothing. The switch, the tab lines, the maps and the tiles SHALL
-be at least 48 dp high and wide to the touch and SHALL have spoken names;
-the switch SHALL say which view is chosen. All of it SHALL hold at the
-largest font size.
+the app SHALL say once: the new terminal's name and place; "No more
+terminals in this tab" when a sideways action opened nothing; "No more
+agents need you" when an action through the agents that need the person
+opened nothing; or "Not moved: the compose text is kept" when any of the
+four was refused because the compose sheet holds text. The switch, the tab
+lines, the maps and the tiles SHALL be at least 48 dp high and wide to the
+touch and SHALL have spoken names; the switch SHALL say which view is
+chosen. All of it SHALL hold at the largest font size, with text that is
+never clipped in height; a name in one line MAY end in an ellipsis where
+the width runs out.
 
 #### Scenario: By taps alone
 - **GIVEN** the terminal A is open, in a tab of three in a space of two tabs
@@ -610,6 +644,16 @@ largest font size.
 - **WHEN** the person chooses the action "Next terminal"
 - **THEN** nothing opens and the app says "No more terminals in this tab"
 
+#### Scenario: A screen reader at the end of the agents that need you
+- **GIVEN** a screen reader is on and the open agent is the last that needs the person
+- **WHEN** the person chooses the action "Next agent that needs you"
+- **THEN** nothing opens and the app says "No more agents need you"
+
+#### Scenario: A screen reader is refused while a draft waits
+- **GIVEN** a screen reader is on and the compose sheet holds text
+- **WHEN** the person chooses any of the four actions
+- **THEN** nothing opens, the text is kept, and the app says "Not moved: the compose text is kept"
+
 #### Scenario: A space is read once
 - **GIVEN** a screen reader is on
 - **WHEN** its focus lands on the header of the space website, which has one agent that needs the person and two working
@@ -617,14 +661,15 @@ largest font size.
 
 #### Scenario: The largest font size
 - **WHEN** the phone's font size is at its largest
-- **THEN** the switch, a space header, a tab line with its map and the title bar with its map show their text uncut
+- **THEN** the switch, a space header and a tab line with its map show their text uncut, and the title bar shows the name and the line under it in full height, the name ending in an ellipsis where the width runs out
 
 ### Requirement: The title bar keeps its options in one menu
 The title bar of the terminal and of its chat SHALL end with an overflow
 button (three dots), at least 48 dp to the touch, with the spoken name
 "More options". A tap on it SHALL open a menu that holds "Changes"; choosing
 it SHALL open the Changes view exactly as the Changes button did (capability
-changes-view). The title bar SHALL NOT show a separate Changes button. The
+changes-view). The item's spoken name SHALL be its word, "Changes". The
+title bar SHALL NOT show a separate Changes button. The
 menu SHALL be the place for options the title bar gains later. Opening and
 closing the menu SHALL NOT send anything to the terminal. A swipe that
 starts on the overflow button SHALL be handled as a swipe on the title bar.
@@ -700,7 +745,7 @@ title bar SHALL show no gauge, as today.
 #### Scenario: No token count
 - **GIVEN** a chat whose log has no token count yet
 - **WHEN** the title bar shows
-- **THEN** there is no gauge, and the map, the switch and the overflow button show with no gap between them
+- **THEN** there is no gauge, and the map, the switch and the overflow button show with no empty slot where the gauge would be; their spacing is the signed-off render's
 
 #### Scenario: The terminal
 - **GIVEN** the terminal of an agent whose chat shows a gauge
@@ -712,11 +757,22 @@ The title bar of the terminal and of the chat SHALL hold Back, the
 program's mark, the name and the line under it, and then, each when shown,
 the tab's map, the gauge (chat only), the view switch and, last, the
 overflow button; the order among the map, the gauge and the switch is the
-signed-off render's. At 412 dp wide and at 130% font size the controls
-SHALL NOT overlap and SHALL NOT be cut; the name SHALL give way first,
-ending in an ellipsis.
+signed-off render's. From 360 dp wide and at every font size up to 2x the
+controls SHALL NOT overlap and SHALL NOT be cut, and the name and the line
+under it SHALL show in full height (capability accessibility, "The terminal
+screen fits the largest font size"). The name SHALL give way first, ending
+in an ellipsis, down to the width of eight of its characters. Where even
+that does not fit, the tab's map SHALL hide (the tab overview stays
+reachable from the tab's line in the Spaces view), and the name SHALL then
+give way further, never below its first character and the ellipsis. The
+gauge, the view switch and the overflow button SHALL NOT hide.
 
 #### Scenario: Everything shown at 130%
 - **GIVEN** a 412 dp wide phone at 130% font size, and the chat of an agent in a tab of three panes with a known context window
 - **WHEN** the title bar shows
 - **THEN** Back, the mark, the name (cut with an ellipsis if needed), the map, the gauge, the switch and the overflow button all show whole, none overlapping
+
+#### Scenario: A narrow phone at the largest font size
+- **GIVEN** a 360 dp wide phone at 2x font size, and the chat of an agent in a tab of three panes with a known context window
+- **WHEN** the title bar shows
+- **THEN** Back, the mark, the name with an ellipsis, the gauge, the switch and the overflow button show whole and in full height, none overlapping; the map hides only if the name would otherwise be narrower than eight of its characters
