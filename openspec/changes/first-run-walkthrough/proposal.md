@@ -2,14 +2,18 @@
 
 ## Plain summary
 
-**Answered (Ezra, 2026-11-20):** 2, one command at the machine, as picked.
-The command's exact text, the other decisions and the words and renders (8)
-are still open, so task 1.1 stays open. Also 2026-11-20: the walkthrough
-gains a screen that explains the title bar's gestures (D11); where it sits
-is decision 9, and its texts are drafts.
+**Answered (Ezra, 2026-11-20):** 2, one command at the machine, as picked;
+9, a one-time hint the first time a terminal or its chat opens (option c,
+not the pick), so there is no "Getting around" screen. The command's exact
+text, the other decisions and the words and renders (8) are still open, so
+task 1.1 stays open. Also 2026-11-20, asked by Ezra: step 2 gains a second
+way, where kudde signs in once with the account's password and does what
+the command does (D12). How the host key is checked before the password is
+sent is decision 10, open.
 
 **Decisions that are yours** (my pick first in each; nothing is built into
-the app's screens before 1, 2 and 8 are answered):
+the app's screens before 1, 2 and 8 are answered, and nothing of the
+password way's screens before 10):
 
 1. **The order of setup.** *Where the machine is, then one visit to the
    machine, then connected* (pick). The phone reaches the machine first,
@@ -40,7 +44,6 @@ the app's screens before 1, 2 and 8 are answered):
    - Pairing by QR code with a helper on the machine (other herdr clients
      do this; it needs a program on the machine, the camera and a
      scanner): its own change.
-   - The app signing in with a password once to install its key: no.
    - Alert setup as a fourth step: no, one line points to it.
    - Android 17's local network permission: it applies only to apps that
      target SDK 37. kudde targets 36 and is not affected. It comes with
@@ -48,15 +51,29 @@ the app's screens before 1, 2 and 8 are answered):
 8. **The words and the look.** Every text on the new screens is in
    `design.md` under "Texts", and needs your approval. Seven new renders
    (13 to 19) and two changed ones (1 and 8) need your sign-off.
-9. **Where the gestures screen sits.** You asked for a step that explains
-   the title bar's gestures (sideways through the tab's panes with the
+9. **Answered: a hint, not a screen** (Ezra, 2026-11-20, option c). The
+   first time a terminal or its chat opens, a short hint under the title
+   bar names its gestures (sideways through the tab's panes with the
    bounce, up and down through the agents that need you, a tap on the
-   tab's map). *One screen, "Getting around", after step 3 of the first
-   machine only, not numbered* (pick): nothing is stored, and the three
-   setup steps keep their numbers. Or: a numbered fourth step for every
-   machine. Or: a hint the first time a terminal opens, which needs one
-   stored "seen" flag. Either way it explains the gestures of
-   `spaces-navigation`, so it is built after them.
+   tab's map for the tab overview). One tap closes it, and it never shows
+   again: one stored "seen" flag (D11). Its texts are drafts. It explains
+   the gestures of `spaces-navigation`, so it is built after them.
+10. **The host key before the password** (open, asked 2026-11-20). With
+   the command, the fingerprint to compare is on the desk's own screen and
+   nothing secret crosses the network. When kudde runs the setup itself
+   (D12), the password goes to whatever answers at the address: if that is
+   not the desk, whoever answered has the account's password, a full login,
+   far more than the restricted phone key. So the host key is checked
+   before the password is sent, and kudde sends it only to that key.
+   *The app shows the fingerprint and you confirm it before the password
+   field shows (trust on first use), with the one line that prints it at
+   the desk shown for whoever wants to compare* (pick): it keeps the visit
+   to the desk optional, which is the point of this way. Or: the
+   fingerprint must be compared before the password field shows. The app
+   cannot tell whether a comparison happened unless you type part of what
+   the desk printed (the form D4 set aside), and that needs the desk visit
+   this way is meant to save; without it, this option is the pick with
+   sterner words.
 
 **What changes for the person using the app:** the first screen says what
 kudde is and the three things setup needs, with one button to start.
@@ -65,9 +82,12 @@ words why it cannot be reached, if so. Step 2 shows one command to paste
 at the machine, with Copy and Share; it checks ownership, corrects the SSH
 directory and file modes, adds the phone's key and only then prints
 the fingerprint, which you compare on the phone before you trust the
-machine. Step 3 says the machine is connected and shows your agents, or
-how to start the first one. After the first machine, one more screen
-explains how to move around from a terminal's title bar. If you leave
+machine. Step 2 also offers to do it from the phone: kudde signs in once
+with the account's password, adds the same limited key and signs out; the
+password is never stored, and the command stays for machines that take no
+password. Step 3 says the machine is connected and shows your agents, or
+how to start the first one. The first time a terminal opens, a short hint
+under its title bar says how to move around from there. If you leave
 half way, the app brings you back to the same step. A phone without a
 screen lock is told to set one,
 instead of seeing an error. What is trusted, and when, stays exactly as
@@ -117,8 +137,14 @@ theirs.
   "No agents yet" gets a "New terminal" button.
 - The hub reports which kind of failure it met, so the screens need not
   read error texts.
-- After step 3 of the first machine: "Getting around", the title bar's
-  gestures as `spaces-navigation` defines them; built after that change.
+- Step 2, a second way: "Run it from this phone". After the host key is
+  confirmed (decision 10), kudde asks for the account's password, signs in
+  once over SSH (password or keyboard-interactive), runs the same
+  installation as the command, signs out and forgets the password. A
+  machine that takes no password says so and points to the command.
+- The first time a terminal or its chat opens: a hint under the title bar
+  with its gestures as `spaces-navigation` defines them, closed by a tap
+  for good; built after that change.
 - README: "Setting up" follows the app's steps; the broken herdr-core
   link is corrected.
 
@@ -126,21 +152,26 @@ theirs.
 
 ### New Capabilities
 - `first-run`: the welcome, the screen-lock notice, the three setup
-  steps, the gestures screen after the first setup, the setup command, what each failure says, the way back into an
+  steps, the setup command and the app running it with a password once,
+  the title bar hint, what each failure says, the way back into an
   unfinished setup, and setup with a screen reader and large text.
 
 ### Modified Capabilities
 - None. `machine-connection` (in `android-client-v1`) keeps every rule:
   host keys confirmed before first trust, the restricted line, no
   signature before trust. This change adds the command around that line
-  and changes words on the trust dialog.
+  and changes words on the trust dialog. The password way (D12) sends
+  nothing secret before the host key is confirmed, installs the same
+  restricted line, and never signs with the phone key.
 
 ## Impact
 
 - Rust (`crates/kudde-mobile`): `setup_command` beside
   `authorized_keys_line`; `MachineState::Unreachable` gains a kind; both
   cross the uniffi boundary. The throwaway-sshd tests run the command in
-  sh, bash and zsh.
+  sh, bash and zsh. A one-shot password session (D12) with russh's own
+  password and keyboard-interactive methods, tested against an in-process
+  russh server; no new dependency.
 - Android: `MachineFlows` (one `Setup` screen in place of `AddMachine`
   and `PhoneKey`), the form, the home's empty states and notices, the
   machine card's texts and links, `strings.xml`. No new permission, no
@@ -148,17 +179,21 @@ theirs.
 - Design: renders 13 to 19, changed renders 1 and 8, `design-tokens.json`
   entries for the new components, goldens in both themes.
 - Docs: README "Setting up" and "What you need"; release notes.
-- Stored data: none changes. People who already have machines never see
-  the welcome.
-- Phone checks: a full first setup on the test phone, and one look at
-  Android 17 for the local network question. The screen-lock notice is
+- Stored data: one new flag, the hint's "seen" (D11), in its own
+  app-private preferences file like the other small settings; nothing
+  else changes, and no password is ever stored. People who already have
+  machines never see the welcome, but do see the hint once.
+- Phone checks: a full first setup on the test phone, the password way
+  against a desk with password login on and one with it off, and one look
+  at Android 17 for the local network question. The screen-lock notice is
   checked in Robolectric only: removing a test phone's lock would destroy
   its key.
-- Depends on `spaces-navigation` for the gestures screen only: its tab
+- Depends on `spaces-navigation` for the hint only: its tab
   walk with the bounce, the map in the title bar and the tab overview must
   be on main first. Everything else ships without it.
-- Estimate: 8 to 11 builder sessions, plus the renders and two phone
-  checks. Confidence: moderate.
+- Estimate: 10 to 14 builder sessions, plus the renders and three phone
+  checks (the password way needs a desk with password login on).
+  Confidence: moderate.
 
 ## Sources
 

@@ -231,8 +231,11 @@ The command SHALL contain no secret and no other
 action, SHALL work pasted as it is into sh, bash and zsh, and SHALL be
 built next to the line (one source for both). Under the command the step
 SHALL say what it does and what the key is limited to, in the words the
-phone key screen uses today. The app SHALL NOT offer to install the key
-itself and SHALL NOT ask for a password.
+phone key screen uses today. Besides the command, step 2 SHALL offer to
+run the same installation from the phone with the account's password once
+(see "The app can run the setup with the password once"); the command SHALL
+stay on the step either way. The app SHALL NOT ask for a password anywhere
+else.
 
 The Phone key row under "This phone" SHALL show the same command without
 the host key part, and "Copy only the key line" for people who manage
@@ -349,6 +352,113 @@ hand, never to a dialog alone.
 - **GIVEN** a machine added in step 1 and never trusted
 - **WHEN** the app connects, reconnects and returns from the background any number of times
 - **THEN** the phone key signs nothing for that machine and no "Unlock the SSH key" prompt appears for it
+
+### Requirement: The app can run the setup with the password once
+Step 2 SHALL offer "Run it from this phone" under the command. It SHALL
+send no password and no user name to a machine before its host key is
+confirmed: for a machine whose host key is not confirmed yet it SHALL first
+show the trust dialog with that key's type and fingerprint and the one
+line that prints it at the machine, and confirming it SHALL be the same
+trust as "Trust and connect" (how the comparison is asked for is open
+decision 10; the scenarios follow its pick). Every connection on this path
+SHALL accept only the confirmed key and SHALL end before authentication
+when another key is presented. Before showing the password field the app
+SHALL learn from the machine which sign-in methods it offers; with neither
+`password` nor `keyboard-interactive` it SHALL say so in plain words and
+point to the command, without a field. Signing in SHALL use `password`
+when offered, else `keyboard-interactive` answering one non-echoing prompt
+with the password; a prompt that echoes, several prompts or a second
+factor SHALL stop with a plain refusal. Once signed in, the app SHALL run,
+once, exactly the Phone key variant of the setup command (the command of
+"One command at the machine" without the host key part, byte for byte)
+through `sh -s`, then disconnect; it SHALL NOT retry by itself. The line it
+installs SHALL be the same restricted line. While this way's panel shows,
+the hub's "key not accepted" SHALL show as the panel, not as the text of
+"After trust, each outcome says what to do"; a connection SHALL open step 3
+and drop the panel. On success the hub SHALL retry at once with the phone
+key, and setup continues as after the command. The phone key SHALL sign
+nothing on this path.
+
+#### Scenario: Straight through with a password
+- **GIVEN** step 2 for workstation, whose machine takes passwords, and the host key not confirmed yet
+- **WHEN** the person taps "Run it from this phone", confirms the fingerprint, types the right password and taps "Add the key"
+- **THEN** `authorized_keys` for dev holds the restricted line exactly as the command adds it, the session ends, step 2 reads "Connecting to workstation…", and step 3 shows
+
+#### Scenario: Wrong password
+- **WHEN** the machine refuses the password
+- **THEN** step 2 reads "workstation did not accept the password for dev." with what to do, the field is empty, nothing was run, and "Add the key" can be tapped again
+
+#### Scenario: Password login off
+- **GIVEN** the machine's SSH server offers neither `password` nor `keyboard-interactive`
+- **WHEN** the person taps "Run it from this phone" and confirms the fingerprint
+- **THEN** no password field shows, step 2 reads "workstation does not take a password over SSH." and points to the command, which is still on the step
+
+#### Scenario: More than a password
+- **GIVEN** the machine asks a second prompt or a prompt that echoes, such as a code
+- **WHEN** the person taps "Add the key"
+- **THEN** the session ends without answering it, and step 2 reads "workstation asks for more than a password, such as a code." and points to the command
+
+#### Scenario: The person refuses the host key
+- **GIVEN** the trust dialog of "Run it from this phone" shows
+- **WHEN** the person taps "Cancel"
+- **THEN** nothing is trusted, no password field shows, and no connection carried a user name or password
+
+#### Scenario: Another host key answers
+- **GIVEN** fingerprint A is confirmed and the password typed
+- **WHEN** the machine presents fingerprint B on the connection for the password
+- **THEN** the connection ends during key exchange, no authentication message is sent, and the changed-key screen shows with both fingerprints
+
+#### Scenario: The key is already there
+- **GIVEN** the phone's line is already in dev's `authorized_keys`
+- **WHEN** the person confirms the fingerprint on this path
+- **THEN** the hub's phone-key attempt connects, step 3 shows and the password field is gone, empty; had the password been sent first, the script adds an identical line and no other key changes
+
+#### Scenario: The network drops before signing in
+- **WHEN** the connection for the password cannot be made or ends before authentication
+- **THEN** step 2 shows the reach failure in the words of "A machine that cannot be reached says why", with "Try again", and nothing was run
+
+#### Scenario: The network drops mid-way
+- **GIVEN** the password was accepted
+- **WHEN** the connection ends before the setup's exit status arrives
+- **THEN** step 2 reads "The connection to workstation dropped while the key was being added." with "Try again", and a script cut off in transfer ran no part of itself
+
+#### Scenario: The setup refuses at the machine
+- **GIVEN** dev's `~/.ssh` is a link
+- **WHEN** the app runs the setup
+- **THEN** step 2 reads "The setup on workstation stopped:" followed by the command's own refusal, and the connection has ended
+
+#### Scenario: One run, then gone
+- **WHEN** the setup finishes, whatever its outcome
+- **THEN** exactly one session ran exactly one `sh -s` with the Phone key variant of the command, and it has been disconnected
+
+### Requirement: The password is never kept
+The password SHALL be used for the one sign-in and SHALL NOT be stored,
+logged, put on the clipboard, put into a crash report, an error text or the
+saved state of a screen. Its field SHALL be masked, SHALL NOT allow cut or
+copy, SHALL be excluded from autofill so no password manager fills it or
+offers to save it, and SHALL be emptied when "Add the key" starts, when the
+panel closes and when step 2 is left. After a process death the field
+SHALL be empty. Code that holds it SHALL print it as `<redacted>` when
+formatted for debugging. TalkBack SHALL name the field "Password for
+<user> on <machine>" and SHALL NOT read the typed characters back as text.
+
+#### Scenario: No save prompt
+- **GIVEN** a password manager is the phone's autofill service
+- **WHEN** the person types the password, taps "Add the key" and setup finishes
+- **THEN** the manager offers neither to fill the field nor to save the password
+
+#### Scenario: Copy is refused
+- **WHEN** the person long-presses the typed password
+- **THEN** no copy or cut action is offered, and the clipboard is unchanged
+
+#### Scenario: The system closes the app
+- **GIVEN** a password typed but not sent
+- **WHEN** Android ends the app's process in the background and the person returns
+- **THEN** step 2 for workstation shows with the password field empty, and the saved state held no password
+
+#### Scenario: Nothing left after
+- **WHEN** setup through the password has finished, failed or been cancelled
+- **THEN** the field is empty, the app's preferences, machine list and logs hold no password, and no error text contains it
 
 ### Requirement: After trust, each outcome says what to do
 After "Trust and connect", step 2 SHALL follow the connection and show one
@@ -468,50 +578,64 @@ turned on, and SHALL NOT ask for the notification permission.
 - **WHEN** the machine goes out of reach while step 3 shows
 - **THEN** the step says so in the words of the failure table and keeps "Done"; it does not go back to step 2
 
-### Requirement: After the first setup, one screen explains the title bar
-After step 3 of the first machine's setup, the app SHALL show one more
-screen, "Getting around", without a step number, that explains the
-gestures on the title bar of a terminal and its chat. The gesture set is
-the one capability spaces (change `spaces-navigation`) defines, and this
-screen SHALL explain exactly these and no others: a sideways swipe walks
-the panes of the open terminal's tab, and the bar bounces at the tab's
-first and last pane; a swipe up or down walks the agents that need the
-person; a tap on the tab's map opens the tab overview. It SHALL be due when
-the machine just set up is the only machine listed, so no flag is stored.
-When it is due, each of step 3's buttons ("Show my agents", "Start a
-terminal or agent", "Done") SHALL open it first, and its one button "Got
-it" SHALL then lead where the tapped button leads. Back from it SHALL
-return to step 3. It SHALL NOT be shown for a second machine. A screen
-reader SHALL read its heading on arrival, and each gesture's line SHALL be
-read as one item.
+### Requirement: The title bar explains itself once
+The first time a terminal or its chat opens, the app SHALL show a hint
+directly under the title bar that names the bar's gestures as capability
+spaces (change `spaces-navigation`) and agent-list define them, and no
+others: a sideways swipe walks the panes of the open tab and the bar
+bounces at its ends; a swipe up opens the next agent that needs the
+person and down goes back; a tap on the tab's map opens the tab overview.
+The hint SHALL NOT cover the keys, the compose sheet or the chat's message
+box, SHALL NOT open or close the keyboard or take the input focus, and
+touches outside it SHALL reach the screen as usual. A tap on it SHALL close
+it and store one "seen" flag in the app's private preferences, after which
+it SHALL NOT show again in a terminal or a chat; leaving without that tap
+SHALL leave it due. TalkBack SHALL read it once when it appears, and it
+SHALL stay focusable, with a double tap closing it like a tap. With the
+system's animations off it SHALL appear and go without animation. It SHALL
+be built only once those gestures are on main.
 
-#### Scenario: The first machine
-- **GIVEN** no machine was listed before, and workstation is now connected on step 3
-- **WHEN** the person taps "Show my agents"
-- **THEN** "Getting around" shows, and after "Got it" the home shows the agents
+#### Scenario: The first terminal
+- **GIVEN** the hint has never been closed
+- **WHEN** the person opens a terminal on workstation
+- **THEN** the hint shows under the title bar, and the keys at the bottom stay in view and usable
 
-#### Scenario: Starting a terminal after it
-- **GIVEN** "Getting around" is due on step 3
-- **WHEN** the person taps "Start a terminal or agent" and then "Got it"
-- **THEN** the "New terminal" sheet opens with workstation chosen
+#### Scenario: Closed for good
+- **GIVEN** the hint shows
+- **WHEN** the person taps it, then opens another terminal, a chat, and kudde again after a restart
+- **THEN** the hint shows none of those times
 
-#### Scenario: A second machine
-- **GIVEN** one machine is already listed, and a second one is set up
-- **WHEN** the person taps "Done" on its step 3
-- **THEN** the step closes without "Getting around"
+#### Scenario: Left without a tap
+- **GIVEN** the hint shows
+- **WHEN** the person goes back without tapping it and opens a chat
+- **THEN** the hint shows over the chat, and its message box is not covered
 
-#### Scenario: Back from it
-- **GIVEN** "Getting around" shows
-- **WHEN** the person goes back
-- **THEN** step 3 shows again
+#### Scenario: The gestures work under it
+- **GIVEN** the hint shows
+- **WHEN** the person swipes sideways on the title bar
+- **THEN** the next pane of the tab opens, as without the hint
+
+#### Scenario: Typing is not blocked
+- **GIVEN** the hint shows and the person taps the chat's message box
+- **WHEN** they type
+- **THEN** the text goes into the message box, and the hint covers no part of it or of the keyboard
 
 #### Scenario: What it explains
-- **WHEN** "Getting around" shows
-- **THEN** it explains the sideways swipe inside the tab with its bounce, the swipe up and down through the agents that need the person, and the tap on the tab's map, and nothing else
+- **WHEN** the hint shows
+- **THEN** it names the sideways swipe inside the tab with its bounce, up and down through the agents that need the person, and the tap on the tab's map, and nothing else
 
 #### Scenario: With TalkBack
-- **WHEN** "Getting around" opens with TalkBack on
-- **THEN** it reads "Getting around" first, and each gesture's line is one item
+- **WHEN** the hint appears with TalkBack on
+- **THEN** TalkBack reads it once, it can be reached by swiping through the screen, and a double tap closes it
+
+#### Scenario: Animations off
+- **GIVEN** the system's animations are off
+- **WHEN** the hint appears and is tapped
+- **THEN** it shows and goes at once, without a fade
+
+#### Scenario: Stored flag
+- **WHEN** the hint is closed
+- **THEN** one boolean is written to its own app-private preferences file, which is excluded from backup like the others, and nothing else is stored
 
 ### Requirement: An unfinished setup is easy to find
 The home SHALL show each machine whose setup is unfinished: one that has
@@ -562,7 +686,8 @@ way from step 2 to step 1. Back SHALL close a dialog first; from step 1
 it SHALL return to where setup was opened, taking off the list a machine
 that this visit added and that was never reached; from step 2 and step 3
 it SHALL open the Machines screen with the machine listed. Nothing else a
-person typed or added SHALL be dropped.
+person typed or added SHALL be dropped, except a password, which is never
+kept (see "The password is never kept").
 
 #### Scenario: Sending the command to yourself
 - **GIVEN** step 2 for workstation
