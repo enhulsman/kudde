@@ -760,12 +760,13 @@ overflow button; the order among the map, the gauge and the switch is the
 signed-off render's. From 360 dp wide and at every font size up to 2x the
 controls SHALL NOT overlap and SHALL NOT be cut, and the name and the line
 under it SHALL show in full height (capability accessibility, "The terminal
-screen fits the largest font size"). The name SHALL give way first, ending
-in an ellipsis, down to the width of eight of its characters. Where even
-that does not fit, the tab's map SHALL hide (the tab overview stays
-reachable from the tab's line in the Spaces view), and the name SHALL then
-give way further, never below its first character and the ellipsis. The
-gauge, the view switch and the overflow button SHALL NOT hide.
+screen fits the largest font size"). Where the bar is too narrow to hold
+all of them, the gauge SHALL hide first (the chat's bar only; its value
+stays one tap away in the usage sheet once `usage-gauge` lands). Where it
+is still too narrow, the name SHALL give way, ending in an ellipsis, down
+to the width of eight of its characters, and, where even that does not
+fit, further, never below its first character and the ellipsis. The tab's
+map, the view switch and the overflow button SHALL NOT hide.
 
 #### Scenario: Everything shown at 130%
 - **GIVEN** a 412 dp wide phone at 130% font size, and the chat of an agent in a tab of three panes with a known context window
@@ -775,4 +776,4 @@ gauge, the view switch and the overflow button SHALL NOT hide.
 #### Scenario: A narrow phone at the largest font size
 - **GIVEN** a 360 dp wide phone at 2x font size, and the chat of an agent in a tab of three panes with a known context window
 - **WHEN** the title bar shows
-- **THEN** Back, the mark, the name with an ellipsis, the gauge, the switch and the overflow button show whole and in full height, none overlapping; the map hides only if the name would otherwise be narrower than eight of its characters
+- **THEN** Back, the mark, the name, the map, the switch and the overflow button show whole and in full height, none overlapping; the gauge is hidden, and the name ends in an ellipsis once it is narrower than its full text
