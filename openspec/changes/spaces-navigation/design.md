@@ -151,12 +151,23 @@ The list by state needs a frozen order (`AgentsHome.walk`,
 Desk order does not move when a terminal is opened, so the sideways walk
 reads the current snapshot at each step:
 
+```kotlin
+data class DeskStop(val key: AgentKey, val spaceId: String, val tabId: String)  // never loose now
+
+object DeskOrder {
+    /** The machine of current, if connected and it has a desk: the tab whose cells hold
+     *  current's address, its Terminal cells in desk order where a row exists.
+     *  Empty when current is in no tab (loose, a sub-agent, gone, or its machine is not connected). */
+    fun stops(snapshot: HubSnapshot, current: AgentKey): List<DeskStop>
+    fun next(stops: List<DeskStop>, current: AgentKey): DeskStop?      // null at an end
+    fun previous(stops: List<DeskStop>, current: AgentKey): DeskStop?  // null at an end
+}
 ```
-stops(snapshot, current): the machine of current, if connected and it has a desk:
-    the tab whose cells hold current's address; its Terminal cells in desk order, if a row exists
-    empty when current is in no tab (loose, a sub-agent, gone, or its machine is not connected)
-next(stops, current) / previous(stops, current); null at an end
-```
+
+`DeskStep` goes with its only extra field, so `next` and `previous` return
+the stop itself. `DeskStop.spaceId` and `tabId` lose their nullability: a
+null meant "loose", and loose terminals are no longer stops. The tab id
+stays because the title bar's map and the moved-pane test read it.
 
 - Which terminals may be stops is decided in Rust (`seat`, D1); "a row
   exists" only covers the gap between two snapshots.
@@ -165,7 +176,8 @@ next(stops, current) / previous(stops, current); null at an end
 - At an end the title bar gives the end haptic (`REJECT`, as today,
   `ui/terminal/TerminalScreen.kt`) and bounces: the bar's content moves
   about 12 dp in the swipe's direction and springs back, in about 200 ms
-  (the exact distance and timing are the render's and the phone check's).
+  (the exact distance, duration and easing are the tokens' entry
+  `animations.titleBarBounce`, added in task 4.1 and judged at 7.4).
   With the system's animations off (`ANIMATOR_DURATION_SCALE` 0, read as
   `ui/chat/ChatRoute.kt` reads it) there is no bounce, only the haptic. The
   up and down walk keeps its end haptic without a bounce, and so does a
@@ -183,7 +195,7 @@ implements the first version: `stops(snapshot)` is one list across every
 connected machine, every space and tab, then the loose terminals, and
 `DeskStep` carries `entersAnotherTab`. Task 3.3 narrows it: `stops` takes
 the current terminal and returns its tab's stops only, and the flag goes.
-`next` and `previous` keep their rule.
+`next` and `previous` keep their rule and return `DeskStop?`.
 
 **What of the Rust work is still needed: all of it.** The walk no longer
 needs stops that span machines, but the Spaces view lists every machine's
@@ -207,8 +219,41 @@ not touched.
 - The gesture stays where it is, on the title bar
   (`TerminalScreen.kt:265-292`). The drag handler already acts only when a
   drag ends, so a drag the system takes for Back (it is cancelled) does
-  nothing. The change adds two guards there: refuse while the compose sheet
-  holds text, and nothing else.
+  nothing. The change adds one guard there: refuse while the compose sheet
+  holds text.
+- **Three outcomes, one result type.** Today `onTab` and `onSwipe` return a
+  Boolean (moved or not), and the handler plays `CLOCK_TICK` or `REJECT`. A
+  refusal must give `REJECT` without the bounce, and an end sideways
+  `REJECT` with it, so a Boolean is not enough. The decision moves out of
+  the composable into a pure function in `ui/terminal/TitleBarStep.kt`:
+
+  ```kotlin
+  enum class Bounce { LEFT, RIGHT }
+
+  sealed interface TitleBarStep {
+      data object Moved : TitleBarStep                    // CLOCK_TICK
+      data class End(val bounce: Bounce?) : TitleBarStep  // REJECT; a bounce only sideways, with animations on
+      data object Refused : TitleBarStep                  // REJECT, never a bounce
+  }
+
+  /** Null for a drag shorter than [threshold] in its longer direction. A refusal is
+   *  decided before [onTab] or [onSwipe] is called, so neither runs while refused. */
+  fun titleBarStep(
+      dx: Float, dy: Float, threshold: Float,
+      refused: Boolean, animationsOn: Boolean,
+      onTab: (next: Boolean) -> Boolean, onSwipe: (forward: Boolean) -> Boolean,
+  ): TitleBarStep?
+  ```
+
+  `onTab` and `onSwipe` keep their Boolean (moved, or at an end): the
+  refusal never reaches them. `TerminalActions` gains
+  `stepRefused: () -> Boolean = { false }`; `TerminalRoute` passes
+  `{ screen.composeText.isNotEmpty() }`, and since the chat reuses the same
+  `TitleBar` and `actions` (`ChatScreen.kt:150`, `TerminalRoute.kt:204`),
+  the same state is read under the chat. The composable only plays the
+  result: the haptic, and the bounce when `End.bounce` is set. The
+  screen-reader actions (D9) use the same function's outcome for their
+  announcement.
 - The app sets no gesture exclusion. Android limits it to 200 dp an edge
   and it would break Back on the one screen where Back matters most.
 - Selecting text is state of one terminal's screen
@@ -225,7 +270,12 @@ five desk terminals. So a terminal reached by a step is attached only after
 any open.
 
 **Where the wait lives.** `AgentsHome` records how the open terminal was
-reached (a step, or anything else). `TerminalOpener`
+reached (a step, or anything else). Both `tab` (sideways) and `step` (up
+and down) mark the arrival as a step, and so do the four screen-reader
+actions, which call them; an open from a row, the queue strip or an alert
+does not. The up and down walk crosses tabs and spaces and is the main way
+past many terminals now that sideways steps stay in one tab, so the desk
+reflow the wait prevents applies to it fully. `TerminalOpener`
 (`TerminalRoute.kt`, tested in `TerminalOpenerTest`) already takes its
 times as arguments (`onPhoneGrid(size, nowMs)`, `tick(nowMs)`), so the wait
 goes there and is tested with exact times: constructed with the arrival
@@ -307,9 +357,18 @@ last screen in a tile, can be a later issue.
 
 ## D9. Accessibility
 
-- The title bar's merged node gets `customActions` for the four steps; the
-  result is spoken with `announceForAccessibility` (name and place, or "No
-  more terminals in this tab" when a sideways action opened nothing).
+- `TitleBar`'s Row has no merged node today: the name and its line are two
+  text nodes. The name Column gets
+  `semantics(mergeDescendants = true) { customActions = … }`, so one node
+  holds the name, the line and the four steps; Back, the map, the gauge,
+  the switch and the menu button stay focus stops of their own. That node
+  is "the title bar has its focus" in the spec.
+- The result is spoken with `announceForAccessibility`, from the action's
+  `TitleBarStep` (D4): the new terminal's name and place after `Moved`;
+  after `End`, "No more terminals in this tab" for a sideways action and
+  "No more agents need you" for an action through the agents that need the
+  person; after `Refused`, "Not moved: the compose text is kept". The last
+  two texts are drafts that wait for the owner (proposal, decision 9).
 - TalkBack cannot be driven over adb, and a UI dump pauses it. So merged
   semantics are tested in Robolectric (as `ReadOnceTest` does), and the
   owner listens once on a phone.
@@ -332,7 +391,9 @@ with `ChangesButton` and `ViewSwitch("Chat")`; the chat
   the end of the slot: a 48 dp button with a three-dot `LineIcon` and a
   menu in a `Popup` from Compose UI (the app uses Compose Foundation only,
   no Material, and takes no new dependency), on the tokens' popover
-  colour. Its one item opens Changes through the existing
+  colour. Its one item, shown and spoken as "Changes" (the pick of open
+  decision 11; `CHANGES_DESCRIPTION` goes with the button), opens Changes
+  through the existing
   `onChanges` (`openChanges` in `ui/terminal/TerminalRoute.kt`, which also
   hides the keyboard). The menu takes a list of items, so a later option is
   one more entry. `TitleBar`'s drag handler is on the whole row, so a swipe
@@ -354,8 +415,21 @@ with `ChangesButton` and `ViewSwitch("Chat")`; the chat
   2026-11-20). Whichever of the two lands second fits into the other's
   bar and updates the goldens of both.
 - The map (D7) joins the same slot. The menu button is always last; the
-  render decides the order of the map, the gauge and the switch, their
-  spacing, and how they fit at 412 dp and 130% font.
+  render decides the order of the map, the gauge and the switch, and their
+  spacing.
+- **The fit.** The accessibility spec requires the title bar's two lines
+  unclipped up to 2x, and every control is a fixed 48 dp, so width, not
+  height, runs out: a rough count leaves about 80 dp for the name at 412 dp
+  and 2x, and almost nothing at 360 dp (confidence: moderate, from the
+  spacing in `TerminalScreen.kt:259-313`). The name gives way first, to an
+  ellipsis, down to the width of eight of its characters; below that the
+  map hides (`Modifier.layout` or a `SubcomposeLayout` that measures the
+  name's minimum first), and the name then shrinks further. That order is
+  the pick of open decision 10; if the owner picks otherwise, only which
+  control hides changes. Goldens at 412 dp and 130%, and at 360 dp and 2x
+  (task 5.8), hold it.
+
+## Risks
 
 
 - **Pane order is our reading of the tree.** herdr documents moving between
@@ -371,11 +445,14 @@ with `ChangesButton` and `ViewSwitch("Chat")`; the chat
 - **The title bar is tight under the chat** (map, gauge, view switch,
   overflow button). D10 frees room: Changes goes into the menu and the
   switch becomes icon-sized; the gauge stays text until `usage-gauge`
-  makes it a ring. Settled at the render (proposal,
-  "New on screen" 4, 6 and 7).
+  makes it a ring. The order and spacing are settled at the render
+  (proposal, "New on screen" 4, 6 and 7); what gives way at 2x or on a
+  360 dp phone is open decision 10 (D10, "The fit").
 - **A tab of one pane gets no sideways walk.** Accepted with decision 1:
   where today a sideways swipe opens the next agent of the Agents list, it
   now only bounces. Most terminals sit alone in their tab, so this is felt.
 - **The reach of the title bar** on a tall phone. If it bothers in use, the
   two-finger swipe of decision 5 is the follow-up.
-- **400 ms** may feel slow or too short. One constant; phone check.
+- **400 ms** may feel slow or too short. One constant; phone check. It
+  applies to up and down steps too (D5), which is where most terminals are
+  passed now; judge it there first at 7.4.
