@@ -45,7 +45,8 @@ to learn from. Its key and host-key handling are not (see
 Settled and unchanged here: the host key is confirmed before first trust
 and before any signature (`ssh.rs:267-268,286-288`), the phone key lives in
 secure hardware and is installed as a `restrict,command=` line
-(`ssh.rs:137-155`), and the app never handles a password.
+(`ssh.rs:137-155`), and the app never handles a password, apart from the
+one sign-in of D12, which the person chooses.
 
 ## Goals / Non-Goals
 
@@ -58,8 +59,8 @@ secure hardware and is installed as a `restrict,command=` line
 
 **Non-Goals:**
 - Any change to what is trusted or signed, or to the key's restrictions.
-- A demo mode, pairing by QR code, finding machines on the network, a
-  password sign-in that installs the key (decisions 3 and 7 of the proposal).
+- A demo mode, pairing by QR code, finding machines on the network
+  (decisions 3 and 7 of the proposal).
 - Alert setup inside the walkthrough: it needs `kudde-push` and an ntfy
   server, and keeps its place on the machine's card.
 - The local network permission (D9).
@@ -166,8 +167,9 @@ Considered:
   key: one line, but the restricted line holds both kinds of quotes, and
   the escaping is unreadable.
 - *The app signs in with a password once and installs the line* (Termius,
-  JuiceSSH, Herdr's app since 1.0.6): no desk visit. Rejected: a full
-  login through the app, and hardened machines have passwords off.
+  JuiceSSH, Herdr's app since 1.0.6): no desk visit. First rejected here;
+  added on 2026-11-20 at the owner's request as a second way beside the
+  command, which stays (D12).
 - *A helper on the machine that shows a QR code* (Whip, Moshi, Sherpr):
   the strongest check, since no eye compares anything. It needs a program
   on the machine, the camera and a scanner. Its own change if wanted.
@@ -319,29 +321,151 @@ the repository's README at "Setting up" in the browser, and kudde.dev's
 Setup page once the site (#83) serves one. One constant. The app has no
 other link today; this one is decision 6 of the proposal.
 
-### D11. Getting around: the title bar's gestures, once
+### D11. The title bar explains itself once, in a hint
 
-Added on 2026-11-20 (Ezra): the walkthrough gains a step that explains the
-gestures on the title bar of a terminal and its chat. The gestures are
-defined by the change `spaces-navigation` (its decision 1, answered the
-same day): a sideways swipe walks the panes of the open tab and bounces at
-the tab's ends; up and down walk the agents that need the person; a tap on
-the tab's map opens the tab overview. So this screen is built only after
-those are on main, and it explains those three and nothing else; if
-`spaces-navigation` changes them, the texts here change with them.
+Answered on 2026-11-20 (Ezra, proposal decision 9, option c, not the
+pick): no screen in setup. The first time a terminal or its chat opens, a
+short hint under the title bar names the bar's gestures. They are defined
+by the change `spaces-navigation` (its decision 1): a sideways swipe walks
+the panes of the open tab and bounces at the tab's ends; up and down walk
+the agents that need the person (agent-list); a tap on the tab's map opens
+the tab overview. The hint explains those three and nothing else, is built
+only after they are on main, and changes its words if they change.
 
-Where it sits is proposal decision 9 (open). Pick: one unnumbered screen
-after step 3, due while the machine just set up is the only one listed.
-That is derived from the machine list, like the welcome (D1), so nothing is
-stored, and the three setup steps keep their numbers. Step 3's buttons pass
-through it once; "Got it" goes on to where the tapped button leads. In
-`MachineFlows` it is one more state of `Screen.Setup` after step 3, saved
-with the step (D6), so a process death on it lands on it again.
-*Over* a numbered fourth step for every machine: a person who sets up a
-second machine has seen it already, and "Step n of 4" would change S2 for
-every step. *Over* a hint the first time a terminal opens: closer to where
-the gestures are used, but it needs a stored "seen" flag, which this change
-avoids.
+- **Where.** A block directly under the title bar, the screen's width less
+  its margins. It covers the terminal's or the chat's top rows only, never
+  the bottom where the keys, the compose sheet and the chat's message box
+  are; it does not open or close the keyboard and takes no input focus.
+  Touches outside it reach the screen as usual, so the gestures it names
+  work while it shows.
+- **Closing.** A tap anywhere on it closes it and sets the flag; it never
+  shows again, in the terminal or the chat. Leaving the screen without
+  that tap leaves it due, so it shows on the next open.
+- **The flag.** `TitleBarHintSetting`, built like `ChatViewSetting`
+  (`ui/chat/ChatViewSetting.kt`) and `StayConnectedSetting`: its own
+  app-private preferences file `title_bar_hint`, one boolean `seen`; an
+  absent value or one of another type reads as false; written with
+  `apply()`; one instance on `KuddeApp` beside the others
+  (`HerdrApp.kt:127-129`). The data extraction rules already exclude every
+  preferences file from backup and transfer, so a new phone shows the hint
+  once more. Nothing in the app resets it; clearing the app's data does.
+  People who update from a version without it see it once, which is
+  wanted: the gestures are new to them too.
+- **TalkBack.** One element with the hint's whole text, read once when it
+  appears (announced politely, not again while it shows), focusable in
+  the reading order right after the title bar; its action is named "Got
+  it" and a double tap closes it like a tap. Focus is not moved to it.
+- **Animations.** With the system's animations off
+  (`ANIMATOR_DURATION_SCALE` 0, read as `AgentsRoute.kt:53` and
+  `ChatRoute.kt:139` already do), it appears and goes at once; otherwise
+  it fades in and out over the app's short duration. It does not act out
+  the bounce.
+
+*Over* the screen after step 3 (the earlier pick): the owner's answer; the
+hint sits where the gestures are used, at the cost of one stored flag.
+
+### D12. kudde can run the setup itself, with the password once
+
+Added on 2026-11-20 at the owner's request (Herdr's own app offers this):
+step 2 gets a second way beside the command. kudde signs in once with the
+account's password, does exactly what the command does, signs out and
+forgets the password; from then on the phone key connects as for everyone
+else. The command stays on the step, first, for whoever prefers it and as
+the fallback when the machine takes no password.
+
+**The trade-off.** With the command nothing secret crosses the network,
+and the fingerprint to compare is on the desk's own screen. With this way
+the password goes to whatever answers at the address. If that is not the
+desk (a hostile network, a spoofed name), whoever answered has the
+account's password: a full login, unlike the phone key, which runs only
+herdr-core. So the host key is settled before anything is sent, and the
+password goes only to that key. How it is settled is proposal decision 10
+(open). Pick (a): the confirm of render 8 with this way's words shows the
+fingerprint and the one line that prints it at the desk, for whoever wants
+to compare, and confirming is trust on first use; the password field shows
+after it. (b): the field shows only after a comparison, which the app can
+enforce only by asking for part of what the desk printed.
+
+**The steps.**
+
+1. "Run it from this phone" (R1) opens the confirm (R3 to R5) for a
+   machine whose host key is not confirmed yet, or goes straight to 2
+   when it is. Confirming is the same `confirm_host_key` as "Trust and
+   connect", so the hub starts its phone-key attempt; its expected first
+   outcome, the key not accepted, shows as this panel, not as K1. Every
+   other outcome shows as D6 says, and a connection (the key was there
+   already) opens step 3 and drops the panel. "Cancel" trusts nothing and
+   sends nothing.
+2. A probe connection, pinned to the confirmed fingerprint, asks with the
+   `none` method and reads the methods the machine offers from its
+   refusal (russh 0.65.2 `Handle::authenticate_none`, `AuthResult::Failure
+   { remaining_methods, .. }`). No `password` and no `keyboard-interactive`
+   (or a `none` that succeeds): "takes no password" (R10) with the command
+   still above, and no field. Otherwise it disconnects and the field
+   shows.
+3. "Add the key" dials again, pinned. `HostKeyCheck::check_server_key`
+   (`ssh.rs:519-533`) refuses any other key during key exchange, before
+   any authentication message, so a changed key sends neither password
+   nor user name and shows the changed-key screen. It signs in with
+   `password` when offered, else `keyboard-interactive`, answering one
+   prompt that does not echo with the password and empty rounds with
+   nothing, at most three rounds. A prompt that echoes, more than one
+   prompt, or `partial_success` (a second factor) stops: R11.
+4. On the session: one `exec` of `sh -s`, the script written to its
+   standard input, then end of input. The script is `setup_command(spki,
+   comment, None)` byte for byte: the Phone key variant of D3, whose
+   installation block is identical and which leaves out only the
+   fingerprint line. So 2.3's shell tests cover what runs, and the line is
+   the same restricted line. Through `sh -s`, the account's login shell
+   (fish too) only starts sh. The script is one parenthesised command, so
+   sh reads all of it before running any of it: a cut-off transfer is a
+   syntax error and changes nothing. Exit 0 is done; exit 1 with M11 or
+   M12 on standard error shows that line (R13); anything else shows its
+   code (R14). Then the session disconnects. It runs once per tap, with no
+   automatic retry, within 20 seconds to dial (as `link.rs:21`) and 60 in
+   all.
+5. Done: the app calls the hub's `retry`, the step reads "Connecting to
+   …" and moves on to step 3 as after the command.
+
+| Outcome | Step 2 shows |
+|---|---|
+| Not reached before signing in | the reach failure of D5, with "Try again" |
+| Another host key | the changed-key screen, nothing sent |
+| Wrong password | R9; field empty, "Add the key" again |
+| No password method | R10, no field |
+| More than a password | R11 |
+| Dropped after signing in | R12: whether the key went in is not known; repeating is harmless (D3) |
+| The script refused | R13 with M11 or M12 |
+| Done | "Connecting to …", then step 3 |
+
+**The password.** Never stored, logged, copied or saved by Android:
+- the field is Compose Foundation's `BasicSecureTextField`: masked, cut
+  and copy disabled, the password keyboard, no reveal button. Its state
+  is `remember { TextFieldState() }`, never `rememberTextFieldState()` or
+  `rememberSaveable`, which keep text in the saved instance state; after
+  a process death the field is empty;
+- autofill is off for it: the hosting view gets `importantForAutofill =
+  IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS` while the panel shows
+  (restored after), and `AutofillManager.cancel()` runs when it closes,
+  so no password manager fills it or offers to save it;
+- the text is cleared (`clearText()`) when "Add the key" starts the call,
+  when the panel closes and when step 2 is left. JVM strings cannot be
+  wiped, so the honest promise is: kudde keeps no reference after the
+  call;
+- in Rust it is a type whose `Debug` prints `<redacted>`, with no
+  `Display`, never part of an `SshError` detail; kudde overwrites its own
+  copy before dropping it, by hand (no new dependency). russh zeroizes
+  the password method on drop and redacts it in `Debug` (0.65.2
+  `src/auth.rs`, `impl Drop for Method`); keyboard-interactive answers
+  travel as a plain `Vec<String>` it does not wipe, and kudde-mobile
+  installs no logger, so russh's `log` output goes nowhere;
+- the app has no crash reporter; Recents keeps no picture on Android 13+
+  (`MainActivity.kt:40`).
+
+Built as `host_key_fingerprint_command(algorithm)` (the one line R4 shows,
+also used inside `setup_command`, so one source) and
+`setup_with_password(host, port, user, pinned, password, spki, comment)`
+plus the probe, exported over uniffi. The phone key signs nothing here.
 
 ## New and changed screens (each needs the owner's sign-off)
 
@@ -359,10 +483,13 @@ colour, no icon, no illustration, no logo on the welcome.
 | 18 | Step 3 | caption and heading; a machine card's head (dot, name, status line); the agent line; solid and outlined button; the alerts line in `secondary` dim |
 | 8 (changed) | Trust dialog | the same dialog, new first paragraph, one more `DialogNote` |
 | 1 (changed) | Home with an unfinished machine | the machine notice line of render 1, reading "workstation · finish setup" |
-| 19 | Getting around (draft; needs `spaces-navigation`'s signed-off title bar render) | heading at `machineName`, no step caption; the intro in `body` muted; three two-line rows (`rowName`, then `secondary` dim), the third with the tab map of `spaces-navigation` in place of a row's mark; solid "Got it". Whether the first two rows get a small drawing of the swipe is the owner's call at the render |
+| 19 | Title bar hint (draft; needs `spaces-navigation`'s signed-off title bar render) | a block under the title bar on the chrome background with a thin border; G1 in `rowName`, G2 to G4 one line each in `secondary`, G5 at its end in `secondary` dim; shown over a terminal and over a chat, with the keys and the message box in view and uncovered |
+| 20 | Step 2 with the second way | render 16, then outlined "Run it from this phone" (R1) with R2 under it in `DialogNote` |
+| 21 | Trust before the password | render 8's dialog with R3, R4 and its line in `MonoBox`, D2's note and "Trust and continue" |
+| 22 | The password panel | render 20 with, in place of R1 and R2, render 15's field with R6 as its label; solid "Add the key", outlined "Cancel"; R8 while it runs; R9 to R14 as render 17's failure block |
 
-Goldens for each in graphite and paper, and steps 1 to 3 and Getting
-around at font size 2x. The numbers 13 to 23 are already taken by the
+Goldens for each in graphite and paper, and steps 1 to 3, the password
+panel and the hint at font size 2x. The numbers 13 to 23 are already taken by the
 Changes renders on main, and `spaces-navigation` also plans renders from
 13: use the next free numbers when drawing and correct the references
 here.
@@ -462,17 +589,37 @@ trust: "Phone key locked", "Unlock", and the too-old texts.
 | P2 | To let this phone into a machine, run this there, signed in as the user your agents run under: | Add this line to ~/.ssh/authorized_keys of the user you sign in as on each machine. |
 | P3 | Copy only the key line | Copy |
 
-**Getting around** (drafts awaiting approval; they describe the gestures of
-`spaces-navigation` and change if those change)
+**The title bar hint** (drafts awaiting approval; they describe the
+gestures of `spaces-navigation` and change if those change; they replace
+the "Getting around" screen's G1 to G6)
 
 | Id | Text | Was |
 |---|---|---|
-| G1 | Getting around | new |
-| G2 | In a terminal or a chat, swipe or tap the bar at the top to move around. | new |
-| G3 | Swipe sideways / The next or previous pane of the same tab. At the first or last pane the bar bounces. | new |
-| G4 | Swipe up or down / Up: the next agent that needs you, wherever it is. Down goes back. | new |
-| G5 | Tap the tab's map / See all panes of the tab at once, and open any of them. The map shows when a tab has more than one pane. | new |
-| G6 | Got it | new |
+| G1 | Move around from this bar | new |
+| G2 | Swipe sideways: the other panes of this tab. At either end the bar bounces. | new |
+| G3 | Swipe up: the next agent that needs you. Down: back. | new |
+| G4 | Tap the map: every pane of the tab. | new |
+| G5 | Got it (also the TalkBack action's name) | new |
+
+**Run it from this phone** (D12; drafts awaiting approval, R3 to R5 as
+for decision 10's pick)
+
+| Id | Text | Was |
+|---|---|---|
+| R1 | Run it from this phone | new |
+| R2 | kudde signs in once as %2$s with that account's password, adds the same key and signs out. The password is not stored. | new |
+| R3 | First connection to %1$s. kudde sends the password only to the machine with this host key. | new (dialog's first paragraph) |
+| R4 | To compare, run this at %1$s: (then the line, e.g. `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`) | new |
+| R5 | Trust and continue | new |
+| R6 | Password for %2$s on %1$s | new (field label) |
+| R7 | Add the key | new |
+| R8 | Adding the key on %1$s… | new |
+| R9 | %1$s did not accept the password for %2$s. / Check it and try again. Nothing was changed there. | new |
+| R10 | %1$s does not take a password over SSH. / Use the command above at the machine: it needs none. | new |
+| R11 | %1$s asks for more than a password, such as a code. / Use the command above at the machine. | new |
+| R12 | The connection to %1$s dropped while the key was being added. / kudde cannot tell whether it went in. Try again: adding it twice does no harm. | new |
+| R13 | The setup on %1$s stopped: / (M11 or M12, as the machine printed it) | new |
+| R14 | The setup on %1$s ended with code %2$d. / Run the command above at the machine to see why. | new |
 
 ## Risks / Trade-offs
 
@@ -482,6 +629,18 @@ trust: "Phone key locked", "Unlock", and the too-old texts.
 - **The person taps "Trust and connect" without comparing.** As today; the
   dialog now says where the other fingerprint is and what a difference
   means. The QR helper would remove the judgment; it is not in this change.
+- **A wrong host key now costs a password.** With the command, trusting
+  a wrong key lets an impostor talk to kudde; with D12 it hands over the
+  account's password. Decision 10 settles how much the person must check;
+  on a VPN such as Tailscale, with its own keys, the risk is small, on a
+  shared Wi-Fi it is not.
+- **An account barred from passwords that still offers them** (root under
+  `prohibit-password`, an account locked for passwords) reads as a wrong
+  password (R9). The command still works there.
+- **The hint names swipes.** With TalkBack on, swipes belong to TalkBack;
+  `spaces-navigation`'s "Every step has a way without a swipe" covers
+  those people, and the hint reads the same. Worth a look at text
+  approval.
 - **Two words for one thing while both exist.** "Add machine" stays on the
   Machines screen and opens "Set up a machine". Accepted: the first is a
   list action, the second the flow's title.
