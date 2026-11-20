@@ -368,7 +368,7 @@ last screen in a tile, can be a later issue.
   after `End`, "No more terminals in this tab" for a sideways action and
   "No more agents need you" for an action through the agents that need the
   person; after `Refused`, "Not moved: the compose text is kept". The last
-  two texts are drafts that wait for the owner (proposal, decision 9).
+  two texts are the owner's answer to decision 9 (proposal).
 - TalkBack cannot be driven over adb, and a UI dump pauses it. So merged
   semantics are tested in Robolectric (as `ReadOnceTest` does), and the
   owner listens once on a phone.
@@ -377,7 +377,7 @@ last screen in a tile, can be a later issue.
 
 ## D10. A quieter title bar
 
-Answered 2026-11-20 with decisions 7 and 8. What the title bar holds today:
+Answered 2026-11-20 with decisions 7, 8 and 10. What the title bar holds today:
 `TitleBar` (`ui/terminal/TerminalScreen.kt`) draws Back, the program mark,
 the name and its line, then a `trailing` slot. The terminal fills the slot
 with `ChangesButton` and `ViewSwitch("Chat")`; the chat
@@ -391,8 +391,8 @@ with `ChangesButton` and `ViewSwitch("Chat")`; the chat
   the end of the slot: a 48 dp button with a three-dot `LineIcon` and a
   menu in a `Popup` from Compose UI (the app uses Compose Foundation only,
   no Material, and takes no new dependency), on the tokens' popover
-  colour. Its one item, shown and spoken as "Changes" (the pick of open
-  decision 11; `CHANGES_DESCRIPTION` goes with the button), opens Changes
+  colour. Its one item, shown and spoken as "Changes" (the owner's
+  answer to decision 11; `CHANGES_DESCRIPTION` goes with the button), opens Changes
   through the existing
   `onChanges` (`openChanges` in `ui/terminal/TerminalRoute.kt`, which also
   hides the keyboard). The menu takes a list of items, so a later option is
@@ -421,12 +421,16 @@ with `ChangesButton` and `ViewSwitch("Chat")`; the chat
   unclipped up to 2x, and every control is a fixed 48 dp, so width, not
   height, runs out: a rough count leaves about 80 dp for the name at 412 dp
   and 2x, and almost nothing at 360 dp (confidence: moderate, from the
-  spacing in `TerminalScreen.kt:259-313`). The name gives way first, to an
-  ellipsis, down to the width of eight of its characters; below that the
-  map hides (`Modifier.layout` or a `SubcomposeLayout` that measures the
-  name's minimum first), and the name then shrinks further. That order is
-  the pick of open decision 10; if the owner picks otherwise, only which
-  control hides changes. Goldens at 412 dp and 130%, and at 360 dp and 2x
+  spacing in `TerminalScreen.kt:259-313`). The gauge hides first (chat
+  only; the terminal's bar has none), and the map stays. If the bar is
+  still too narrow, the name gives way, to an ellipsis, down to the width
+  of eight of its characters, and further only where even that does not
+  fit, never below its first character and the ellipsis. A
+  `Modifier.layout` or a `SubcomposeLayout` measures the fixed controls
+  first, then decides whether the gauge shows, then gives the rest to the
+  name. The map, the switch and the menu button never hide. That order is
+  the owner's answer to decision 10 (the first pick was the map hiding
+  before the gauge, rejected). Goldens at 412 dp and 130%, and at 360 dp and 2x
   (task 5.8), hold it.
 
 ## Risks
@@ -447,7 +451,7 @@ with `ChangesButton` and `ViewSwitch("Chat")`; the chat
   switch becomes icon-sized; the gauge stays text until `usage-gauge`
   makes it a ring. The order and spacing are settled at the render
   (proposal, "New on screen" 4, 6 and 7); what gives way at 2x or on a
-  360 dp phone is open decision 10 (D10, "The fit").
+  360 dp phone is decision 10, answered: the gauge hides first (D10, "The fit").
 - **A tab of one pane gets no sideways walk.** Accepted with decision 1:
   where today a sideways swipe opens the next agent of the Agents list, it
   now only bounces. Most terminals sit alone in their tab, so this is felt.

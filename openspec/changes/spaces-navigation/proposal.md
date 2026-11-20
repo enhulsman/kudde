@@ -5,10 +5,10 @@
 **Answered (Ezra, 2026-11-20):** 2 to 6 as picked. 1 after a short
 brainstorm the same day: option (b), not the pick; the sideways walk stays
 inside the tab. Also answered that day: 7 (the map, no pane dots) and 8
-(a quieter title bar, in this change). Still open: decisions 9 to 11
-below (found in review on 2026-11-20). The texts wait for your approval in
-task 1.2 (with decisions 9 and 11), the pictures in task 4.2 (with
-decision 10); task 1.1 records the answers.
+(a quieter title bar, in this change). Decisions 9 to 11 (found in review
+on 2026-11-20) answered the same day: 9 and 11 as picked, 10 the other
+option. The texts wait for your approval in task 1.2, the pictures in task
+4.2; task 1.1 records the answers.
 
 **Decisions that are yours** (my pick first; every text on screen and every
 new picture waits for your approval, see "Texts" and "New on screen"):
@@ -73,7 +73,8 @@ new picture waits for your approval, see "Texts" and "New on screen"):
    closing #37). Both are new pictures: they come in the render round
    (task 4.1) and wait for your sign-off (4.2). The icons and the menu's
    texts are not decided here.
-9. **What TalkBack says when a step goes nowhere.** **Open** (task 1.2).
+9. **What TalkBack says when a step goes nowhere.** Answered by Ezra,
+   2026-11-20: as picked (task 1.2).
    With TalkBack the haptic is not reliable feedback, and two cases are
    silent today: "Next/Previous agent that needs you" when nobody else
    needs you, and any of the four actions while the compose sheet holds
@@ -81,27 +82,28 @@ new picture waits for your approval, see "Texts" and "New on screen"):
    *Pick: two texts*, "No more agents need you" and "Not moved: the
    compose text is kept".
    Other option: one short text for both, "Not moved".
-   The spec, design D9 and task 3.6 carry the pick until you answer.
-10. **What gives way when the title bar is too narrow.** **Open** (task
+   The spec, design D9 and task 3.6 carry the pick.
+10. **What gives way when the title bar is too narrow.** Answered by
+    Ezra, 2026-11-20: not the pick; the gauge hides first and the map
+    stays; after that the name shrinks to eight characters with "…" (task
     4.2, at the `terminal-map` render). At the largest font size (2x),
     or on a 360 dp phone, the chat's bar cannot hold the name, the map,
-    the gauge, the switch and the menu button in full.
-    *Pick: the name shrinks first, to eight characters with "…"; then the
-    map hides*, since the tab overview stays reachable from the tab's line
-    in Spaces. The gauge, the switch and the menu button always show.
-    Other option: the gauge hides first (its value is one tap away in the
-    usage sheet once `usage-gauge` lands), and the map stays.
+    the gauge, the switch and the menu button in full. The switch and the
+    menu button always show.
+    The gauge's value is one tap away in the usage sheet once
+    `usage-gauge` lands. The pick was: the name shrinks first, then the
+    map hides, the gauge always shows.
     The spec ("The title bar fits its controls"), design D10 and task 5.8
-    carry the pick until you answer.
-11. **What a screen reader says for the menu's Changes item.** **Open**
-    (task 1.2). Today the Changes button is read as "Show the files this
-    agent changed".
+    carry the answer.
+11. **What a screen reader says for the menu's Changes item.** Answered
+    by Ezra, 2026-11-20: as picked (task 1.2). Today the Changes button is
+    read as "Show the files this agent changed".
     *Pick: "Changes"*, the item's own word, as menu items read best; the
     longer description goes.
     Other option: keep "Show the files this agent changed" as the item's
     spoken name.
     The spec (`spaces` and the amended `changes-view` texts table) and
-    design D10 carry the pick until you answer.
+    design D10 carry the pick.
 
 **What changes for you:**
 
@@ -205,7 +207,7 @@ only the spaces' names.
 - `changes-view`: "A Changes button opens the agent's changes" is renamed
   "Changes in the title bar's menu opens the agent's changes" and rewritten
   for the menu; "The screen's texts are fixed" gets the menu item's row in
-  place of the button's (its spoken name is open decision 11).
+  place of the button's (its spoken name is "Changes", decision 11).
 - `chat-view`: "The switch shows only while the chat can follow" describes
   the switch as an icon button with the words as its spoken names.
   `usage-gauge` also modifies `chat-view`, but another requirement ("A
@@ -235,10 +237,10 @@ only the spaces' names.
 | Screen-reader actions | "Next terminal" · "Previous terminal" · "Next agent that needs you" · "Previous agent that needs you" |
 | Spoken after a step | "<name>, <place>" as the title bar shows them (for example "Pricing page copy, website / 2 · workstation") |
 | Spoken at the tab's end | "No more terminals in this tab" |
-| Spoken when no other agent needs you (an action up or down opened nothing) | "No more agents need you" (draft, open decision 9) |
-| Spoken when a step is refused because the compose sheet holds text | "Not moved: the compose text is kept" (draft, open decision 9) |
+| Spoken when no other agent needs you (an action up or down opened nothing) | "No more agents need you" |
+| Spoken when a step is refused because the compose sheet holds text | "Not moved: the compose text is kept" |
 | Title bar: the overflow button, spoken | "More options" |
-| Title bar menu: its item, shown and spoken | "Changes" (spoken name: open decision 11) |
+| Title bar menu: its item, shown and spoken | "Changes" (spoken the same) |
 | Title bar: the view switch, spoken | "Chat" (in the terminal) · "Terminal" (in the chat), the words shown today |
 
 ## New on screen (each needs the owner's sign-off against a render)
@@ -266,8 +268,8 @@ makes them, 4.2 is the sign-off).
    in the chat, before the overflow button. The chat's bar also holds the
    gauge (as today, text, in the place kept for it) and the view switch.
    The render shows it at 412 dp and 130% font size, and at 360 dp and 2x
-   (the accessibility spec's largest size), where you choose what gives
-   way (open decision 10).
+   (the accessibility spec's largest size), where the gauge gives
+   way first (decision 10).
 5. **The tab overview.** A sub-screen with the back bar the Changes screen
    has, titled with the space's name; the space's tabs as a row of tab maps
    with names; the chosen tab's tiles in popover colour with the program
