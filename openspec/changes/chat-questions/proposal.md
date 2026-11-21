@@ -2,8 +2,11 @@
 
 ## Plain summary
 
-**Decisions that are yours** (my pick first in each; none is built before you
-answer):
+**Answered (Ezra, 2026-11-21): all eight as picked**, decision 7's
+one-round-trip window included. The texts table still comes to Ezra once
+before the build.
+
+**Decisions that were yours** (my pick first in each):
 
 1. **A question call with several questions** (Claude Code asks 1 to 4 in one
    call; 42% of the about 270 calls I looked at had more than one).
