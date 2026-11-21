@@ -9,14 +9,13 @@ import dev.kudde.android.ui.terminal.TerminalMetrics
 import dev.kudde.android.ui.terminal.TerminalOpener
 import dev.kudde.android.ui.terminal.TerminalReopen
 import dev.kudde.android.ui.terminal.TerminalScreenState
+import dev.kudde.android.ui.terminal.TerminalRenderer
 import dev.kudde.android.ui.terminal.TerminalSession
 import java.util.concurrent.Executor
 
 /**
  * One agent visit, independent of composition. The route owns effects and delays.
- * Until the screen host migration, [legacyRoute] preserves the layered
- * route's attach rule and disables automatic seeds; it uses the opener directly.
- * The destination API below is ready for a host that measures only its top.
+ * Only the top terminal destination measures; seeds attach watching.
  */
 class AgentKeeper(
     private val key: AgentKey,
@@ -29,7 +28,6 @@ class AgentKeeper(
     private val lastPhoneGrid: () -> GridSize? = { null },
     private val rememberPhoneGrid: (GridSize) -> Unit = {},
     private val changed: () -> Unit = {},
-    private val legacyRoute: Boolean = false,
 ) {
     val reopen = TerminalReopen()
     val screen = TerminalScreenState(zoom)
@@ -39,6 +37,22 @@ class AgentKeeper(
     private var leaving = false
     private var heldActions: TerminalActions? = null
     private var actionsOwner: Any? = null
+    private var heldRenderer: TerminalRenderer? = null
+
+    fun renderer(create: () -> TerminalRenderer): TerminalRenderer =
+        heldRenderer ?: create().also { heldRenderer = it }
+
+    /** The caller clears Compose focus, both keyboards, then changes navigation. */
+    fun <T> navigate(clearInput: () -> Unit, change: () -> T): T {
+        clearInput()
+        return change()
+    }
+
+    fun terminalLeft() {
+        screen.selecting = false
+        screen.composeFocusAsked = false
+        screen.inputOpen = false
+    }
 
     val stack = AgentStack {
         // A mid-settle offer must be dropped even if push and pop precede a tick.
@@ -67,7 +81,7 @@ class AgentKeeper(
     private var current = makeGeneration(ports.now())
 
     init {
-        if (!legacyRoute && chat.switch.chat) seed(current, ports.now())
+        if (chat.switch.chat) seed(current, ports.now())
     }
 
     /** Called after observing [TerminalReopen.generation]; reopening never dwells. */
@@ -75,18 +89,17 @@ class AgentKeeper(
         if (!released && current.number != reopen.generation) {
             closeGeneration(current)
             current = makeGeneration(nowMs)
-            if (!legacyRoute && (phone != null || chat.switch.chat)) seed(current, nowMs)
+            if (phone != null || chat.switch.chat) seed(current, nowMs)
         }
         return current
     }
 
     private fun makeGeneration(nowMs: Long): Generation {
         val session = TerminalSession(key, main)
-        val switch = chat.switch
         val dwell = if (reopen.generation == 0 && arrivedByStep) TerminalOpener.STEP_DWELL_MS else 0L
         lateinit var next: Generation
         val opener = TerminalOpener(session, arrivalMs = nowMs, dwellMs = dwell) { size ->
-            val lead = if (legacyRoute) !switch.chat else top == AgentScreen.Terminal && next.measured
+            val lead = top == AgentScreen.Terminal && next.measured
             ports.openTerminal(key, size.cols.toUShort(), size.rows.toUShort(), lead, session.listener)?.also {
                 next.opened = true
                 next.leading = lead
@@ -105,7 +118,7 @@ class AgentKeeper(
         generation.opener.onPhoneGrid(size, nowMs)
     }
 
-    /** Keeps the existing route's grid observation without activating destination rules. */
+    /** The last real grid, kept across destinations and generation changes. */
     fun rememberGrid(size: GridSize) {
         if (released || phone == size) return
         phone = size
