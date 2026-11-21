@@ -47,8 +47,9 @@ keeps `reported`).
 
 #### Scenario: An agent quits back to its shell
 - **WHEN** the agent in a terminal quits and the terminal is a plain shell again
-- **THEN** it moves from the agent list to "Other terminals", the title-bar
-  swipe no longer stops at it, and a finish it had not shown counts as seen
+- **THEN** it moves from the agent list to "Other terminals", the up and down
+  swipe on the title bar no longer stops at it, and a finish it had not shown
+  counts as seen
 
 ### Requirement: Agents needing you come first
 The list SHALL be ordered: needs you, finished-unseen, working, idle; within a
@@ -84,8 +85,8 @@ From an open terminal, a swipe up on the title bar SHALL open the next agent
 that needs you or is finished-unseen, in list order; a swipe down SHALL go back
 through the agents that walk opened (also once they are seen or answered), then
 to earlier agents that need you; a swipe up after going back SHALL retrace them.
-A sideways swipe on the title bar SHALL open the next (finger to the left) or
-previous agent in list order, whatever its state, like tabs.
+A sideways swipe on the title bar is specified in capability `spaces`
+(change `spaces-navigation`): it walks the panes of the open terminal's tab.
 A light haptic per step, a stronger one when none is left.
 
 #### Scenario: Clearing a backlog
@@ -93,8 +94,8 @@ A light haptic per step, a stronger one when none is left.
 - **THEN** the second and third open in turn, and a third swipe gives the end-of-queue haptic
 
 #### Scenario: Tabs
-- **WHEN** Ezra swipes left on the title bar of an idle agent's terminal
-- **THEN** the next agent in the list opens, whatever its state
+- **WHEN** Ezra swipes left on the title bar of a terminal
+- **THEN** the sideways walk of capability `spaces` applies
 
 #### Scenario: Going back
 - **WHEN** Ezra has swiped up through three finished agents and swipes down twice
