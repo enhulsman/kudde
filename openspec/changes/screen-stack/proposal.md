@@ -46,16 +46,12 @@ coming back needs no reconnect.
   time inside an agent", linking this change. No existing issue covers it.
   The text is shown to you first (task 1.2).
 
-### Your questions (my pick first)
+- **What resets when you leave a screen and come back** (decided
+  2026-11-21): a terminal text selection ends and an expanded chat card
+  folds again; everything else stays, including where you were in the
+  terminal's scroll-back (you land where you were reading).
 
-1. **What resets when you leave a screen and come back.** *Pick: a
-   terminal text selection ends, and an expanded chat card folds again;
-   everything else you listed stays (draft, scroll place, zoom, compose
-   text).* Also: the terminal's scroll-back position returns to the live
-   end (today it stays where you left it). Other option: (b) keep the
-   selection, the cards and the scroll-back too, which means storing more
-   per agent. Why (a): these are a few seconds old, and keeping them is
-   extra machinery for little.
+No open questions.
 
 Decided by me (tell me if you want one reversed): no new library (a small
 list of screens written in the app's own style is enough; Google's

@@ -405,7 +405,7 @@ each with its decision (the owner's question 4 covers the first two rows):
 | Chat list place | `ChatState.keep/startAt` (`:262-272`) | **Kept**, tested also with a pending bubble and with history that changed while covered (below) |
 | Chat draft, photos, pending | `ChatState` (application-held) | Kept. The tool sheet, tool detail and image viewer are screen-local and close, as on any leave |
 | Terminal zoom, pan | `screen.watch` (`WatchView`) | Kept |
-| Terminal scrollback offset and the "live" chip | `remember` in `TerminalScreen` (`:628`) | Returns to live. Today it is kept under the chat and covers (still composed), so this is a visible difference; named in the proposal so it is not a surprise |
+| Terminal scrollback offset and the "live" chip | `remember` in `TerminalScreen` (`:628`) | **Kept** (owner, 2026-11-21): the offset moves into the keeper's terminal state, so coming back from Changes or the overview shows the same place, as today |
 | Compose sheet text and open flag | `screen` | Kept (focus is not, D5) |
 | Title bar menu open | `TitleBarMenuState` `remember` (`:217`) | Closes |
 | Spoken-screen cache | `remember(session)` (`:594`) | Rebuilt |
