@@ -5,12 +5,16 @@ import android.os.Looper
 import android.view.View
 import android.view.WindowInsets
 import android.view.inputmethod.EditorInfo
+import androidx.compose.runtime.MonotonicFrameClock
 import androidx.compose.ui.geometry.Rect
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.CancellableContinuation
+import kotlin.coroutines.resume
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.getOrNull
 import dev.kudde.android.testing.*
 import org.junit.Assert.*
-import org.junit.Ignore
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Shadows.shadowOf
@@ -21,12 +25,294 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(qualifiers = "w412dp-h915dp-xhdpi")
 class AgentRouteLeakTest {
+    /** Freeze the real route's host; destinations, keeper and ports stay production code. */
+    private class PausedMotionClock : MonotonicFrameClock {
+        private val waiting = mutableListOf<CancellableContinuation<Long>>()
+        override suspend fun <R> withFrameNanos(onFrame: (Long) -> R): R {
+            val time = suspendCancellableCoroutine<Long> { continuation ->
+                waiting += continuation
+                continuation.invokeOnCancellation { waiting -= continuation }
+            }
+            return onFrame(time)
+        }
+        fun pulse(ms: Long) {
+            val pending = waiting.toList()
+            waiting.clear()
+            pending.forEach { if (it.isActive) it.resume(ms * 1_000_000L) }
+        }
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun AgentRouteScenario.motion(): ScreenStackHostState<AgentScreen> =
+        unmergedSemanticsNodes().mapNotNull { it.config.getOrNull(ScreenStackHostStateKey) }
+            .single() as ScreenStackHostState<AgentScreen>
+
+    /** The rig runs at animator scale 0 (instant cuts); these fixtures need the real motion. */
+    private fun realMotion() {
+        android.provider.Settings.Global.putFloat(
+            org.robolectric.RuntimeEnvironment.getApplication().contentResolver,
+            android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f)
+    }
+
+    private fun AgentRouteScenario.pauseMotion() {
+        realMotion()
+        motion().animationClock = PausedMotionClock()
+    }
+
+    /** The title menu closes with its own exit motion; let that popup go before looking at focus. */
+    private fun AgentRouteScenario.letMenuClose() = rig.advanceBoth(400)
+
+    private fun AgentRouteScenario.seekHalfway() {
+        val host = motion()
+        assertTrue("fixture must have two live destinations", host.running)
+        ++host.revision
+        host.job?.cancel()
+        host.job = host.animationScope!!.launch(host.animationClock!!) {
+            host.seekable.seekTo(.5f, 1f)
+        }
+        rig.frames()
+        assertEquals("the actual host is held at progress 0.5", .5f, host.progress, .001f)
+    }
+
+    /** The fake reads and opens files; navigation and Back ownership stay in the route. */
+    private fun AgentRouteScenario.installChangesFile(): List<String> {
+        val calls = java.util.concurrent.CopyOnWriteArrayList<String>()
+        val ports = rig.ports
+        routePorts = object : AgentPorts by ports {
+            override fun openChanges(key: dev.kudde.android.ui.agents.AgentKey): uniffi.kudde_mobile.ChangesInterface {
+                ports.changes += key
+                val signal = ports.io.signal()
+                val view = java.util.concurrent.atomic.AtomicReference(uniffi.kudde_mobile.ChangesView(
+                    uniffi.kudde_mobile.ChangesList.Listed(listOf(
+                        uniffi.kudde_mobile.ChangesEntry("docs/guide.md", "changed", 2uL, 1uL, true),
+                    ), false), null, null,
+                ))
+                return object : uniffi.kudde_mobile.ChangesInterface {
+                    override fun read() = ports.io.call { view.get() }
+                    override fun open(path: String?) = ports.io.call {
+                        calls += "open $path"
+                        view.get().copy(open = path, diff = if (path == null) null else uniffi.kudde_mobile.ChangesDiff.Reading)
+                            .also { view.set(it) }
+                    }
+                    override fun waitChange(timeoutMs: UInt) = ports.io.waitForEvent(signal)
+                    override fun leave() = ports.io.call { calls += "leave"; signal.release() }
+                }
+            }
+        }
+        return calls
+    }
+
+    private fun AgentRouteScenario.awaitChangesList() {
+        rig.await("Changes file is listed") {
+            draw()
+            semanticsNodes().any { n -> n.descriptions().any { d -> "guide.md" in d } }
+        }
+    }
+
+    private fun AgentRouteScenario.frame(clock: PausedMotionClock, ms: Long) {
+        clock.pulse(ms)
+        rig.frames()
+    }
+
+    private fun AgentRouteScenario.progressBack(progress: Float) {
+        activity.onBackPressedDispatcher.dispatchOnBackProgressed(
+            androidx.activity.BackEventCompat(100f, 100f, progress, androidx.activity.BackEventCompat.EDGE_LEFT))
+        rig.frames()
+    }
+
+    @Test fun predictiveBackOnTheChangesListSeeksAndReleaseClosesItOnce() = AgentRouteScenario().use {
+        val calls = it.installChangesFile()
+        it.show(chat = true)
+        val host = it.motion()
+        val clock = PausedMotionClock()
+        realMotion()
+        host.animationClock = clock
+        it.changes()
+        it.frame(clock, 0); it.frame(clock, 1000)
+        it.awaitChangesList()
+        assertFalse(host.running)
+        val before = it.opened.view.calls.toList()
+        it.activity.onBackPressedDispatcher.dispatchOnBackStarted(
+            androidx.activity.BackEventCompat(0f, 100f, 0f, androidx.activity.BackEventCompat.EDGE_LEFT))
+        it.rig.frames()
+        for (p in listOf(.25f, .5f)) {
+            it.progressBack(p)
+            assertEquals(p, host.progress, .001f)
+            assertTrue(host.running)
+            assertEquals(AgentMotion.popChanges, host.motion)
+            assertNotNull(nodeSaying("Changes"))
+        }
+        it.activity.onBackPressedDispatcher.onBackPressed()
+        it.rig.frames()
+        it.frame(clock, 2000); it.frame(clock, 3000)
+        assertFalse(host.running)
+        assertEquals(AgentScreen.Chat, host.settled)
+        assertNull(nodeSaying("Changes"))
+        assertNotNull(nodeSaying("More options"))
+        assertEquals("a second close would leave the agent", it.rig.key, it.rig.home.openKey)
+        assertEquals(before, it.opened.view.calls)
+        assertEquals(1, it.rig.ports.opens.size)
+        it.rig.await("Changes reading stops once") { calls.count { call -> call == "leave" } == 1 }
+        it.rig.frames(20)
+        assertEquals(1, calls.count { call -> call == "leave" })
+    }
+
+    @Test fun backInsideAChangesFileReturnsToTheListWithoutSeekingTheHost() = AgentRouteScenario().use {
+        val calls = it.installChangesFile()
+        it.show(chat = true)
+        val host = it.motion()
+        val clock = PausedMotionClock()
+        realMotion()
+        host.animationClock = clock
+        it.changes()
+        it.frame(clock, 0); it.frame(clock, 1000)
+        it.awaitChangesList()
+        assertTrue(semanticsNodes().first { n -> n.descriptions().any { d -> "guide.md" in d } }.click())
+        it.rig.await("Changes file opens") { "open docs/guide.md" in calls && nodeSaying("guide.md") != null }
+        val before = it.opened.view.calls.toList()
+        val progress = host.progress
+        val revision = host.revision
+        it.activity.onBackPressedDispatcher.dispatchOnBackStarted(
+            androidx.activity.BackEventCompat(0f, 100f, 0f, androidx.activity.BackEventCompat.EDGE_LEFT))
+        it.rig.frames()
+        it.progressBack(.5f)
+        assertEquals(progress, host.progress, .001f)
+        assertEquals(revision, host.revision)
+        assertFalse(host.running)
+        assertNotNull(nodeSaying("guide.md"))
+        it.activity.onBackPressedDispatcher.onBackPressed()
+        it.rig.frames()
+        it.rig.await("Back returns to the Changes list") { nodeSaying("Changes") != null && "open null" in calls }
+        assertEquals(1, calls.count { call -> call == "open null" })
+        assertEquals(revision, host.revision)
+        assertFalse(host.running)
+        assertEquals(AgentScreen.Changes, host.settled)
+        assertEquals(it.rig.key, it.rig.home.openKey)
+        assertEquals(before, it.opened.view.calls)
+        assertFalse("returning to the list must not close Changes", "leave" in calls)
+    }
+
+    @Test fun backButtonAndKeyOnTheChangesListCloseExactlyOnce() {
+        for (key in listOf(false, true)) AgentRouteScenario().use {
+            val calls = it.installChangesFile()
+            it.show(chat = true)
+            val host = it.motion()
+            val clock = PausedMotionClock()
+            realMotion()
+        host.animationClock = clock
+            it.changes()
+            it.frame(clock, 0); it.frame(clock, 1000)
+            it.awaitChangesList()
+            val before = it.opened.view.calls.toList()
+            if (key) {
+                val decor = it.activity.window.decorView
+                for (action in listOf(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.ACTION_UP)) {
+                    decor.dispatchKeyEvent(android.view.KeyEvent(action, android.view.KeyEvent.KEYCODE_BACK))
+                }
+                it.rig.frames()
+            } else it.tap("Back")
+            it.frame(clock, 2000); it.frame(clock, 3000)
+            assertNull("Changes closes for key=$key", nodeSaying("Changes"))
+            assertNotNull(nodeSaying("More options"))
+            assertEquals(AgentScreen.Chat, host.settled)
+            assertEquals("one close returns to chat; two would leave it", it.rig.key, it.rig.home.openKey)
+            assertEquals(before, it.opened.view.calls)
+            it.rig.await("Changes closes once for key=$key") { calls.count { call -> call == "leave" } == 1 }
+            it.rig.frames(20)
+            assertEquals(1, calls.count { call -> call == "leave" })
+        }
+    }
+
+    /** These legacy assertions inspect a completed pop without stepping animation frames. */
+    private fun withInstantMotion(body: () -> Unit) {
+        val resolver = org.robolectric.RuntimeEnvironment.getApplication().contentResolver
+        val setting = android.provider.Settings.Global.ANIMATOR_DURATION_SCALE
+        val previous = android.provider.Settings.Global.getString(resolver, setting)
+        android.provider.Settings.Global.putFloat(resolver, setting, 0f)
+        try { body() } finally { android.provider.Settings.Global.putString(resolver, setting, previous) }
+    }
+
+    private var midTransition = false
+
+    private fun AgentRouteScenario.halfwayBack() {
+        if (!midTransition) return
+        realMotion()
+        activity.onBackPressedDispatcher.dispatchOnBackStarted(
+            androidx.activity.BackEventCompat(0f, 100f, 0f, androidx.activity.BackEventCompat.EDGE_LEFT))
+        rig.frames()
+        activity.onBackPressedDispatcher.dispatchOnBackProgressed(
+            androidx.activity.BackEventCompat(100f, 100f, .5f, androidx.activity.BackEventCompat.EDGE_LEFT))
+        rig.frames()
+        assertEquals("the real route must deliver predictive events to its host", .5f, motion().progress, .001f)
+    }
+
+    @Test fun overviewInertSwipesHalfway() { midTransition = true; aSwipeOnAnInertPartOfTheOverviewDoesNotStep() }
+    @Test fun overviewTileAndChipSwipesHalfway() { midTransition = true; aSwipeOnATileOrChipOfTheOverviewDoesNotStep() }
+    @Test fun changesSwipesHalfway() { midTransition = true; aSwipeOnChangesEmptyPartAndRowDoesNotStep() }
+
+    @Test fun chatFocusAndReaderTreeHalfway() = AgentRouteScenario().use {
+        it.show(chat = true)
+        it.edit("draft kept during motion")
+        it.focusChat()
+        it.changes()
+        midTransition = true
+        it.halfwayBack()
+        it.noFocusOrKeyboard("Halfway back from Changes")
+        assertTrue(semanticsNodes().none { n -> n.config.getOrNull(SemanticsActions.SetText) != null })
+    }
+
+    @Test fun terminalKeyboardAndLateInputHalfway() = AgentRouteScenario().use {
+        it.show()
+        val input = it.inputViews().single()
+        input.showKeyboard()
+        val connection = input.onCreateInputConnection(EditorInfo())
+        it.pauseMotion()
+        it.overview()
+        it.seekHalfway()
+        val calls = it.opened.view.calls.toList()
+        connection.commitText("late key during motion", 1)
+        it.rig.frames()
+        assertEquals(calls, it.opened.view.calls)
+        it.noFocusOrKeyboard("Halfway back from overview")
+        assertFalse(input.isFocused)
+    }
+
+    @Test fun composeDraftAndFocusHalfway() = AgentRouteScenario().use {
+        it.show()
+        it.tap("Compose")
+        it.edit("compose draft during motion")
+        it.pauseMotion()
+        it.overview()
+        it.seekHalfway()
+        it.noFocusOrKeyboard("Compose preview halfway back")
+        assertTrue(semanticsNodes().none { n -> n.config.getOrNull(SemanticsActions.SetText) != null })
+        val calls = it.opened.view.calls.toList()
+        it.rig.frames(20)
+        assertEquals(calls, it.opened.view.calls)
+        it.noFocusOrKeyboard("Following frames halfway back")
+    }
+
+    @Test fun lateKeyboardCallbackHalfway() = AgentRouteScenario().use {
+        it.show(chat = true)
+        it.edit("draft under a late callback")
+        it.focusChat()
+        it.changes()
+        midTransition = true
+        it.halfwayBack()
+        it.activity.window.decorView.dispatchApplyWindowInsets(WindowInsets.Builder()
+            .setVisible(WindowInsets.Type.ime(), false).build())
+        it.rig.advance(800)
+        it.noFocusOrKeyboard("Late keyboard callback halfway back")
+        assertEquals(it.rig.key, it.rig.home.openKey)
+    }
+
     private fun haptics() = windowRoots().flatMap(::composeRoots).map { shadowOf(it as View).lastHapticFeedbackPerformed() }
 
     private fun probeSwipe(cover: String, region: String, vertical: Boolean): List<String> = AgentRouteScenario().use {
         it.routePorts = it.rig.ports.withListedChanges()
         it.show()
         val title = it.titleBounds()
+        if (midTransition) it.pauseMotion()
         if (cover == "Overview") it.overview() else it.changes()
         val bounds = when (region) {
             "inert" -> Rect(title.width * .25f, title.top, title.right, title.bottom)
@@ -40,6 +326,7 @@ class AgentRouteLeakTest {
                 semanticsNodes().first { n -> n.descriptions().any { d -> "guide.md" in d } }.boundsInWindow
             }
         }
+        if (midTransition) { it.letMenuClose(); it.seekHalfway() }
         val key = it.rig.home.openKey
         val attaches = it.rig.ports.opens.size
         val calls = it.opened.view.calls.toList()
@@ -87,9 +374,106 @@ class AgentRouteLeakTest {
         })
     }
 
-    @Ignore("needs 5.1")
-    @Test fun onlyTheTopScreensNodesExistHalfwayThroughATransition() {
-        // The transition progress seam belongs to 5.1; do not reference an invented API here.
+    @Test fun onlyTheTopScreensNodesExistHalfwayThroughATransition() = AgentRouteScenario().use {
+        it.show(chat = true)
+        it.edit("hidden draft sentinel")
+        it.pauseMotion()
+        it.changes()
+        it.letMenuClose()
+        it.seekHalfway()
+        val exposed = semanticsNodes()
+        assertTrue("reader tree contains Changes", exposed.any { n -> n.texts() == listOf("Changes") })
+        assertTrue("Changes exposes no chat field to the reader", exposed.none { n -> n.config.getOrNull(SemanticsActions.SetText) != null })
+        assertTrue("outgoing chat really remains composed halfway", unmergedSemanticsNodes().any { n ->
+            n.config.getOrNull(SemanticsActions.SetText) != null
+        })
+        it.noFocusOrKeyboard("Outgoing chat halfway through a push")
+    }
+
+    @Test fun openingChangesWithTheChatFocusedLeavesNoFocusAndTheKeyboardDownHalfway() = AgentRouteScenario().use {
+        it.show(chat = true)
+        it.edit("keep the draft")
+        it.focusChat()
+        it.pauseMotion()
+        it.changes()
+        it.letMenuClose()
+        it.seekHalfway()
+        it.noFocusOrKeyboard("Opening Changes with chat focused")
+        it.rig.frames(20)
+        assertEquals(.5f, it.motion().progress, .001f)
+        it.noFocusOrKeyboard("Following frames under Changes")
+    }
+
+    @Test fun backToTheChatLeavesTheKeyboardDownHalfway() = AgentRouteScenario().use {
+        it.show(chat = true)
+        it.edit("draft comes back")
+        it.focusChat()
+        it.pauseMotion()
+        it.changes()
+        it.seekHalfway()
+        it.tap("Back")
+        it.seekHalfway()
+        assertEquals("draft comes back", it.fieldText())
+        it.noFocusOrKeyboard("Back to chat without a fresh field tap")
+        it.rig.frames(20)
+        assertEquals(.5f, it.motion().progress, .001f)
+        it.noFocusOrKeyboard("Frames after Back to chat")
+    }
+
+    @Test fun theTerminalsKeyboardIsDownAfterTheOverviewAndAKeyReachesNoSinkHalfway() = AgentRouteScenario().use {
+        it.show()
+        val input = it.inputViews().single()
+        input.showKeyboard()
+        val connection = input.onCreateInputConnection(EditorInfo())
+        assertTrue("fixture terminal keyboard up", it.keyboardUp())
+        it.pauseMotion()
+        it.overview()
+        it.seekHalfway()
+        val before = it.opened.view.calls.toList()
+        connection.commitText("late key", 1)
+        it.rig.frames()
+        assertEquals("key under overview reached a terminal sink", before, it.opened.view.calls)
+        it.noFocusOrKeyboard("Opening overview from terminal")
+        assertFalse("terminal Android input view still holds focus under overview", input.isFocused)
+    }
+
+    @Test fun aComposeSheetWithTextComesBackWithoutFocusHalfway() = AgentRouteScenario().use {
+        it.show()
+        it.tap("Compose")
+        it.edit("compose text survives")
+        it.rig.await("compose field focused") { unmergedSemanticsNodes().any { n -> n.focused() } }
+        it.pauseMotion()
+        it.overview()
+        it.seekHalfway()
+        it.back()
+        it.seekHalfway()
+        assertEquals("compose text survives", it.fieldText())
+        assertNotNull(nodeSaying("Paste"))
+        it.noFocusOrKeyboard("Returning to an existing compose sheet")
+        it.rig.frames(20)
+        assertEquals(.5f, it.motion().progress, .001f)
+        it.noFocusOrKeyboard("Frames after returning to compose")
+    }
+
+    @Test fun quickChangesWithALateKeyboardCallbackLeaveNoKeyboardHalfway() = AgentRouteScenario().use {
+        it.show(chat = true)
+        it.edit("draft survives quick covers")
+        it.focusChat()
+        it.pauseMotion()
+        val decor = it.activity.window.decorView
+        Handler(Looper.getMainLooper()).postDelayed({
+            decor.dispatchApplyWindowInsets(WindowInsets.Builder()
+                .setVisible(WindowInsets.Type.ime(), false).build())
+        }, 600)
+        repeat(2) { _ ->
+            it.changes(); it.seekHalfway()
+            it.tap("Back"); it.seekHalfway()
+        }
+        it.rig.advance(800)
+        assertEquals(.5f, it.motion().progress, .001f)
+        it.noFocusOrKeyboard("Quick Changes with late IME-hidden callback")
+        assertEquals("draft survives quick covers", it.fieldText())
+        assertEquals(it.rig.key, it.rig.home.openKey)
     }
 
     private fun AgentRouteScenario.noFocusOrKeyboard(reason: String) {
@@ -109,16 +493,18 @@ class AgentRouteLeakTest {
     }
 
     // red until 5.2
-    @Test fun backToTheChatLeavesTheKeyboardDown() = AgentRouteScenario().use {
-        it.show(chat = true)
-        it.edit("draft comes back")
-        it.focusChat()
-        it.changes()
-        it.back()
-        assertEquals("draft comes back", it.fieldText())
-        it.noFocusOrKeyboard("Back to chat without a fresh field tap")
-        it.rig.frames(20)
-        it.noFocusOrKeyboard("Frames after Back to chat")
+    @Test fun backToTheChatLeavesTheKeyboardDown() = withInstantMotion {
+        AgentRouteScenario().use {
+            it.show(chat = true)
+            it.edit("draft comes back")
+            it.focusChat()
+            it.changes()
+            it.back()
+            assertEquals("draft comes back", it.fieldText())
+            it.noFocusOrKeyboard("Back to chat without a fresh field tap")
+            it.rig.frames(20)
+            it.noFocusOrKeyboard("Frames after Back to chat")
+        }
     }
 
     // red until 5.2
@@ -153,20 +539,22 @@ class AgentRouteLeakTest {
     }
 
     // red until 5.2
-    @Test fun quickChangesWithALateKeyboardCallbackLeaveNoKeyboard() = AgentRouteScenario().use {
-        it.show(chat = true)
-        it.edit("draft survives quick covers")
-        it.focusChat()
-        // Deliver the platform's IME-hidden insets after both rapid round trips.
-        val decor = it.activity.window.decorView
-        Handler(Looper.getMainLooper()).postDelayed({
-            decor.dispatchApplyWindowInsets(WindowInsets.Builder()
-                .setVisible(WindowInsets.Type.ime(), false).build())
-        }, 600)
-        repeat(2) { _ -> it.changes(); it.back() }
-        it.rig.advance(800)
-        it.noFocusOrKeyboard("Quick Changes with late IME-hidden callback")
-        assertEquals("draft survives quick covers", it.fieldText())
-        assertEquals(it.rig.key, it.rig.home.openKey)
+    @Test fun quickChangesWithALateKeyboardCallbackLeaveNoKeyboard() = withInstantMotion {
+        AgentRouteScenario().use {
+            it.show(chat = true)
+            it.edit("draft survives quick covers")
+            it.focusChat()
+            // Deliver the platform's IME-hidden insets after both rapid round trips.
+            val decor = it.activity.window.decorView
+            Handler(Looper.getMainLooper()).postDelayed({
+                decor.dispatchApplyWindowInsets(WindowInsets.Builder()
+                    .setVisible(WindowInsets.Type.ime(), false).build())
+            }, 600)
+            repeat(2) { _ -> it.changes(); it.back() }
+            it.rig.advance(800)
+            it.noFocusOrKeyboard("Quick Changes with late IME-hidden callback")
+            assertEquals("draft survives quick covers", it.fieldText())
+            assertEquals(it.rig.key, it.rig.home.openKey)
+        }
     }
 }

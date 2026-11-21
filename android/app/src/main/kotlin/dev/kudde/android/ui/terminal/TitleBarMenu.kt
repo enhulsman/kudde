@@ -1,5 +1,11 @@
 package dev.kudde.android.ui.terminal
 
+import android.provider.Settings
+import androidx.compose.animation.core.Animatable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
+import dev.kudde.android.ui.agent.AgentMotion
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -71,6 +77,19 @@ private val ShadowRoom = 24.dp
 fun TitleBarMenu(items: List<TitleBarMenuItem>, state: TitleBarMenuState = remember { TitleBarMenuState() }) {
     val c = KuddeTheme.colors
     var open by state::open
+    var present by remember { mutableStateOf(open) }
+    val motion = remember { Animatable(if (open) 1f else 0f) }
+    val resolver = LocalContext.current.contentResolver
+    LaunchedEffect(open) {
+        val reduced = Settings.Global.getFloat(resolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
+        if (open) {
+            present = true
+            if (reduced) motion.snapTo(1f) else motion.animateTo(1f, AgentMotion.springs.getValue("fastSpatial"))
+        } else {
+            if (reduced) motion.snapTo(0f) else motion.animateTo(0f, AgentMotion.springs.getValue("fastEffects"))
+            present = false
+        }
+    }
     val label = stringResource(R.string.title_bar_more)
     val shape = RoundedCornerShape(KuddeRadius.button)
     Box {
@@ -85,13 +104,16 @@ fun TitleBarMenu(items: List<TitleBarMenuItem>, state: TitleBarMenuState = remem
         ) {
             LineIconImage(LineIcon.More, if (open) c.fg else c.muted, 22.dp)
         }
-        if (open) {
+        if (open || present) {
             val density = LocalDensity.current
             val position = remember(density) { MenuPosition(density) }
-            ModalPopup(popupPositionProvider = position, onDismissRequest = { open = false }, shadowRoom = ShadowRoom) {
-                TitleBarMenuPanel(items) { item ->
-                    open = false
-                    item.onClick()
+            ModalPopup(popupPositionProvider = position, onDismissRequest = { open = false }, shadowRoom = ShadowRoom,
+                motionProgress = if (open) motion.value else 1 - motion.value, opening = open) {
+                TitleBarMenuPanel(items, progress = if (open) motion.value else 1f) { item ->
+                    if (open) {
+                        open = false
+                        item.onClick()
+                    }
                 }
             }
         }
@@ -100,7 +122,8 @@ fun TitleBarMenu(items: List<TitleBarMenuItem>, state: TitleBarMenuState = remem
 
 /** The menu itself (`.qmenu`, `.qitem`): popover, a 1 dp border, 12 corners, the chip's shadow, at least 184 dp wide. */
 @Composable
-internal fun TitleBarMenuPanel(items: List<TitleBarMenuItem>, onChoose: (TitleBarMenuItem) -> Unit) {
+internal fun TitleBarMenuPanel(items: List<TitleBarMenuItem>, progress: Float = 1f, onChoose: (TitleBarMenuItem) -> Unit) {
+    val density = LocalDensity.current
     val c = KuddeTheme.colors
     val shape = RoundedCornerShape(KuddeRadius.button)
     Column(
@@ -113,9 +136,14 @@ internal fun TitleBarMenuPanel(items: List<TitleBarMenuItem>, onChoose: (TitleBa
             .border(KuddeBorder.thin, c.border, shape)
             .padding(vertical = 4.dp),
     ) {
-        for (item in items) {
+        for ((index, item) in items.withIndex()) {
             Row(
                 Modifier
+                    .graphicsLayer {
+                        val frame = AgentMotion.menuItem(progress, index)
+                        alpha = frame.alpha
+                        translationY = frame.y * density.density
+                    }
                     .widthIn(min = 184.dp)
                     .heightIn(min = 48.dp)
                     .clickable(role = Role.Button) { onChoose(item) }

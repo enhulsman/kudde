@@ -4,6 +4,8 @@ import androidx.activity.BackEventCompat
 import dev.kudde.android.testing.*
 import org.junit.Assert.*
 import org.junit.Test
+import org.junit.Before
+import org.junit.After
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
@@ -12,6 +14,24 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(qualifiers = "w412dp-h915dp-xhdpi")
 class AgentRouteBackTest {
+    private var previousDurationScale: String? = null
+
+    // These ownership checks inspect completed navigation without advancing motion.
+    // Animated list/file Back is covered in AgentRouteLeakTest on the real host clock.
+    @Before fun useInstantMotionForOwnershipChecks() {
+        val resolver = org.robolectric.RuntimeEnvironment.getApplication().contentResolver
+        val setting = android.provider.Settings.Global.ANIMATOR_DURATION_SCALE
+        previousDurationScale = android.provider.Settings.Global.getString(resolver, setting)
+        android.provider.Settings.Global.putFloat(resolver, setting, 0f)
+    }
+
+    @After fun restoreMotionSetting() {
+        android.provider.Settings.Global.putString(
+            org.robolectric.RuntimeEnvironment.getApplication().contentResolver,
+            android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, previousDurationScale,
+        )
+    }
+
     private fun AgentRouteScenario.start() {
         activity.onBackPressedDispatcher.dispatchOnBackStarted(BackEventCompat(0f, 100f, 0f, BackEventCompat.EDGE_LEFT))
         activity.onBackPressedDispatcher.dispatchOnBackProgressed(BackEventCompat(100f, 100f, .5f, BackEventCompat.EDGE_LEFT))
