@@ -50,7 +50,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.job
 import kotlinx.coroutines.withContext
 
-internal class BackInstance(val predictive: Boolean) {
+internal class BackInstance(val predictive: Boolean, val rightEdge: Boolean = false) {
     val channel = kotlinx.coroutines.channels.Channel<BackEventCompat>(kotlinx.coroutines.channels.Channel.UNLIMITED)
     var job: Job? = null
     var pressed = false
@@ -198,7 +198,10 @@ fun <D : Any> ScreenStackHost(
         state.durationScale = scale()
         val from = latestBackSource()
         val to = latestBackTarget()
-        state.predictive = false
+        // Known at the start, so the frames before the first progress event already
+        // keep the base still (a later flip would jump it from -0.12 W to 0).
+        state.rightEdge = instance.rightEdge
+        state.predictive = instance.predictive && (to == null || from == AgentScreen.Changes)
         var lastProgress = 0f
         var lastX = 0f
         var firstY: Float? = null
@@ -228,11 +231,9 @@ fun <D : Any> ScreenStackHost(
                     lastTime = now
                     if (state.durationScale != 0f) state.seekable.seekTo(lastProgress, 1f)
                 }
-                if (state.predictive && hadEvents && !AgentMotion.finishesBack(lastProgress, velocity)) {
-                    state.cancel()
-                    state.gesture = false
-                    return@withContext
-                }
+                // The system decides: a commit finishes from where the finger is, a cancel
+                // (handleOnBackCancelled) cancels this job and rolls back below.
+                if (!hadEvents) state.predictive = false
                 if (state.predictive && hadEvents) {
                     state.releaseStart = lastProgress
                     state.releaseVelocityDp = velocity
@@ -274,8 +275,8 @@ fun <D : Any> ScreenStackHost(
     val backCallback = remember {
         object : OnBackPressedCallback(true) {
             var instance: BackInstance? = null
-            fun launch(predictive: Boolean): BackInstance {
-                val next = BackInstance(predictive)
+            fun launch(predictive: Boolean, rightEdge: Boolean = false): BackInstance {
+                val next = BackInstance(predictive, rightEdge)
                 instance = next
                 next.job = scope.launch {
                     try { handleBackLatest(next, next.channel.receiveAsFlow()) } finally { if (instance === next) instance = null }
@@ -284,7 +285,7 @@ fun <D : Any> ScreenStackHost(
             }
             override fun handleOnBackStarted(backEvent: BackEventCompat) {
                 instance?.job?.cancel()
-                launch(true)
+                launch(true, backEvent.swipeEdge == BackEventCompat.EDGE_RIGHT)
             }
             override fun handleOnBackProgressed(backEvent: BackEventCompat) { instance?.channel?.trySend(backEvent) }
             override fun handleOnBackPressed() {
@@ -399,7 +400,7 @@ fun <D : Any> ScreenStackHost(
                                         val remaining = if (release == null) 1f else
                                             (1 - (p - release) / (1 - release).coerceAtLeast(Float.MIN_VALUE)).coerceIn(0f, 1f)
                                         frame = AgentFrame(
-                                            x = -AgentMotion.baseShift * size.width * (1 - AgentMotion.backBaseRelease * follow) * remaining,
+                                            x = AgentMotion.predictiveBaseX(follow, state.rightEdge, size.width) * remaining,
                                             dim = (1 - AgentMotion.backDimRelease * follow) * remaining,
                                         )
                                     }

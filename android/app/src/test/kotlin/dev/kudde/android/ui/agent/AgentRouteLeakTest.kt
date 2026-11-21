@@ -219,7 +219,10 @@ class AgentRouteLeakTest {
         assertEquals(dev.kudde.android.ui.agents.AgentKey("workstation", "t2"), it.rig.home.openKey)
     }
 
-    @Test fun releaseBelowTheLeaveThresholdCancelsWithoutClearingFocus() = AgentRouteScenario().use {
+    // Changed with motion.md (task 029): was releaseBelowTheLeaveThresholdCancelsWithoutClearingFocus,
+    // which expected a press at 0.2 to cancel; cancelling is now only handleOnBackCancelled
+    // (predictiveLeaveSeeksCancelsAndKeepsChatFocus covers it).
+    @Test fun aShallowCommittedLeaveLeavesOnce() = AgentRouteScenario().use {
         it.show(chat = true)
         it.focusChat()
         val before = it.opened.view.calls.toList()
@@ -235,9 +238,9 @@ class AgentRouteLeakTest {
         it.rig.frames()
         it.frame(clock, 0); it.frame(clock, 1000)
         assertFalse(host.running)
-        assertEquals(it.rig.key, it.rig.home.openKey)
-        assertEquals(before, it.opened.view.calls)
-        assertTrue(unmergedSemanticsNodes().any { n -> n.focused() })
+        assertNull("a press at 0.2 leaves, the system committed it", it.rig.home.openKey)
+        assertEquals(1, it.opened.view.calls.count { c -> c == "detach" })
+        assertEquals(before.count { c -> c == "detach" } + 1, it.opened.view.calls.count { c -> c == "detach" })
     }
 
     @Test fun twoAnimatedBacksWithNoFramePopThenLeaveOnce() = AgentRouteScenario().use {

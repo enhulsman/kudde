@@ -93,9 +93,6 @@ object AgentMotion {
     val backRadius = 28f
     val backBaseRelease = .45f
     val backDimRelease = .55f
-    val backThreshold = .33f
-    val backFling = 450f
-    val backFlingThreshold = .04f
     val graphiteAlpha = .42f
     val paperAlpha = .16f
     val paperRed = 20
@@ -104,7 +101,7 @@ object AgentMotion {
     // Numeric contract includes the prototype's distance denominator (.55), and bounds (0, 1).
     val sourceNumbers = setOf(-baseShift, -backFollowLimit, 0f, 1f, fadeScale, baseShift, 42f, paperRed.toFloat(), paperGreen.toFloat(), paperBlue.toFloat(), 16f,
         backScale, backShift, backFollowLimit, backRadius, backBaseRelease, backDimRelease,
-        backThreshold, backFling, backFlingThreshold, tileRadius, tileStartMs.toFloat(), tileStaggerMs.toFloat(),
+        tileRadius, tileStartMs.toFloat(), tileStaggerMs.toFloat(),
         tileOpacityRate, tileScale, gridColumns.toFloat(), gridPadding, gridGap, labelHeight, tileExitScale,
         menuScale, menuOpacityRate, itemRate, itemOffset, menuExitScale, titleFadeMs.toFloat())
 
@@ -127,8 +124,9 @@ object AgentMotion {
     fun scrim(dark: Boolean) = if (dark) Color.Black.copy(alpha = graphiteAlpha)
         else Color(paperRed, paperGreen, paperBlue).copy(alpha = paperAlpha)
     fun tileDelay(index: Int) = tileStartMs + tileStaggerMs * index
-    fun finishesBack(progress: Float, velocity: Float) = progress > backThreshold ||
-        (progress > backFlingThreshold && velocity > backFling)
+    /** The base under a predictive gesture takes the swipe edge's side: from the right it comes in from the right. */
+    fun predictiveBaseX(p: Float, rightEdge: Boolean, width: Float) =
+        baseShift * width * (1 - backBaseRelease * p) * if (rightEdge) 1 else -1
     fun predictiveFrame(p: Float, rightEdge: Boolean, dyDp: Float) = AgentFrame(
         scale = 1 - (1 - backScale) * p,
         x = backShift * p * if (rightEdge) -1 else 1,
