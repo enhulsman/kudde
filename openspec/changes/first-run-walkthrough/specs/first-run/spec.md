@@ -8,8 +8,8 @@ approval before it ships; the full list, with the strings they replace, is in
 ### Requirement: First start shows a full-screen welcome before the app
 On a fresh install the app SHALL show a full-screen welcome before home,
 Machines, or an incoming navigation destination. It SHALL show kudde's existing
-mark, "Set up your first machine", a one-line description, "Set up in three
-steps", the three numbered steps of design WL4 to WL6, and one main action
+mark, "Set up your first machine", a one-line description, "Set up in four
+steps", the four numbered steps of design WL4 to WL6 and WL13, and one main action
 "Set up a machine". It SHALL request no permission and start no connection.
 On the first visit the main action SHALL open full-screen setup at step 1,
 or the screen-lock notice first if needed; with a checkpoint it SHALL resume
@@ -37,7 +37,7 @@ once-only welcome. Clearing app data SHALL restore first setup.
 #### Scenario: First launch
 - **GIVEN** a fresh install, with or without a screen lock
 - **WHEN** the person opens kudde
-- **THEN** the separate welcome shows the mark, headline, one line, three numbered steps and main setup button before any app screen, connection or permission prompt, with no skip action
+- **THEN** the separate welcome shows the mark, headline, one line, four numbered steps and main setup button before any app screen, connection or permission prompt, with no skip action
 
 #### Scenario: Every start until a real machine connects
 - **GIVEN** no real machine has connected and the person has left the welcome or any unfinished setup step
@@ -52,7 +52,7 @@ once-only welcome. Clearing app data SHALL restore first setup.
 #### Scenario: Successful first connection
 - **GIVEN** setup is unfinished
 - **WHEN** a real machine connects and step 3 shows
-- **THEN** first setup is marked completed and the connected screen offers the normal routes to agents or starting one
+- **THEN** first setup is marked completed, and step 3 offers "Continue" to step 4, whose routes to agents or starting one are the normal ones
 
 #### Scenario: Existing successful installation
 - **GIVEN** a machine has a recorded successful connection and no first-setup progress is stored
@@ -132,24 +132,26 @@ SHALL keep today's "Could not start the connections" with its reason and
 - **WHEN** the person opens kudde
 - **THEN** after the first welcome main action, or on home after first connection, "Could not start the connections", the reason and "Try again" show; first setup remains on the failure until it can continue
 
-### Requirement: Setup is three steps, the same for every machine
-Adding a machine SHALL be one flow of three steps in a fixed order, each on
-its own screen under the title "Set up a machine" with "Step n of 3": step 1
-"Where is it?", step 2 "This phone's key", step 3 "Connected". The welcome's
+### Requirement: Setup is four steps, the same for every machine
+Adding a machine SHALL be one flow of four steps in a fixed order, each on
+its own screen under the title "Set up a machine" with "Step n of 4": step 1
+"Where is it?", step 2 "This phone's key", step 3 "Connected", step 4
+"Alerts". The welcome's
 "Set up a machine" and the Machines screen's "Add machine" SHALL both open
 step 1. A step SHALL be reached only when the one before it is done: step 2
 only for a machine that is listed, step 3 only for a machine that is
-connected.
+connected, step 4 only from step 3. Steps 1 to 3 SHALL NOT be skipped; step
+4 SHALL always offer a way on without alerts.
 
 #### Scenario: From the welcome
 - **GIVEN** no saved setup checkpoint
 - **WHEN** the person taps "Set up a machine"
-- **THEN** step 1 shows, titled "Set up a machine", reading "Step 1 of 3" and "Where is it?"
+- **THEN** step 1 shows, titled "Set up a machine", reading "Step 1 of 4" and "Where is it?"
 
 #### Scenario: A second machine
 - **GIVEN** one machine is connected
 - **WHEN** the person taps "Add machine" on the Machines screen
-- **THEN** the same full-screen step 1 shows directly, without the welcome, and follows the same key choices and connected screen
+- **THEN** the same full-screen step 1 shows directly, without the welcome, and follows the same key choices, connected screen and alerts step
 
 #### Scenario: Steps cannot be skipped
 - **GIVEN** step 1 shows and nothing was reached yet
@@ -714,41 +716,99 @@ retry.
 - **WHEN** the person cancels "Unlock the SSH key"
 - **THEN** step 2 reads "Phone key locked" with "Unlock", and no prompt comes back by itself
 
-### Requirement: Step 3 leads to the first agent
+### Requirement: Step 3 says the machine is connected
 Step 3 SHALL say that the machine is connected and name its herdr-core
-version. When the machine lists agents, it SHALL say how many and offer
-"Show my agents", which opens the home. When it lists none, it SHALL say
-so, say that an agent started at the desk in herdr shows up by itself, and
-offer "Start a terminal or agent", which opens the "New terminal" sheet on
-that machine, and "Done". Step 3 SHALL say in one line where alerts are
-turned on, and SHALL NOT ask for the notification permission.
+version. When the machine lists agents, it SHALL say how many; when it
+lists none, it SHALL say so and say that an agent started at the desk in
+herdr shows up by itself. Its one action SHALL be "Continue", which opens
+step 4. Step 3 SHALL NOT ask for the notification permission.
 
 #### Scenario: Agents are running
 - **GIVEN** workstation runs two agents
 - **WHEN** step 3 shows
-- **THEN** it reads "workstation is connected.", the herdr-core version and "2 agents are running there.", with "Show my agents"
-
-#### Scenario: To the list
-- **WHEN** the person taps "Show my agents"
-- **THEN** the home shows both agents, the ones that need the person first
+- **THEN** it reads "workstation is connected.", the herdr-core version and "2 agents are running there.", with "Continue"
 
 #### Scenario: No agents yet
 - **GIVEN** workstation runs no agent
 - **WHEN** step 3 shows
-- **THEN** it reads "No agents are running there yet.", how they show up, "Start a terminal or agent" and "Done"
-
-#### Scenario: Starting one
-- **WHEN** the person taps "Start a terminal or agent"
-- **THEN** the "New terminal" sheet opens with workstation chosen
+- **THEN** it reads "No agents are running there yet." and how they show up, with "Continue"
 
 #### Scenario: An agent appears while step 3 shows
 - **GIVEN** step 3 reads "No agents are running there yet."
 - **WHEN** an agent starts on workstation
-- **THEN** the step reads "1 agent is running there." and offers "Show my agents"
+- **THEN** the step reads "1 agent is running there."
 
 #### Scenario: The connection drops on step 3
 - **WHEN** the machine goes out of reach while step 3 shows
-- **THEN** the step says so in the words of the failure table and keeps "Done"; it does not go back to step 2
+- **THEN** the step says so in the words of the failure table and keeps "Continue"; it does not go back to step 2
+
+### Requirement: Step 4 offers alerts and leads to the first agent
+Step 4 SHALL say what alerts do (an agent that needs the person or has
+finished, also while kudde is closed) and what they need: a UnifiedPush app
+such as ntfy on the phone, and kudde-push on the machine. Its main action
+"Turn on alerts" SHALL ask for the notification permission, the only place
+in setup that asks, then register with the UnifiedPush app; once this
+machine's `kudde-push` document holds the registration, the step SHALL send
+a test alert by itself and say whether it arrived within 30 seconds. When
+alerts are already on on this phone, step 4 SHALL say so, register this
+machine as the machine card does, and offer "Send test alert" instead of
+"Turn on alerts". Each way it stops SHALL be said on the step with what to
+do: no UnifiedPush app, notifications not allowed (with "Allow", which opens
+the app's notification settings), waiting for the UnifiedPush app, and no
+test alert within 30 seconds (naming kudde-push on that machine and the
+setup guide), each with "Try again" where trying again can help.
+
+Step 4 SHALL NOT block: whatever its state, it SHALL show the routes on.
+When the machine lists agents, "Show my agents", which opens the home; when
+it lists none, "Start a terminal or agent", which opens the "New terminal"
+sheet on that machine, and "Done", which opens the home. Leaving step 4
+without alerts SHALL change nothing; the machine card's Alerts row offers
+the same later. Step 4 SHALL NOT be part of the resume checkpoint: first
+setup is complete at step 3, so after a process death kudde opens the home.
+Back on step 4 SHALL return to step 3.
+
+#### Scenario: Alerts turned on
+- **GIVEN** step 4 for workstation, ntfy installed, kudde-push running on workstation, and alerts off on this phone
+- **WHEN** the person taps "Turn on alerts" and allows notifications
+- **THEN** kudde registers with ntfy, writes the registration to workstation's `kudde-push`, a test alert from workstation arrives, and the step says alerts reach this phone
+
+#### Scenario: Not now
+- **GIVEN** step 4 for workstation, which runs two agents, with alerts off
+- **WHEN** the person taps "Show my agents"
+- **THEN** the home shows both agents, the ones that need the person first, no permission was asked, and workstation's card reads alerts off with "Turn on"
+
+#### Scenario: No agents yet
+- **GIVEN** workstation runs no agent
+- **WHEN** step 4 shows
+- **THEN** it offers "Turn on alerts", "Start a terminal or agent" and "Done"
+
+#### Scenario: Starting one
+- **WHEN** the person taps "Start a terminal or agent" on step 4
+- **THEN** the "New terminal" sheet opens with workstation chosen
+
+#### Scenario: No UnifiedPush app
+- **GIVEN** no UnifiedPush app is installed
+- **WHEN** the person taps "Turn on alerts"
+- **THEN** the step says alerts need a UnifiedPush app such as ntfy, offers "Try again", and still shows the routes on
+
+#### Scenario: Notifications refused
+- **WHEN** the person taps "Turn on alerts" and denies the notification permission
+- **THEN** the step says notifications are not allowed and offers "Allow"; no registration is written
+
+#### Scenario: kudde-push does not answer
+- **GIVEN** alerts are registered with ntfy and kudde-push does not run on workstation
+- **WHEN** 30 seconds pass after the test was sent
+- **THEN** the step says no test alert came, names kudde-push on workstation and the setup guide, and offers "Try again"
+
+#### Scenario: Alerts already on
+- **GIVEN** alerts are on on this phone for another machine and workstation was just added from Machines
+- **WHEN** step 4 shows
+- **THEN** it says alerts are on, registers workstation, offers "Send test alert", and sends nothing until the person taps it
+
+#### Scenario: Leaving the app on step 4
+- **GIVEN** step 4 for workstation during first setup
+- **WHEN** Android ends the app's process in the background and the person returns
+- **THEN** the home shows, first setup stays completed, and workstation's card holds the alerts state
 
 ### Requirement: The title bar explains itself once
 The app SHALL show a hint under the title bar the first time a terminal
@@ -890,7 +950,7 @@ SHALL NOT open home or Machines. For later additions after first completion,
 Back from step 1 SHALL return to the opener and remove only a machine added
 by that visit which was never reached; Back from step 2 SHALL open Machines
 with the machine listed. Step 3 follows a successful real connection and
-Back SHALL open Machines. No other typed or added data SHALL be dropped,
+Back SHALL open Machines; Back from step 4 SHALL return to step 3. No other typed or added data SHALL be dropped,
 except a password, which is never kept (see "The password is never kept").
 
 #### Scenario: Sending the command to yourself
@@ -942,7 +1002,7 @@ scroll, with no text cut off and no button off screen without scrolling.
 
 #### Scenario: Arriving on step 2 with TalkBack
 - **WHEN** step 2 opens with TalkBack on
-- **THEN** it reads "Step 2 of 3, This phone's key", not the command
+- **THEN** it reads "Step 2 of 4, This phone's key", not the command
 
 #### Scenario: A failure with TalkBack
 - **WHEN** "workstation did not accept the phone key." appears

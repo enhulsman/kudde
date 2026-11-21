@@ -52,9 +52,10 @@ one sign-in of D12, which the person chooses.
 ## Goals / Non-Goals
 
 **Goals:**
-- Before anything is asked: what setup needs, in three points.
+- Before anything is asked: what setup needs, in four points.
 - The strict path as three forward steps, with the two desk actions in one
-  command and nothing explained only in the README.
+  command and nothing explained only in the README, then alerts as a fourth
+  step that never blocks.
 - Every way setup stops says what happened and what to do, on the step.
 - Setup ends on the first agent, or on the way to start one.
 
@@ -62,8 +63,6 @@ one sign-in of D12, which the person chooses.
 - Any change to what is trusted or signed, or to the key's restrictions.
 - A demo mode, pairing by QR code, finding machines on the network
   (decisions 3 and 7 of the proposal).
-- Alert setup inside the walkthrough: it needs `kudde-push` and an ntfy
-  server, and keeps its place on the machine's card.
 - The local network permission (D9).
 
 ## Decisions
@@ -74,7 +73,7 @@ Owner's answers of 2026-11-22 supersede the empty-home proposal and settle
 decision 12: there is no way out before a real machine is connected. First
 start shows a separate full screen before home, Machines or incoming
 navigation: kudde's existing ear-tag mark, WL1 headline, WL2 one-line description,
-WL4 to WL6 as three numbered steps, WL7 as the one main button and WL9 as a help
+WL4 to WL6 and WL13 as four numbered steps, WL7 as the one main button and WL9 as a help
 link if approved. No skip action. No demo button: decision 3 remains open;
 any future demo entered from welcome must lead back into setup.
 
@@ -268,7 +267,8 @@ is worked out from the machine, and only ever moves forward by itself:
   not presenting one (`HostKeyUnconfirmed`): step 1, with its address,
   user and port filled in;
 - connected: step 3, held until the person leaves it, so a connection
-  that drops while it shows does not bounce them back;
+  that drops while it shows does not bounce them back; step 4 is reached
+  only by "Continue" on step 3, never worked out from state (D13);
 - anything else: step 2.
 
 A saved furthest step takes precedence over these initial-state defaults.
@@ -561,6 +561,44 @@ also used inside `setup_command`, so one source) and
 `setup_with_password(host, port, user, pinned, password, spki, comment)`
 plus the probe, exported over uniffi. The phone key signs nothing here.
 
+### D13. Step 4 offers alerts, and never blocks
+
+Owner's answer of 2026-11-22: setting up alerts becomes a fourth step after
+Connected (it was a non-goal before). What it builds on is already there:
+the machine card's Alerts row (`MachinesModel.kt`, `AlertSetup` Off,
+Waiting, NoDistributor, Failed; not allowed; registered; the test alert
+through `kudde-push`), the permission request at alert setup
+(android-client-v1 `alerts`), and registration on every connected machine
+once alerts are on. Step 4 is that row's flow on a full screen, with words
+for someone who has not met UnifiedPush.
+
+Picks for the owner (drafts, part of decision 8's review; confidence
+moderate that each is what he wants):
+
+1. **Step 4 never blocks.** First setup is complete at step 3 (D1,
+   decision 12 unchanged). Step 4 always shows the routes on (C4, or C6 and
+   C7), which act as "not now"; there is no separate skip button. *Over* a
+   "Not now" button: one more button, and the routes are needed anyway.
+2. **Step 3 ends with "Continue".** The routes to agents move to step 4, so
+   setup still ends on the first agent or the way to start one. *Over*
+   keeping them on step 3 too: two screens offering the same exit.
+3. **The test goes by itself once.** After "Turn on alerts" and a written
+   registration, kudde sends one test alert without another tap: the
+   person asked for alerts, and the test proves the whole path, kudde-push
+   included. When alerts were already on (a later machine), the step offers
+   "Send test alert" and sends nothing unasked.
+4. **Not resumed.** Step 4 is not in the checkpoint; after a process death
+   the home opens, and the card's Alerts row holds the same state. Back on
+   step 4 returns to step 3.
+5. **The welcome lists four steps** (WL3, WL6 reworded, WL13 "if you
+   like"), so it does not promise three and show four.
+6. **No store link for ntfy.** D10 keeps one link out (the setup guide);
+   AL3 and AL8 name ntfy and the guide covers installing it and kudde-push.
+
+The step counter reads "Step n of 4" on every step. The hub needs nothing
+new: registration and the test request already go through the `kudde-push`
+document.
+
 ## New and changed screens (each needs the owner's sign-off)
 
 All use existing tokens, Geist, chrome background, buttons, MonoBox and
@@ -571,13 +609,14 @@ use the stable ids below when drawing, leaving existing renders untouched.
 
 | Status / legacy reference | Stable id | Screen and composition |
 |---|---|---|
-| Changed plan 13 | first-run-welcome | Full screen, existing mark, headline, one line, three numbered steps, one main WL7 button; WL9 help link, no skip action |
+| Changed plan 13 | first-run-welcome | Full screen, existing mark, headline, one line, four numbered steps, one main WL7 button; WL9 help link, no skip action |
 | Changed plan 14 | first-run-lock | Full-screen lock notice after welcome, without a bypass; home notice variant after completion |
 | Changed plan 15 | first-run-address | Full-screen step 1, ordered fields, waiting and reach failures |
 | New (replaces old 20) | first-run-key-choices | Full-screen step 2 with heading, machine/user, two adjacent choices R1/R17, R2/R18 descriptions, R19 restriction note; stacked large-text variant |
 | Changed plan 16 | first-run-manual | Manual detail within full-screen step 2, command, Copy/Share, restriction notes, compare button, both choices |
 | Changed plan 17 | first-run-key-refused | Shared step 2 after rejection, both choices password-once first, retry; R16 variant after installation |
-| Changed plan 18 | first-run-connected | Full-screen step 3, machine/version, count, agents/start/Done and alerts line |
+| Changed plan 18 | first-run-connected | Full-screen step 3, machine/version, count, Continue |
+| New | first-run-alerts | Full-screen step 4: what alerts need, Turn on alerts, the test's waiting and result lines, each stop with its action; the routes on (agents/start/Done) always shown; the already-on variant with Send test alert |
 | Changed existing 8 | first-run-trust | Existing trust dialog with manual wording D1/D2 |
 | Changed existing 1 | first-run-home | Home with unfinished setup notice; empty-home after first connection WL11/WL12 variant |
 | Changed plan 19 | first-run-hint | Terminal and chat, one-cell and multi-cell maps, G2 explaining one-pane bounce; TalkBack G6, cursor and input uncovered |
@@ -586,7 +625,7 @@ use the stable ids below when drawing, leaving existing renders untouched.
 | New | machines-key-choices | Listed rejected-key card with both choices in order, Add machine entry; previously connected and imported variants |
 | Gone | old welcome-on-home / old 20 | No welcome block repeated on empty home; no command-first screen with password action beneath it; no Getting around setup screen |
 
-Goldens in graphite and paper; welcome, both choice layouts, all three steps,
+Goldens in graphite and paper; welcome, both choice layouts, all four steps,
 password detail and hint at 2x text. Each changed or new render needs owner
 sign-off before production screens. No signed-off checkpoint changes here.
 
@@ -601,10 +640,11 @@ replaces in `strings.xml`.
 |---|---|---|
 | WL1 | Set up your first machine | No machines yet |
 | WL2 | See which agents need you, read their work and reply on your own machines. | Add a machine that runs herdr-core to see its agents here. |
-| WL3 | Set up in three steps | new |
+| WL3 | Set up in four steps | new (was "three steps" before D13) |
 | WL4 | 1 · Find your machine / Linux or WSL running herdr-core and OpenSSH, on the same Wi-Fi or VPN as your phone. | new |
 | WL5 | 2 · Add this phone's key / kudde uses your password once, or you run one command yourself. | new |
-| WL6 | 3 · Open your agents / Connect and start using your machine from your phone. | new |
+| WL6 | 3 · Connect / kudde checks the machine and shows how many agents run there. | new (D13 replaces "Open your agents") |
+| WL13 | 4 · Turn on alerts, if you like / Hear when an agent needs you, also with kudde closed. | new (D13) |
 | WL7 | Set up a machine | Add machine |
 | WL8 | Import a machine list | existing Machines action, not on welcome |
 | WL11 | No machines yet | retained on empty home after first connection |
@@ -623,7 +663,7 @@ replaces in `strings.xml`.
 | Id | Text | Was |
 |---|---|---|
 | S1 | Set up a machine | Add machine |
-| S2 | Step %1$d of 3 | new |
+| S2 | Step %1$d of 4 | new |
 | A1 | Where is it? | new |
 | A2 | Address · hint: workstation or 192.0.2.10 · help: The machine's name on your network or VPN, or its IP address. | Host |
 | A3 | User · hint: your login name there | User |
@@ -678,14 +718,32 @@ trust: "Phone key locked", "Unlock", and the too-old texts.
 | C1 | Connected | new |
 | C2 | %1$s is connected. | new |
 | C3 | 1 agent is running there. / %1$d agents are running there. | new |
-| C4 | Show my agents | new |
 | C5 | No agents are running there yet. One you start at your desk in herdr shows up here by itself. | new |
-| C6 | Start a terminal or agent | new |
-| C7 | Done | new |
-| C8 | Alerts while the app is closed are turned on per machine, under Machines. | new |
+| C9 | Continue (step 3's one action; D13) | new |
 | P1 | Add it yourself (machine card choice) | One line for this machine's authorized_keys |
 | P2 | To let this phone into a machine, run this there, signed in as the user your agents run under: | Add this line to ~/.ssh/authorized_keys of the user you sign in as on each machine. |
 | P3 | Copy only the key line | Copy |
+
+**Step 4, alerts** (D13; drafts awaiting approval. C4, C6 and C7 moved here
+from step 3; C8 is gone, step 4 replaces it. The existing alert texts in
+`strings.xml` are reused where named.)
+
+| Id | Text | Was |
+|---|---|---|
+| AL1 | Alerts | new (step heading) |
+| AL2 | kudde can tell you when an agent needs you or has finished, also while the app is closed. | new |
+| AL3 | It needs two things: a UnifiedPush app such as ntfy on this phone, and kudde-push running on %1$s. The setup guide shows how to install kudde-push. | new |
+| AL4 | Turn on alerts | `alerts_turn_on` "Turn on" on the card |
+| AL5 | Sending a test alert from %1$s… | `alerts_test_waiting` "Waiting for the test alert" |
+| AL6 | Alerts reach this phone. | `alert_test_text`, same words |
+| AL7 | No test alert from %1$s within 30 seconds. / Check that kudde-push runs there; the setup guide shows how. | `alerts_test_missed` |
+| AL8 | Alerts need a UnifiedPush app, such as ntfy. Install one, then try again. | `alerts_no_distributor` |
+| AL9 | Waiting for the UnifiedPush app… | `alerts_waiting` |
+| AL10 | Notifications are not allowed for kudde. / Allow | `alerts_not_allowed`, `alerts_allow` |
+| AL11 | Alerts are on on this phone. / Send test alert | new / `alerts_test` |
+| C4 | Show my agents | new (from step 3) |
+| C6 | Start a terminal or agent | new (from step 3) |
+| C7 | Done | new (from step 3) |
 
 **The title bar hint** (drafts awaiting approval; they describe the
 gestures of `spaces-navigation` and change if those change; they replace
