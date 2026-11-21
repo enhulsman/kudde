@@ -69,6 +69,9 @@ import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
@@ -522,6 +525,7 @@ private fun QueueStripRow(strip: QueueStrip, onClick: () -> Unit) {
                 drawRect(c.border, size = size.copy(height = KuddeBorder.thin.toPx()))
                 drawRect(c.blocked, size = size.copy(width = KuddeBorder.signature.toPx()))
             }
+            .cancelTapOnDrag()
             .clickable(role = Role.Button, onClick = onClick)
             .semantics { contentDescription = label }
             .padding(start = 16.dp, end = 14.dp),
@@ -541,6 +545,24 @@ private fun QueueStripRow(strip: QueueStrip, onClick: () -> Unit) {
             overflow = TextOverflow.Ellipsis,
         )
         ChevronIcon(Chevron.Up, 16.dp, c.muted)
+    }
+}
+
+/**
+ * A press that moves past touch slop is a drag, never a tap (spaces spec, "Steps start only on the
+ * title bar"): the drag is consumed before the clickable below sees it, which cancels its click.
+ * A clickable alone keeps the press while the finger stays inside its wide bounds.
+ */
+internal fun Modifier.cancelTapOnDrag(): Modifier = pointerInput(Unit) {
+    awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+        var dragged = false
+        do {
+            val event = awaitPointerEvent(PointerEventPass.Initial)
+            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+            if (!dragged && (change.position - down.position).getDistance() > viewConfiguration.touchSlop) dragged = true
+            if (dragged) event.changes.forEach { it.consume() }
+        } while (event.changes.any { it.pressed })
     }
 }
 
