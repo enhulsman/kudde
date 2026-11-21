@@ -140,6 +140,33 @@ class ModalPopupWindowTest {
         }
     }
 
+    /**
+     * On a phone the popup's window starts below the status bar while the anchor is in the
+     * activity's edge-to-edge window: the panel must be placed by screen positions, not
+     * by the layer's in-window position (phone check, 21 Nov: the menu sat a status bar too low).
+     */
+    @Test
+    fun thePanelSitsAtTheAnchorWhenThePopupWindowStartsLowerThanTheActivity() {
+        var panel = Rect.Zero
+        val underAnchor = object : PopupPositionProvider {
+            override fun calculatePosition(anchorBounds: IntRect, windowSize: IntSize,
+                layoutDirection: LayoutDirection, popupContentSize: IntSize) = IntOffset(anchorBounds.left, anchorBounds.bottom)
+        }
+        controller.get().setContent {
+            ModalPopupLayer(
+                anchorBounds = IntRect(10, 240, 50, 280), popupPositionProvider = underAnchor,
+                onDismissRequest = {},
+                // The activity's window starts 100 px above the window this layer is in.
+                parentWindowOnScreen = { androidx.compose.ui.geometry.Offset(0f, -100f) },
+            ) {
+                Box(Modifier.size(100.dp, 80.dp).onGloballyPositioned { panel = it.boundsInWindow() })
+            }
+        }
+        BoundedFrames.step(4)
+        assertEquals("anchor bottom 280 in the activity is 180 in the popup's window", 180f, panel.top, .5f)
+        assertEquals(10f, panel.left, .5f)
+    }
+
     @Test
     fun aTapInTheShadowRoomClosesWithoutReachingBelow() {
         val touches = showLayer()
