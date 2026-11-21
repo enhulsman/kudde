@@ -574,8 +574,8 @@
       "render": "spaces-dark, spaces-light, terminal-map, tab-overview",
       "size": "28x20 on a tab line, in an overview tab and in the title bar; larger above the overview's row fallback",
       "cell": "one per pane, placed and sized by the splits; 1 border, radius 2, 1 gap",
-      "states": "needs you: filled blocked; finished unseen: filled done; working: outlined working; otherwise outlined border; placeholder: dashed border; in the title bar the open terminal's cell filled fg",
-      "titleBar": "a 48 dp button, spoken 'Tab overview, terminal N of M'; absent in a tab of one pane and for a terminal in no pane",
+      "states": "needs you: filled blocked; finished unseen: filled done; working: outlined working; otherwise (a plain shell) outlined muted, so it stands out from the title bar at 3:1 or more; placeholder: dashed muted; in the title bar the open terminal's cell filled fg, the only cell filled in fg",
+      "titleBar": "a 48 dp button, spoken 'Tab overview, terminal N of M'; a tab of one pane shows one marked cell; absent for a terminal in no pane",
       "spoken": "'Tab <name>, N terminals[, N needs you]'; counts stops only"
     },
     "spaceHeader": {

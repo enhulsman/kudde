@@ -1064,9 +1064,10 @@ fun terminalUi(snapshot: HubSnapshot, key: AgentKey, res: android.content.res.Re
 /**
  * The tab that holds [key]'s pane, as the title bar's map draws it (spaces
  * spec, "The title bar shows where the terminal sits"): null for a terminal in
- * no pane (loose, a sub-agent's vacant pane, no layout) and in a tab of one
- * pane. The last layout read stays while the machine is out of reach, as in
- * the Spaces view. Counted over the stops: the terminal cells the phone lists.
+ * no pane (loose, a sub-agent's vacant pane, no layout). A tab of one pane
+ * shows one marked cell. The last layout read stays while the machine is out
+ * of reach, as in the Spaces view. Counted over the stops: the terminal cells
+ * the phone lists.
  */
 fun titleMap(snapshot: HubSnapshot, key: AgentKey): TitleMap? {
     val desk = snapshot.machines.firstOrNull { it.name == key.machine }?.desk ?: return null
@@ -1075,7 +1076,6 @@ fun titleMap(snapshot: HubSnapshot, key: AgentKey): TitleMap? {
     for (space in desk.spaces) for (tab in space.tabs) {
         val addresses = tab.cells.mapNotNull { (it.pane as? DeskPaneView.Terminal)?.address }
         if (key.address !in addresses) continue
-        if (tab.cells.size < 2) return null
         val stops = addresses.filter { it in listed }
         return TitleMap(mapCells(tab, { attention[it] }, marked = key.address), stops.indexOf(key.address) + 1, stops.size, space.id, tab.id)
     }
