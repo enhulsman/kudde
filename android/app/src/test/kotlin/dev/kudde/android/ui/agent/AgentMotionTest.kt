@@ -97,9 +97,6 @@ class AgentMotionTest {
     }
 
     @Test fun aCancelledPredictiveBackReturnsToFullScreenAndChangesNothing() {
-        assertFalse(AgentMotion.finishesBack(.33f, 0f))
-        assertFalse(AgentMotion.finishesBack(.04f, 451f))
-        assertFalse(AgentMotion.finishesBack(.2f, -500f))
         val full = AgentMotion.predictiveFrame(0f, false, 100f)
         assertEquals(1f, full.scale, 0f); assertEquals(0f, full.x, 0f)
         for (p in steps) {
@@ -110,10 +107,26 @@ class AgentMotionTest {
         }
     }
 
-    @Test fun aReleasedPredictiveBackFinishes() {
-        assertTrue(AgentMotion.finishesBack(.34f, 0f))
-        assertTrue(AgentMotion.finishesBack(.05f, 451f))
-        assertFalse(AgentMotion.finishesBack(.05f, 450f))
+    // Changed with motion.md (task 029): this asserted the 0.33 / 450 dp/s release rule.
+    // The system decides now, so no threshold or fling number survives in the contract.
+    @Test fun theSystemDecidesTheReleaseSoNoThresholdIsLeft() {
+        val source = File(generateSequence(File(System.getProperty("user.dir"))) { it.parentFile }
+            .first { File(it, "openspec/changes/screen-stack/motion.md").exists() },
+            "openspec/changes/screen-stack/motion.md").readText()
+        val back = source.substringAfter("Predictive Back on Changes").substringBefore("- `pushOverview`")
+        assertTrue("The system decides" in back)
+        for (gone in listOf("0.33", "450", "0.04")) assertFalse("$gone", gone in back)
+        assertFalse(AgentMotion.sourceNumbers.any { it == .33f || it == 450f || it == .04f })
+    }
+
+    @Test fun theBaseUnderAPredictiveBackIsMirroredBySwipeEdge() {
+        val left = AgentMotion.predictiveBaseX(.5f, false, 400f)
+        val right = AgentMotion.predictiveBaseX(.5f, true, 400f)
+        assertEquals(-48f * (1 - .45f * .5f), left, .001f)
+        assertEquals(-left, right, .001f)
+        assertTrue(right > 0f)
+        assertTrue(AgentMotion.predictiveFrame(.5f, true, 0f).x < 0f)
+        assertEquals(-AgentMotion.predictiveFrame(.5f, false, 0f).x, AgentMotion.predictiveFrame(.5f, true, 0f).x, .001f)
     }
 
     @Test fun reducedMotionIsAnInstantCutForEveryChange() {

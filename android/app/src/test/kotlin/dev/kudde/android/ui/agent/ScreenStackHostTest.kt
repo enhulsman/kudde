@@ -19,6 +19,8 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.platform.SoftwareKeyboardController
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.getOrNull
@@ -70,6 +72,7 @@ class ScreenStackHostTest {
                     top = top.value,
                     state = host,
                     backTarget = { if (top.value == AgentScreen.Changes) AgentScreen.Chat else null },
+                    leaveContent = { Box(Modifier.fillMaxSize().testTag("dest-leave")) },
                     onBack = { if (top.value == AgentScreen.Changes) top.value = AgentScreen.Chat else left++ },
                     transitionFor = { from, to, reason ->
                         selected += Triple(from, to, reason)
@@ -86,7 +89,7 @@ class ScreenStackHostTest {
                     if (innerBack && destination == AgentScreen.Chat) BackHandler {
                         backs[destination] = (backs[destination] ?: 0) + 1
                     }
-                    Box(Modifier.fillMaxSize().pointerInput(destination) {
+                    Box(Modifier.fillMaxSize().testTag("dest-$destination").pointerInput(destination) {
                         awaitPointerEventScope {
                             while (true) {
                                 awaitPointerEvent()
@@ -324,16 +327,38 @@ class ScreenStackHostTest {
         assertTrue((touches[AgentScreen.Changes] ?: 0) > 0)
     }
 
-    @Test fun aPredictiveReleaseBelowTheThresholdCancels() {
+    // Changed with motion.md (task 029): the 0.33 release rule is gone, the system decides.
+    // Was aPredictiveReleaseBelowTheThresholdCancels, which expected a press at 0.2 to cancel.
+    @Test fun aShallowCommittedBackPopsOnceAndTheMotionRunsToTheEnd() {
         show(animated = true)
         change(AgentScreen.Changes)
         pulse(0); pulse(1000)
-        startBack(.2f)
+        startBack(.1f)
         activity.onBackPressedDispatcher.onBackPressed()
+        frames()
+        assertEquals("released from where it is", .1f, host.progress, .001f)
+        assertTrue(host.running)
+        assertEquals(AgentScreen.Changes, top.value)
+        pulse(2000)
+        assertTrue("mid-motion, not yet popped", host.progress in .1f..1f)
+        pulse(3000)
+        assertEquals(AgentScreen.Chat, top.value)
+        assertEquals(setOf(AgentScreen.Chat), composed)
+        assertFalse(host.running)
+        assertEquals(0, left)
+    }
+
+    @Test fun aShallowCancelledBackStays() {
+        show(animated = true)
+        change(AgentScreen.Changes)
+        pulse(0); pulse(1000)
+        startBack(.1f)
+        activity.onBackPressedDispatcher.dispatchOnBackCancelled()
         frames()
         pulse(2000); pulse(3000)
         assertEquals(AgentScreen.Changes, top.value)
         assertEquals(setOf(AgentScreen.Changes), composed)
+        assertEquals(0f, host.progress, .001f)
         assertFalse(host.running)
     }
 
@@ -414,8 +439,122 @@ class ScreenStackHostTest {
         frames()
         assertTrue(host.rightEdge)
         assertNotNull("a fling commits below the distance threshold", host.releaseAnimation)
-        assertTrue(host.releaseVelocityDp > AgentMotion.backFling)
+        assertTrue("a fling carries its velocity into the release", host.releaseVelocityDp > 0f)
         assertEquals(host.releaseVelocityDp / host.releaseDistanceDp, host.releaseAnimation!!.velocity, .001f)
+        pulse(2000); pulse(3000)
+        assertEquals(AgentScreen.Chat, top.value)
+    }
+
+    private fun bounds(tag: String) = unmergedSemanticsNodes()
+        .firstOrNull { it.config.getOrNull(SemanticsProperties.TestTag) == tag }?.boundsInWindow
+
+    private fun left(tag: String) = unmergedSemanticsNodes()
+        .firstOrNull { it.config.getOrNull(SemanticsProperties.TestTag) == tag }?.positionInWindow?.x
+
+    private fun tags() = unmergedSemanticsNodes()
+        .mapNotNull { it.config.getOrNull(SemanticsProperties.TestTag) }.filter { it.startsWith("dest-") }
+
+    private fun gesture(edge: Int, vararg progress: Float, onFrame: (Float) -> Unit) {
+        val dispatcher = activity.onBackPressedDispatcher
+        val x = if (edge == BackEventCompat.EDGE_RIGHT) 800f else 0f
+        dispatcher.dispatchOnBackStarted(BackEventCompat(x, 100f, 0f, edge))
+        frames(1)
+        onFrame(0f)
+        for (p in progress) {
+            dispatcher.dispatchOnBackProgressed(BackEventCompat(x, 100f, p, edge))
+            frames(1)
+            onFrame(p)
+        }
+    }
+
+    /** One frame per event: the card shows that event's progress, nothing older or newer. */
+    private fun assertEveryFrameFollowsItsOwnEvent(edge: Int, outgoingTag: String, baseTag: String, baseShown: () -> Boolean) {
+        val density = activity.resources.displayMetrics.density
+        val width = activity.window.decorView.width.toFloat()
+        val sign = if (edge == BackEventCompat.EDGE_RIGHT) -1f else 1f
+        val seen = mutableListOf<Pair<Float, Float>>()
+        gesture(edge, .3f, .1f, .4f, .05f, .35f) { p ->
+            val card = bounds(outgoingTag)
+            assertNotNull("outgoing card exists at p=$p", card)
+            val scale = 1 - (1 - AgentMotion.backScale) * p
+            val x = sign * AgentMotion.backShift * p * density
+            assertEquals("card left at p=$p", x, left(outgoingTag)!!, 1.5f)
+            assertEquals("card right at p=$p", minOf(width, x + width * scale), card!!.right, 1.5f)
+            assertEquals("host progress is the event's at p=$p", p, host.progress, .001f)
+            val base = bounds(baseTag)
+            if (p > 0f) assertNotNull("base exists at p=$p", base)
+            if (base != null) {
+                val baseX = AgentMotion.predictiveBaseX(p, edge == BackEventCompat.EDGE_RIGHT, width)
+                assertEquals("base sits on the swipe edge's side at p=$p", baseX, left(baseTag)!!, 1.5f)
+                assertEquals(
+                    "base is mirrored, positive from the right edge, at p=$p", edge == BackEventCompat.EDGE_RIGHT, baseX > 0f)
+                assertEquals("base is never scaled at p=$p", minOf(width, baseX + width), base.right, 1.5f)
+                val order = tags()
+                assertTrue("base drawn below the card at p=$p: $order", order.indexOf(baseTag) < order.indexOf(outgoingTag))
+            }
+            seen += p to card.right - left(outgoingTag)!!
+        }
+        assertTrue(baseShown())
+        // Monotone: a larger progress is never a wider card.
+        for (a in seen) for (b in seen) if (a.first < b.first) assertTrue(a.second >= b.second)
+    }
+
+    @Test fun everyFrameOfAnEdgeSwipeOnChangesFollowsItsOwnEvent_left() {
+        show(animated = true)
+        change(AgentScreen.Changes)
+        pulse(0); pulse(1000)
+        assertEveryFrameFollowsItsOwnEvent(BackEventCompat.EDGE_LEFT, "dest-Changes", "dest-Chat") { true }
+    }
+
+    @Test fun everyFrameOfAnEdgeSwipeOnChangesFollowsItsOwnEvent_right() {
+        show(animated = true)
+        change(AgentScreen.Changes)
+        pulse(0); pulse(1000)
+        assertEveryFrameFollowsItsOwnEvent(BackEventCompat.EDGE_RIGHT, "dest-Changes", "dest-Chat") { true }
+    }
+
+    @Test fun everyFrameOfAnEdgeSwipeOnTheBaseFollowsItsOwnEvent_left() {
+        show(animated = true)
+        assertEveryFrameFollowsItsOwnEvent(BackEventCompat.EDGE_LEFT, "dest-Chat", "dest-leave") { true }
+    }
+
+    @Test fun everyFrameOfAnEdgeSwipeOnTheBaseFollowsItsOwnEvent_right() {
+        show(animated = true)
+        assertEveryFrameFollowsItsOwnEvent(BackEventCompat.EDGE_RIGHT, "dest-Chat", "dest-leave") { true }
+    }
+
+    @Test fun theFirstFrameAfterTheGestureStartsShowsTheOutgoingAtProgressZero_left() = firstFrames(BackEventCompat.EDGE_LEFT)
+    @Test fun theFirstFrameAfterTheGestureStartsShowsTheOutgoingAtProgressZero_right() = firstFrames(BackEventCompat.EDGE_RIGHT)
+
+    private fun firstFrames(edge: Int) {
+        run {
+            show(animated = true)
+            change(AgentScreen.Changes)
+            pulse(0); pulse(1000)
+            val width = activity.window.decorView.width.toFloat()
+            activity.onBackPressedDispatcher.dispatchOnBackStarted(BackEventCompat(0f, 100f, 0f, edge))
+            for (frame in 1..3) {
+                frames(1)
+                val card = bounds("dest-Changes")
+                assertNotNull("frame $frame: the outgoing card is there", card)
+                assertEquals("frame $frame: the card covers the screen", 0f, left("dest-Changes")!!, 1.5f)
+                assertEquals("frame $frame: at full size", width, card!!.right, 1.5f)
+                assertEquals("frame $frame: the base is already on the edge's side", AgentMotion.predictiveBaseX(0f, edge == BackEventCompat.EDGE_RIGHT, width), left("dest-Chat") ?: AgentMotion.predictiveBaseX(0f, edge == BackEventCompat.EDGE_RIGHT, width), 1.5f)
+                assertEquals("frame $frame: progress is 0", 0f, host.progress, .001f)
+            }
+            activity.onBackPressedDispatcher.dispatchOnBackCancelled()
+            frames(); pulse(2000); pulse(3000)
+        }
+    }
+
+    @Test fun aShallowCommitCarriesAnEdgeRelease() {
+        show(animated = true)
+        change(AgentScreen.Changes)
+        pulse(0); pulse(1000)
+        gesture(BackEventCompat.EDGE_RIGHT, .1f) {}
+        activity.onBackPressedDispatcher.onBackPressed()
+        frames()
+        assertNotNull(host.releaseAnimation)
         pulse(2000); pulse(3000)
         assertEquals(AgentScreen.Chat, top.value)
     }
