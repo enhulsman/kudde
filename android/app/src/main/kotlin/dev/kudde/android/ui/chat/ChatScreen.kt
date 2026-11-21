@@ -75,7 +75,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import dev.kudde.android.ui.changes.ChangesButton
+import dev.kudde.android.ui.changes.changesMenuItem
+import dev.kudde.android.ui.terminal.TitleBarMenuState
+import dev.kudde.android.ui.terminal.TitleMap
+import dev.kudde.android.ui.terminal.ViewSwitchIcon
 import dev.kudde.android.ui.components.Chevron
 import dev.kudde.android.ui.components.ChevronIcon
 import dev.kudde.android.ui.components.rememberScreenReaderOn
@@ -130,8 +133,14 @@ fun ChatScreen(
     onOlder: () -> Unit = {},
     animate: Boolean = true,
     modifier: Modifier = Modifier,
-    /** Opens the Changes screen; null hides the button. */
+    /** Opens the Changes screen, the title bar menu's item; null leaves it out. */
     onChanges: (() -> Unit)? = null,
+    /** The open terminal's place in its tab, for the title bar's map; null shows none. */
+    map: TitleMap? = null,
+    /** A tap on the title bar's map: opens the tab overview. */
+    onMap: (() -> Unit)? = null,
+    /** Whether the title bar's menu is open. */
+    menuState: TitleBarMenuState = remember { TitleBarMenuState() },
 ) {
     val c = KuddeTheme.colors
     // An exited agent's conversation stays, read-only (its lookup reads None).
@@ -147,11 +156,16 @@ fun ChatScreen(
     }
     Box(modifier.fillMaxSize().background(c.bg).coversBelow()) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).imePadding()) {
-            TitleBar(header, actions) {
-                if (poll != null) Gauge(poll, state)
-                onChanges?.let { ChangesButton(it) }
-                ViewSwitch("Terminal", onTerminal)
-            }
+            // The gauge keeps its place (spaces spec): as today, text; it gives way first where the bar is narrow.
+            val gauge = poll?.takeIf { gaugeLabel(it.gaugeUsed, it.gaugeWindow, it.gaugePercent) != null }
+            TitleBar(
+                header, actions,
+                map = map, onMap = onMap,
+                gauge = gauge?.let { p -> @Composable { Gauge(p, state) } },
+                switch = { ViewSwitchIcon(toChat = false, onTerminal) },
+                menu = listOfNotNull(onChanges?.let(::changesMenuItem)),
+                menuState = menuState,
+            )
             if (state.gaugeOpen && poll != null) gaugeDetail(poll.gaugeUsed, poll.gaugeWindow)?.let { Strip(it) }
             if (found && poll?.health == ChatHealth.Degraded) Strip(DEGRADED)
             Box(Modifier.fillMaxWidth().weight(1f)) {
@@ -177,7 +191,7 @@ fun ChatScreen(
     }
 }
 
-/** The pill that switches between the terminal and the chat view. */
+/** A worded pill in the chat's body ("Show the terminal", "Dismiss"); the title bar's switch is an icon (ViewSwitchIcon). */
 @Composable
 fun ViewSwitch(label: String, onClick: () -> Unit) {
     val c = KuddeTheme.colors

@@ -9,7 +9,6 @@ import uniffi.kudde_mobile.ChangesList
 // rows' texts. Every text the screen shows is one of the spec's table.
 
 const val CHANGES = "Changes"
-const val CHANGES_DESCRIPTION = "Show the files this agent changed"
 const val READING = "Reading the changes…"
 const val NOT_A_REPO = "Not a git repository"
 const val NONE = "No changes since the last commit"

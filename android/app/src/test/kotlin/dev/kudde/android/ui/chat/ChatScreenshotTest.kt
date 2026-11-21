@@ -8,6 +8,16 @@ import android.graphics.Shader
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import com.github.takahirom.roborazzi.captureRoboImage
+import dev.kudde.android.ui.terminal.TitleBarFixtures
+import dev.kudde.android.ui.terminal.TitleMap
+import dev.kudde.android.ui.terminal.TitleBarMenuPanel
+import dev.kudde.android.ui.terminal.TitleBarMenuState
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import org.robolectric.RuntimeEnvironment
 import dev.kudde.android.testing.KuddeTestRunner
 import dev.kudde.android.ui.agents.ProgramIcon
 import dev.kudde.android.ui.terminal.TerminalActions
@@ -119,9 +129,56 @@ class ChatScreenshotTest {
     @Test
     fun conversation() = capture("conversation", poll())
 
-    /** Render 13 in the chat: the Changes button between the gauge and the switch (changes-view, task 4.3). */
+    // --- The quieter title bar in the chat (render terminal-map; spaces spec, "The title bar keeps a
+    // place for the context gauge", "fits its controls"): the gauge as today, then the map, the switch
+    // as an icon and the menu button. Strips 260 dp high, as the render's. ---
+
+    /** Render terminal-map, row 2: Codex with a known window, "47%", second of two; 412 dp at 130%. */
     @Test
-    fun changesButton() = capture("changes-button", poll(), changes = {})
+    fun barCodex() = bar("chat-map-codex", TitleBarFixtures.apiTestsHeader, TitleBarFixtures.apiTestsMap, codex, font = 1.3f)
+
+    /** Render terminal-map, row 3: Claude Code, "283k", first of three; 412 dp at 130%. */
+    @Test
+    fun barClaude() = bar("chat-map-claude", TitleBarFixtures.pricingHeader, TitleBarFixtures.pricingMap, poll(), font = 1.3f)
+
+    /** Render terminal-map, row 6: 360 dp at 2x; the gauge hidden, the map kept, the name cut. */
+    @Test
+    fun barNarrowLargestFont() = bar("chat-map-360-2x", TitleBarFixtures.pricingHeader, TitleBarFixtures.pricingMap, poll(), font = 2f, widthDp = 360)
+
+    /** No token count yet: no gauge, and no empty place where it would be. */
+    @Test
+    fun barWithoutGauge() = bar("chat-map-no-gauge", TitleBarFixtures.pricingHeader, TitleBarFixtures.pricingMap, poll(used = null), font = 1.3f)
+
+    /** Render terminal-map, row 4 in the chat: the menu open, holding Changes (its own window: a screen capture). */
+    @Test
+    fun menuOpen() = bar("chat-menu-open", TitleBarFixtures.pricingHeader, TitleBarFixtures.pricingMap, poll(), font = 1.3f, menuOpen = true)
+
+    private val codex get() = poll(agent = "codex", used = 223_000u, window = 475_000u, percent = 47u)
+
+    /** As TerminalScreenshotTest's bars: with [menuOpen] the menu is drawn where its window puts it. */
+    private fun bar(scene: String, header: TerminalHeader, map: TitleMap, poll: ChatPoll, font: Float, widthDp: Int = 412, menuOpen: Boolean = false) {
+        RuntimeEnvironment.setQualifiers("w${widthDp}dp-h260dp-xhdpi")
+        RuntimeEnvironment.setFontScale(font)
+        try {
+            for (dark in listOf(false, true)) {
+                captureRoboImage("src/test/snapshots/$scene-${if (dark) "graphite" else "paper"}.png") {
+                    KuddeTheme(dark = dark) {
+                        Box {
+                            ChatScreen(header, actions, poll, ChatState(), source, { now }, onTerminal = {}, onPick = {}, onSend = {},
+                                animate = false, onChanges = {}, map = map, onMap = {}, menuState = TitleBarMenuState(open = menuOpen))
+                            if (menuOpen) {
+                                Box(Modifier.align(Alignment.TopEnd).padding(top = 62.dp, end = 8.dp)) {
+                                    TitleBarMenuPanel(listOf(dev.kudde.android.ui.changes.changesMenuItem {})) {}
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } finally {
+            RuntimeEnvironment.setFontScale(1f)
+        }
+    }
 
     @Test
     fun thinkingUpdate() = capture(
