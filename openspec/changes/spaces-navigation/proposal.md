@@ -231,7 +231,7 @@ only the spaces' names.
 | Placeholder tile | "Desk only" |
 | Compose text sent while the terminal cannot be opened | "Not sent: the terminal is not connected yet" |
 | Spoken: a space header | "website, 1 needs you, 2 working" (name, then each state that has agents, in the order needs you, done, working, idle) |
-| Spoken: a tab map | "Tab main, 3 terminals, 1 needs you" (the last part only when someone needs you) |
+| Spoken: a tab map | "Tab main, 3 terminals, 1 needs you" (the last part only when someone needs you); singular "Tab 1, 1 terminal" (approved by Ezra, 2026-11-21) |
 | Spoken: the title bar's map | "Tab overview, terminal 2 of 3" |
 | Spoken: the switch | "Agents, selected" · "Spaces, selected" |
 | Screen-reader actions | "Next terminal" · "Previous terminal" · "Next agent that needs you" · "Previous agent that needs you" |
