@@ -539,11 +539,14 @@ attached, and is detached on leaving as today.
 
 ### Requirement: The title bar shows where the terminal sits
 The title bar of the terminal and of its chat SHALL show the tab's map, with
-the open terminal's cell marked, while that terminal sits in a tab with more
-than one pane and the title bar has room for it ("The title bar fits its
-controls"). A tap on the map SHALL open the tab overview. In a
-tab of one pane, and for a terminal in no pane, the title bar SHALL show no
-map. The title bar SHALL NOT show pane dots, beside the map or in its place.
+the open terminal's cell marked, while that terminal sits in a tab, a tab
+of one pane included (then the map is one marked cell), and the title bar
+has room for it ("The title bar fits its controls"). A tap on the map SHALL
+open the tab overview, so the space's other tabs are always reachable from
+an open terminal. For a terminal in no pane the title bar SHALL show no map.
+The marked cell SHALL stand out from the unmarked cells and from the title
+bar at a contrast ratio of at least 3:1 in both themes. The title bar SHALL
+NOT show pane dots, beside the map or in its place.
 The line under the name SHALL stay as capability agent-names sets it.
 
 #### Scenario: Second of three
@@ -562,16 +565,26 @@ The line under the name SHALL stay as capability agent-names sets it.
 - **THEN** the third cell is marked
 
 #### Scenario: A single pane
-- **GIVEN** the open terminal is alone in its tab
+- **GIVEN** the open terminal is alone in its tab, in a space with two tabs
 - **WHEN** the title bar shows
-- **THEN** it shows no map
+- **THEN** it shows a map of one marked cell, spoken as "Tab overview, terminal 1 of 1"
+- **AND** a tap on it opens the tab overview, from which the other tab's terminals open
+
+#### Scenario: The marked cell is easy to see
+- **GIVEN** the open terminal is the second of three panes, in the Graphite and in the Paper theme
+- **WHEN** the title bar shows
+- **THEN** the marked cell's colour has a contrast ratio of at least 3:1 against the unmarked cells and against the title bar
 
 ### Requirement: A tab overview shows the splits as tiles
 The tab overview SHALL show one tab at a time: the space's name, the
 space's tabs in desk order to choose from, and the chosen tab's panes as
 tiles placed as the splits place them. A tile SHALL show its terminal's
-mark, name and state; a placeholder tile and a vacant tile SHALL read "Desk
-only". A tap on a tile SHALL open its terminal; a placeholder or vacant
+mark, name and state, over a still picture of that terminal's screen as the
+desk shows it, read once when the overview opens and when the tab shown
+changes. The picture SHALL NOT update while the overview is open, and
+reading it SHALL NOT mark the terminal seen on the desk. When the desk
+gives no picture, the tile SHALL show as it does without one. A placeholder
+tile and a vacant tile SHALL read "Desk only". A tap on a tile SHALL open its terminal; a placeholder or vacant
 tile SHALL do nothing. When a
 tile would be narrower than 96 dp or lower than 64 dp, the overview SHALL
 list the tab's terminals as rows in desk order under the tab's map instead.
@@ -609,6 +622,22 @@ app SHALL NOT draw live terminals side by side at phone width.
 - **GIVEN** the overview was opened from the Spaces view
 - **WHEN** the desk closes its space
 - **THEN** the overview closes and the Spaces view shows
+
+#### Scenario: Tiles show their screens
+- **GIVEN** a tab of two panes whose terminals show a build log and a shell prompt, neither opened on the phone
+- **WHEN** the person opens its overview
+- **THEN** each tile shows its own terminal's screen as a still picture under its mark, name and state
+- **AND** neither terminal is marked seen on the desk
+
+#### Scenario: A picture stays still
+- **GIVEN** the overview is open and a terminal in it prints new lines
+- **WHEN** the person waits
+- **THEN** its tile's picture does not change until the overview is opened again or another tab is shown
+
+#### Scenario: No picture from the desk
+- **GIVEN** the desk gives no picture for a terminal
+- **WHEN** the overview opens
+- **THEN** that tile shows its mark, name and state as before, and the other tiles show their pictures
 
 ### Requirement: Every step has a way without a swipe
 Every stop SHALL be reachable by taps alone: through the Spaces view, and

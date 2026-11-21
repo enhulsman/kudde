@@ -50,7 +50,11 @@ if a material3 source is at hand, and change this file (not the code) if they di
   translateY -4 dp to 0. Closes on fastEffects: opacity 1 to 0, scale 1 to 0.96.
   A tap outside only closes it.
 - Title bar content: crossfade, 110 ms out, then the new content.
-- `leave` (leaving the agent for the agent list): not prototyped; keeps today's behaviour.
+- `leave` (Back from the agent's base to the agent list; the owner's choice,
+  "like Changes"): the agent screen moves as Changes does in its predictive
+  Back and its release (same springs, scale, shift, corner radius, thresholds), with the
+  agent list in the base's place (translateX and dim as the base under Changes). A Back
+  button or key runs the same motion unseeked. The list's own content is not animated.
 
 ## Always
 
