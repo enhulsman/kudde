@@ -1,5 +1,13 @@
 package dev.kudde.android.ui.terminal
 
+import dev.kudde.android.ui.agent.AgentHost
+import dev.kudde.android.ui.agent.AgentRouteRig
+import dev.kudde.android.testing.click
+import androidx.compose.ui.text.AnnotatedString
+import dev.kudde.android.testing.nodeSaying
+import dev.kudde.android.testing.semanticsNodes
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.getOrNull
 import android.os.Looper
 import android.os.SystemClock
 import android.view.MotionEvent
@@ -34,6 +42,7 @@ import uniffi.kudde_mobile.TermState
 @RunWith(KuddeTestRunner::class)
 @Config(qualifiers = "w412dp-h915dp-xhdpi")
 class TerminalTouchTest {
+    private var hostRig: AgentRouteRig? = null
     private val key = AgentKey("workstation", "t1")
     private val controller = Robolectric.buildActivity(ComponentActivity::class.java).setup()
     private val activity = controller.get()
@@ -41,13 +50,17 @@ class TerminalTouchTest {
     /** Ends the screen, so its composition does not run on into later tests. */
     @After
     fun closeScreen() {
-        controller.pause().stop().destroy()
-        shadowOf(Looper.getMainLooper()).idle()
+        try {
+            controller.pause().stop().destroy()
+            shadowOf(Looper.getMainLooper()).idle()
+        } finally { hostRig?.close() }
     }
     private var hub = snapshot(machines = listOf(connected("workstation")), agents = listOf(row("t1", AgentAttention.WORKING)))
     private val opened = mutableListOf<AgentKey>()
 
-    private fun idle() = shadowOf(Looper.getMainLooper()).idle()
+    private fun idle() {
+        hostRig?.frames() ?: shadowOf(Looper.getMainLooper()).idle()
+    }
 
     /** The phone keyboard as the screen asks for it. */
     private class Keyboard : TerminalInputHandle {
@@ -75,7 +88,7 @@ class TerminalTouchTest {
         val screen = TerminalScreenState().apply {
             this.typing = typing
         }
-        // Built as TerminalRoute builds them, so a step reads this screen's compose text.
+        // Built as AgentHost builds them, so a step reads this screen's compose text.
         actions = terminalActions(
             screen,
             onBack = {},
@@ -324,7 +337,7 @@ class TerminalTouchTest {
     }
 
     // spaces spec, "A draft in the compose sheet": a step in any direction is
-    // refused while the compose sheet holds text (design D4); TerminalRoute
+    // refused while the compose sheet holds text (design D4); AgentHost
     // reads the screen's own compose text, so the refusal ends once it is sent
     // or cleared.
     @Test
@@ -351,34 +364,60 @@ class TerminalTouchTest {
 
     @Test
     fun aStepIsRefusedWhileTheComposeTextIsNotEmptyUnderTheChat() {
-        val (_, screen, _) = open(TermPhase.Typing, 53, 40, typing = true)
-        val images = object : dev.kudde.android.ui.chat.ChatImageSource {
-            override fun cached(key: String) = null
-            override suspend fun load(key: String) = null
-        }
-        // The chat over the terminal shares its title bar's actions (TerminalRoute).
+        val rig = AgentRouteRig().also { it.install(); hostRig = it }
+        val next = AgentKey("workstation", "t2")
+        // The fixture already puts t1 and t2 in the same tab. Give the vertical
+        // walk a next agent too, so neither refusal is merely the end of a walk.
+        rig.publish(rig.snapshot.copy(agents = rig.snapshot.agents.map {
+            if (it.machine == next.machine && it.address == next.address) it.copy(attention = AgentAttention.NEEDS_YOU) else it
+        }))
+        rig.home.onSnapshot(rig.snapshot)
+        rig.home.open(key)
+        rig.app.chatView.choose(false)
         activity.setContent {
             KuddeTheme(dark = true) {
-                dev.kudde.android.ui.chat.ChatScreen(
-                    terminalUi(hub, key, activity.resources).header, actions, poll = null, state = dev.kudde.android.ui.chat.ChatState(),
-                    images = images, now = { 0L }, onTerminal = {}, onPick = {}, onSend = {}, animate = false,
-                )
+                rig.home.openKey?.let { AgentHost(rig.app, rig.home, it, rig.ports) }
             }
         }
-        idle()
-        screen.composeText = "a draft kept from the terminal"
-        idle()
-        assertTrue(actions.stepRefused())
-        dragOnTitle(midX + 200f, midX - 200f)
-        dragOnTitle(midX, midX + 20f, dy = -300f)
-        assertEquals("refused: neither walk is asked", emptyList<String>(), tabs)
-        assertEquals(emptyList<String>(), swipes)
+        rig.await("the real host shows the terminal and its compose key") {
+            nodeSaying("Compose") != null && nodeSaying("Chat") != null
+        }
+        fun tapLabel(label: String) {
+            val node = nodeSaying(label) ?: error("No node saying $label")
+            assertTrue("$label is clickable", node.click())
+            rig.frames()
+        }
+        fun edit(text: String) {
+            val field = semanticsNodes().single { it.config.getOrNull(SemanticsActions.SetText) != null }
+            assertTrue(field.config[SemanticsActions.SetText].action!!.invoke(AnnotatedString(text)))
+            rig.frames()
+        }
+        fun fieldText() = semanticsNodes().single { it.config.getOrNull(SemanticsActions.SetText) != null }
+            .config[androidx.compose.ui.semantics.SemanticsProperties.EditableText].text
 
-        screen.composeText = ""
-        idle()
-        assertFalse("cleared", actions.stepRefused())
+        tapLabel("Compose")
+        val draft = "a draft kept from the terminal"
+        edit(draft)
+        assertEquals(draft, fieldText())
+        tapLabel("Chat")
+        rig.await("the real host shows chat with the terminal draft kept") { nodeSaying("Terminal") != null }
+
         dragOnTitle(midX + 200f, midX - 200f)
-        assertEquals(listOf("next"), tabs)
+        assertEquals("refused: sideways walk leaves the open key unchanged", key, rig.home.openKey)
+        assertFalse("refused: sideways walk was not a step", rig.home.arrivedByStep)
+        dragOnTitle(midX, midX + 20f, dy = -300f)
+        assertEquals("refused: neither walk is asked", key, rig.home.openKey)
+        assertFalse("refused: neither walk was a step", rig.home.arrivedByStep)
+
+        tapLabel("Terminal")
+        assertEquals("the refused walks keep the compose text", draft, fieldText())
+        edit("")
+        assertEquals("cleared through the compose field", "", fieldText())
+        tapLabel("Chat")
+        rig.await("the real host shows chat after clearing the draft") { nodeSaying("Terminal") != null }
+        dragOnTitle(midX + 200f, midX - 200f)
+        assertEquals("cleared: the next stop in the tab opens", next, rig.home.openKey)
+        assertTrue("cleared: the sideways walk was a step", rig.home.arrivedByStep)
     }
 
     // spaces spec, "Input during the wait is never lost": a tap on the chip

@@ -60,7 +60,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -109,14 +108,6 @@ const val EXITED = "The agent has exited"
 const val NOT_ARRIVED = "Not in the conversation yet"
 const val SHOW_TERMINAL = "Show the terminal"
 
-/**
- * Takes every touch in its bounds, so none reaches what is drawn below. The
- * chat is drawn over the live terminal: without this a tap on an empty spot
- * reached the terminal's keys (it once pressed up).
- */
-internal fun Modifier.coversBelow(): Modifier =
-    pointerInput(Unit) { awaitPointerEventScope { while (true) awaitPointerEvent() } }
-
 @Composable
 fun ChatScreen(
     header: TerminalHeader,
@@ -144,7 +135,7 @@ fun ChatScreen(
     // An exited agent's conversation stays, read-only (its lookup reads None).
     val found = !chatLooking(poll) && poll != null && (poll.found == ChatFound.FOUND || poll.found == ChatFound.EMPTY || poll.exited)
     val broken = poll?.health is ChatHealth.Broken
-    Box(modifier.fillMaxSize().background(c.bg).coversBelow()) {
+    Box(modifier.fillMaxSize().background(c.bg)) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).imePadding()) {
             // The gauge keeps its place (spaces spec): as today, text; it gives way first where the bar is narrow.
             val gauge = poll?.takeIf { gaugeLabel(it.gaugeUsed, it.gaugeWindow, it.gaugePercent) != null }

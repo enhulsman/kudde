@@ -1,5 +1,11 @@
 package dev.kudde.android.ui.terminal
 
+import android.content.Context
+import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityManager
+import dev.kudde.android.ui.agent.AgentHost
+import dev.kudde.android.ui.agent.AgentRouteRig
+import dev.kudde.android.testing.nodeSaying
 import android.os.Looper
 import android.view.ViewGroup
 import androidx.activity.ComponentActivity
@@ -63,7 +69,8 @@ class TitleBarActionsTest {
     private val fakeHub = FakeHub()
     private lateinit var listener: HubListener
     private val hubHost = HubHost(createHub = { listener = it; fakeHub }, mainExecutor = Executor { it.run() })
-    private val home = AgentsHome(hubHost, now = { 0L }) { true }
+    private var hostRig: AgentRouteRig? = null
+    private var home = AgentsHome(hubHost, now = { 0L }) { true }
     private val controller = Robolectric.buildActivity(ComponentActivity::class.java).setup()
     private val activity = controller.get()
     private val screen = TerminalScreenState()
@@ -90,7 +97,7 @@ class TitleBarActionsTest {
         ),
     )
 
-    // Built as TerminalRoute builds them, with the announcement heard here.
+    // Built as AgentHost builds them, with the announcement heard here.
     private val actions = terminalActions(
         screen,
         onBack = {},
@@ -110,11 +117,17 @@ class TitleBarActionsTest {
 
     @After
     fun closeScreen() {
-        controller.pause().stop().destroy()
-        idle()
+        try {
+            controller.pause().stop().destroy()
+            idle()
+        } finally { hostRig?.close() }
     }
 
-    private fun idle() = shadowOf(Looper.getMainLooper()).idle()
+    private var collectAnnouncements: (() -> Unit)? = null
+    private fun idle() {
+        hostRig?.frames() ?: shadowOf(Looper.getMainLooper()).idle()
+        collectAnnouncements?.invoke()
+    }
 
     private fun header(address: String) = terminalUi(hub, key(address), res).header
     private fun spoken(address: String) = header(address).let { "${it.name}, ${it.lineTwo}" }
@@ -244,8 +257,31 @@ class TitleBarActionsTest {
 
     @Test
     fun theActionsWorkUnderTheChatToo() {
+        val rig = AgentRouteRig().also { it.install(); hostRig = it }
+        rig.publish(hub)
+        home = rig.home
+        home.onSnapshot(hub)
         home.open(key("a"))
-        showChat()
+        rig.app.chatView.choose(true)
+        val manager = rig.app.getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
+        val accessibility = shadowOf(manager)
+        accessibility.setEnabled(true)
+        accessibility.setTouchExplorationEnabled(true)
+        var seen = accessibility.sentAccessibilityEvents.size
+        collectAnnouncements = {
+            val events = accessibility.sentAccessibilityEvents.toList()
+            events.drop(seen).filter { it.eventType == AccessibilityEvent.TYPE_ANNOUNCEMENT }
+                .forEach { event -> heard += event.text.map { it.toString() } }
+            seen = events.size
+        }
+        activity.setContent {
+            KuddeTheme(dark = true) {
+                home.openKey?.let { AgentHost(rig.app, home, it, rig.ports) }
+            }
+        }
+        rig.await("the real host shows chat") { nodeSaying("Terminal") != null }
+        // Begin observation after setup, just as the copied action rig did.
+        seen = accessibility.sentAccessibilityEvents.size
         choose("Next terminal")
         assertEquals(key("b"), home.openKey)
         assertEquals(listOf(spoken("b")), heard)

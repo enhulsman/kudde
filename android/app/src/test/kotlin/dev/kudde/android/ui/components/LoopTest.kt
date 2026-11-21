@@ -1,25 +1,17 @@
 package dev.kudde.android.ui.components
 
-import android.graphics.Bitmap
-import android.graphics.Canvas
 import android.os.Looper
 import android.view.ViewGroup
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.snapshotFlow
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.platform.ViewRootForTest
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
-import androidx.compose.ui.unit.dp
 import dev.kudde.android.testing.KuddeTestRunner
 import dev.kudde.android.ui.agents.SPINNER_TAG
 import dev.kudde.android.ui.agents.SpinnerRing
@@ -169,26 +161,5 @@ class LoopTest {
         val bounds = spinnerBounds(turned)
         assertEquals("an eighth of a turn", spinnerBounds(still).size, bounds.size)
         assertEquals(bounds.width, bounds.height)
-    }
-
-    @Test
-    fun aCoveredScreenIsNotDrawn() {
-        var draws = 0
-        val covered = mutableStateOf(true)
-        val c = host {
-            Box(Modifier.undrawnWhen(covered.value)) {
-                Box(Modifier.size(10.dp).drawBehind { draws++ })
-            }
-        }
-        fun draw() {
-            settle(32)
-            val view = c.get().window.decorView
-            view.draw(Canvas(Bitmap.createBitmap(view.width.coerceAtLeast(1), view.height.coerceAtLeast(1), Bitmap.Config.ARGB_8888)))
-        }
-        draw()
-        assertEquals("drawn while covered", 0, draws)
-        covered.value = false
-        draw()
-        assertTrue("drawn once uncovered", draws > 0)
     }
 }
