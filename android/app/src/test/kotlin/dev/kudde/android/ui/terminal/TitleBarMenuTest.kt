@@ -231,12 +231,30 @@ class TitleBarMenuTest {
         val title = host.titleBounds()
         val key = host.rig.home.openKey
         val before = host.opened.view.calls.toList()
-        host.tap("More options")
-        val popup = windowRoots().last()
+        val anchor = nodeSaying("More options")!!.boundsInWindow
+        val layerOpen = androidx.compose.runtime.mutableStateOf(true)
+        val layer = androidx.compose.ui.platform.ComposeView(host.activity).apply {
+            setContent {
+                KuddeTheme(dark = true) {
+                    if (layerOpen.value) dev.kudde.android.ui.components.ModalPopupLayer(
+                        anchorBounds = androidx.compose.ui.unit.IntRect(
+                            anchor.left.toInt(), anchor.top.toInt(), anchor.right.toInt(), anchor.bottom.toInt()),
+                        popupPositionProvider = MenuPosition(androidx.compose.ui.platform.LocalDensity.current),
+                        shadowRoom = androidx.compose.ui.unit.Dp(24f),
+                        onDismissRequest = { layerOpen.value = false },
+                    ) {
+                        TitleBarMenuPanel(listOf(dev.kudde.android.ui.changes.changesMenuItem {})) {}
+                    }
+                }
+            }
+        }
+        host.activity.addContentView(layer, android.view.ViewGroup.LayoutParams(-1, -1))
+        host.rig.frames(4)
+        host.draw()
+        val popup = host.activity.window.decorView
         val location = IntArray(2).also(popup::getLocationOnScreen)
         val down = SystemClock.uptimeMillis()
-        // Coordinates are screen coordinates translated into the popup's own window.
-        // Send the entire gesture to that window; never manually forward it to the terminal.
+        // Send the whole gesture through the activity containing the layer and real route.
         fun send(action: Int, x: Float) {
             val e = MotionEvent.obtain(down, SystemClock.uptimeMillis(), action,
                 x - location[0], title.center.y - location[1], 0)
@@ -250,8 +268,7 @@ class TitleBarMenuTest {
         assertEquals("outside menu drag reached onTab", key, host.rig.home.openKey)
         assertEquals("outside menu drag sent terminal input", before, host.opened.view.calls)
         assertEquals("outside menu drag attached another pane", 1, host.rig.ports.opens.size)
-        // The window must itself own the inert title area: dispatching to it alone cannot
-        // prove the system would select it if that area lies outside its bounds.
+        // The activity-sized layer must cover the title area; the wrapper test checks its window.
         assertTrue("menu window does not cover the title bar against outside drag pass-through",
             location[0] <= 0 && location[1] <= title.top &&
                 location[0] + popup.width >= title.right && location[1] + popup.height >= title.bottom)
@@ -261,9 +278,28 @@ class TitleBarMenuTest {
     @Test
     fun aTapInsideTheMenuPanelDoesNotClose() = AgentRouteScenario().use { host ->
         host.show()
-        host.tap("More options")
+        val anchor = nodeSaying("More options")!!.boundsInWindow
+        val layerOpen = androidx.compose.runtime.mutableStateOf(true)
+        val layer = androidx.compose.ui.platform.ComposeView(host.activity).apply {
+            setContent {
+                KuddeTheme(dark = true) {
+                    if (layerOpen.value) dev.kudde.android.ui.components.ModalPopupLayer(
+                        anchorBounds = androidx.compose.ui.unit.IntRect(
+                            anchor.left.toInt(), anchor.top.toInt(), anchor.right.toInt(), anchor.bottom.toInt()),
+                        popupPositionProvider = MenuPosition(androidx.compose.ui.platform.LocalDensity.current),
+                        shadowRoom = androidx.compose.ui.unit.Dp(24f),
+                        onDismissRequest = { layerOpen.value = false },
+                    ) {
+                        TitleBarMenuPanel(listOf(dev.kudde.android.ui.changes.changesMenuItem {})) {}
+                    }
+                }
+            }
+        }
+        host.activity.addContentView(layer, android.view.ViewGroup.LayoutParams(-1, -1))
+        host.rig.frames(4)
+        host.draw()
         val item = nodeSaying("Changes")!!.boundsInWindow
-        val popup = windowRoots().last()
+        val popup = host.activity.window.decorView
         // The panel has 4 dp vertical padding. This point is inside that panel,
         // 2 dp above the first item, rather than in the outer 24 dp shadow room.
         val x = item.center.x
@@ -286,14 +322,34 @@ class TitleBarMenuTest {
         host.edit("keep chat open")
         val before = host.opened.view.calls.toList()
         // The legacy key path remains a positive control, then exercise the activity dispatcher.
-        host.tap("More options")
-        val popup = windowRoots().last()
+        val anchor = nodeSaying("More options")!!.boundsInWindow
+        val layerOpen = androidx.compose.runtime.mutableStateOf(true)
+        val layer = androidx.compose.ui.platform.ComposeView(host.activity).apply {
+            setContent {
+                KuddeTheme(dark = true) {
+                    if (layerOpen.value) dev.kudde.android.ui.components.ModalPopupLayer(
+                        anchorBounds = androidx.compose.ui.unit.IntRect(
+                            anchor.left.toInt(), anchor.top.toInt(), anchor.right.toInt(), anchor.bottom.toInt()),
+                        popupPositionProvider = MenuPosition(androidx.compose.ui.platform.LocalDensity.current),
+                        shadowRoom = androidx.compose.ui.unit.Dp(24f),
+                        onDismissRequest = { layerOpen.value = false },
+                    ) {
+                        TitleBarMenuPanel(listOf(dev.kudde.android.ui.changes.changesMenuItem {})) {}
+                    }
+                }
+            }
+        }
+        host.activity.addContentView(layer, android.view.ViewGroup.LayoutParams(-1, -1))
+        host.rig.frames(4)
+        host.draw()
+        val popup = layer
         popup.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_BACK))
         popup.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_BACK))
         host.rig.frames()
         assertNull("key Back closes only the menu", nodeSaying("Changes"))
         assertEquals("key Back must keep the chat", host.rig.key, host.rig.home.openKey)
-        host.tap("More options")
+        layerOpen.value = true
+        host.rig.frames(4)
         val dispatcher = host.activity.onBackPressedDispatcher
         dispatcher.dispatchOnBackStarted(BackEventCompat(0f, 100f, 0f, BackEventCompat.EDGE_LEFT))
         dispatcher.dispatchOnBackProgressed(BackEventCompat(100f, 100f, .5f, BackEventCompat.EDGE_LEFT))
