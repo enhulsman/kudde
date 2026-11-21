@@ -317,6 +317,14 @@ Alternative: attach watch-only at once and take the phone's size after the
 wait. Rejected: the screen would show the desk's small grid and then jump
 to the phone's.
 
+**Known limit (2026-11-21, issue #91).** Compose text is only accepted
+while the machine is connected and the terminal task is not paused after
+a failed or ended attach (`PasteOutcome::NotAttached` otherwise, the sheet
+and text stay). Text accepted while a terminal is still attaching, whose
+attach then fails, or just before the connection drops, is still lost:
+closing that needs the core to confirm delivery. The owner chose to ship
+with it and track the confirmation as #91.
+
 ## D6. Spaces as a view of the home screen, built from existing rows
 
 - `AgentsRoute` chooses between `AgentsScreen` and a new `SpacesScreen` by a
