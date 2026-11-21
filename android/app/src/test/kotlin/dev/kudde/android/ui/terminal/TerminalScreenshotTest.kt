@@ -91,8 +91,11 @@ class TerminalScreenshotTest {
     }
 
     @Test
-    fun noMapInATabOfOnePane() {
-        assertNull(terminalUi(TitleBarFixtures.hub, AgentKey("workstation", "t4"), res).map)
+    fun aTabOfOnePaneHasOneMarkedCell() {
+        val map = terminalUi(TitleBarFixtures.hub, AgentKey("workstation", "t4"), res).map!!
+        assertEquals(listOf(dev.kudde.android.ui.spaces.MapCell(0f, 0f, 1f, 1f, MapKind.MARKED)), map.cells)
+        assertEquals(1 to 1, map.index to map.count)
+        assertEquals("s-website" to "tb-solo", map.spaceId to map.tabId)
     }
 
     @Test

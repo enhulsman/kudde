@@ -90,6 +90,16 @@ class TitleBarFitTest {
 
     @Test
     fun atTheLargestFontOnANarrowPhoneTheGaugeHidesAndTheRestShowsWhole() {
+        assertLargestFontFit(TitleBarFixtures.pricingMap, "Tab overview, terminal 1 of 3")
+    }
+
+    @Test
+    fun aOneCellMapKeepsTheSameRoomAtTheLargestFont() {
+        val map = terminalUi(TitleBarFixtures.hub, dev.kudde.android.ui.agents.AgentKey("workstation", "t4"), activity.resources).map!!
+        assertLargestFontFit(map, "Tab overview, terminal 1 of 1")
+    }
+
+    private fun assertLargestFontFit(map: TitleMap, spoken: String) {
         RuntimeEnvironment.setFontScale(2f)
         val recreated = Robolectric.buildActivity(ComponentActivity::class.java).setup()
         try {
@@ -107,7 +117,7 @@ class TitleBarFitTest {
                 KuddeTheme(dark = true) {
                     ChatScreen(TitleBarFixtures.pricingHeader, TerminalActions({}, {}, { false }, {}), poll, ChatState(), images, { 0L },
                         onTerminal = {}, onPick = {}, onSend = {}, animate = false, onChanges = {},
-                        map = TitleBarFixtures.pricingMap, onMap = {})
+                        map = map, onMap = {})
                 }
             }
             shadowOf(Looper.getMainLooper()).idle()
@@ -115,7 +125,7 @@ class TitleBarFitTest {
             assertFalse("the gauge is hidden", nodes.any { it.texts() == listOf("283k") })
             val min = 48 * act.resources.displayMetrics.density
             val width = act.window.decorView.width
-            val fixed = listOf("Back", "Tab overview, terminal 1 of 3", "Terminal", "More options").map { name ->
+            val fixed = listOf("Back", spoken, "Terminal", "More options").map { name ->
                 nodes.single { name in it.descriptions() }.boundsInWindow
             }
             for (b in fixed) assertTrue("$b whole and 48 dp", b.width >= min && b.height >= min && b.left >= 0 && b.right <= width)

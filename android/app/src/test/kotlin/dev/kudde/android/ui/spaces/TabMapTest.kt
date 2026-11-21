@@ -6,11 +6,18 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.unit.dp
 import com.github.takahirom.roborazzi.captureRoboImage
 import dev.kudde.android.testing.KuddeTestRunner
 import dev.kudde.android.ui.theme.KuddeTheme
+import dev.kudde.android.ui.theme.Contrast
+import dev.kudde.android.ui.theme.ThemeName
+import dev.kudde.android.ui.theme.kuddeColors
+import kotlin.math.pow
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RuntimeEnvironment
@@ -119,6 +126,45 @@ class TabMapTest {
     @Test
     fun theTitleBarsMapIsSpokenAsTheOverviewAndThePlace() {
         assertEquals("Tab overview, terminal 2 of 3", titleMapSpoken(res, 2, 3))
+        assertEquals("Tab overview, terminal 1 of 1", titleMapSpoken(res, 1, 1))
+    }
+
+    // Owner, 2026-11-21: a plain shell's cell must be easy to see, also at low
+    // brightness; the open terminal is the one cell filled in the text colour.
+    @Test
+    fun everyCellStandsOutFromTheTitleBarAndTheSpacesViewInBothThemes() {
+        for (theme in ThemeName.entries) for (contrast in Contrast.entries) {
+            val c = kuddeColors(theme, contrast)
+            for (kind in MapKind.entries) {
+                val (fill, edge) = mapCellPaint(kind, c)
+                for (ground in listOf(c.chrome, c.bg)) {
+                    assertTrue("$theme $contrast $kind edge", ratio(edge.compositeOver(ground), ground) >= 3.0)
+                    fill?.let { assertTrue("$theme $contrast $kind fill", ratio(it.compositeOver(ground), ground) >= 3.0) }
+                }
+            }
+        }
+    }
+
+    @Test
+    fun aPlainShellIsOutlinedInMutedAndTheOpenTerminalIsTheOnlyCellFilledInTheTextColour() {
+        for (theme in ThemeName.entries) for (contrast in Contrast.entries) {
+            val c = kuddeColors(theme, contrast)
+            assertEquals(null to c.muted, mapCellPaint(MapKind.PLAIN, c))
+            assertEquals(c.fg to c.fg, mapCellPaint(MapKind.MARKED, c))
+            for (kind in MapKind.entries.filter { it != MapKind.MARKED }) {
+                assertTrue("$theme $kind is not filled like the mark", mapCellPaint(kind, c).first != c.fg)
+            }
+        }
+    }
+
+    private fun ratio(a: Color, b: Color): Double {
+        fun luminance(c: Color): Double {
+            fun linear(v: Float): Double = if (v <= .04045f) v.toDouble() / 12.92 else ((v.toDouble() + .055) / 1.055).pow(2.4)
+            return .2126 * linear(c.red) + .7152 * linear(c.green) + .0722 * linear(c.blue)
+        }
+        val l1 = luminance(a)
+        val l2 = luminance(b)
+        return (maxOf(l1, l2) + .05) / (minOf(l1, l2) + .05)
     }
 
     // --- Goldens ---

@@ -8,12 +8,14 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import dev.kudde.android.R
 import dev.kudde.android.ui.theme.KuddeTheme
+import dev.kudde.android.ui.theme.KuddeColors
 import uniffi.kudde_mobile.AgentAttention
 import uniffi.kudde_mobile.DeskPaneView
 import uniffi.kudde_mobile.DeskTabView
@@ -81,6 +83,20 @@ fun tabMapSpoken(res: Resources, name: String, terminals: Int, needsYou: Int): S
 fun titleMapSpoken(res: Resources, index: Int, count: Int): String = res.getString(R.string.title_bar_map, index, count)
 
 /**
+ * The paints the canvas uses: (fill or null, border). Every cell stands out
+ * from the title bar at 3:1 or more; a plain shell is outlined in muted, so it
+ * stays visible at low brightness, and only the open terminal is filled in
+ * the text colour.
+ */
+internal fun mapCellPaint(kind: MapKind, c: KuddeColors): Pair<Color?, Color> = when (kind) {
+    MapKind.NEEDS_YOU -> c.blocked to c.blocked
+    MapKind.DONE -> c.done to c.done
+    MapKind.WORKING -> null to c.working
+    MapKind.PLAIN, MapKind.DESK_ONLY -> null to c.muted
+    MapKind.MARKED -> c.fg to c.fg
+}
+
+/**
  * Draws [cells] in [width] by [height]: each cell inset half a dp on every
  * side (a 1 dp gap between neighbours), with a 1 dp border and 2 dp corners.
  * A side that comes out at zero or less is not drawn.
@@ -99,13 +115,7 @@ fun TabMap(cells: List<MapCell>, modifier: Modifier = Modifier, width: Dp = 28.d
             val w = cell.w * size.width - 2 * half
             val h = cell.h * size.height - 2 * half
             if (w <= 0f || h <= 0f) continue
-            val (fill, edge) = when (cell.kind) {
-                MapKind.NEEDS_YOU -> c.blocked to c.blocked
-                MapKind.DONE -> c.done to c.done
-                MapKind.WORKING -> null to c.working
-                MapKind.PLAIN, MapKind.DESK_ONLY -> null to c.border
-                MapKind.MARKED -> c.fg to c.fg
-            }
+            val (fill, edge) = mapCellPaint(cell.kind, c)
             if (fill != null) drawRoundRect(fill, Offset(left, top), Size(w, h), radius)
             // The border sits inside the cell, as CSS's border-box draws it.
             drawRoundRect(
