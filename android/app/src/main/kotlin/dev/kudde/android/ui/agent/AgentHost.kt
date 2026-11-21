@@ -57,7 +57,10 @@ import dev.kudde.android.ui.spaces.TabOverviewRoute
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun AgentHost(app: KuddeApp, home: AgentsHome, key: AgentKey, ports: AgentPorts = HubPorts(app)) {
+fun AgentHost(
+    app: KuddeApp, home: AgentsHome, key: AgentKey, ports: AgentPorts = HubPorts(app),
+    leaveContent: @Composable () -> Unit = {},
+) {
     val context = LocalContext.current
     val res = context.resources
     val density = LocalDensity.current
@@ -110,7 +113,11 @@ fun AgentHost(app: KuddeApp, home: AgentsHome, key: AgentKey, ports: AgentPorts 
             },
             change = change,
         )
-        val back: () -> Unit = { navigate { keeper.back(home::close) } }
+        val commitBack: () -> Unit = { navigate { keeper.back(home::close) } }
+        val back: () -> Unit = {
+            if (keeper.stack.cover == null) motion.requestBack?.invoke()
+            else commitBack()
+        }
         // Input during the wait opens the terminal first, then goes to it (design D5).
         DisposableEffect(opener) {
             onDispose { keeper.disposeOpener(current) }
@@ -244,7 +251,9 @@ fun AgentHost(app: KuddeApp, home: AgentsHome, key: AgentKey, ports: AgentPorts 
                 if (keeper.stack.cover == null) null
                 else if (keeper.chat.switch.chat) AgentScreen.Chat else AgentScreen.Terminal
             },
-            onBack = back,
+            backSource = { keeper.top },
+            leaveContent = leaveContent,
+            onBack = commitBack,
         ) { destination ->
             when (destination) {
                 AgentScreen.Terminal -> {
