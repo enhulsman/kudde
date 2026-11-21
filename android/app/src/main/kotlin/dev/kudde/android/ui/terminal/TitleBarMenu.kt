@@ -3,7 +3,6 @@ package dev.kudde.android.ui.terminal
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,7 +24,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.dropShadow
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -37,10 +35,9 @@ import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
-import androidx.compose.ui.window.PopupProperties
 import dev.kudde.android.R
+import dev.kudde.android.ui.components.ModalPopup
 import dev.kudde.android.ui.theme.KuddeBorder
 import dev.kudde.android.ui.theme.KuddeChipShadow
 import dev.kudde.android.ui.theme.KuddeRadius
@@ -91,13 +88,10 @@ fun TitleBarMenu(items: List<TitleBarMenuItem>, state: TitleBarMenuState = remem
         if (open) {
             val density = LocalDensity.current
             val position = remember(density) { MenuPosition(density) }
-            Popup(popupPositionProvider = position, onDismissRequest = { open = false }, properties = PopupProperties(focusable = true)) {
-                // The shadow's room closes the menu too, as a tap anywhere outside it does.
-                Box(Modifier.pointerInput(Unit) { detectTapGestures { open = false } }.padding(ShadowRoom)) {
-                    TitleBarMenuPanel(items) { item ->
-                        open = false
-                        item.onClick()
-                    }
+            ModalPopup(popupPositionProvider = position, onDismissRequest = { open = false }, shadowRoom = ShadowRoom) {
+                TitleBarMenuPanel(items) { item ->
+                    open = false
+                    item.onClick()
                 }
             }
         }
@@ -138,7 +132,7 @@ internal fun TitleBarMenuPanel(items: List<TitleBarMenuItem>, onChoose: (TitleBa
 }
 
 /** The menu's right edge 4 dp in from the button's, its top 6 dp under it (`.qmenu`: right 8, top 62 in the bar). */
-private class MenuPosition(private val density: Density) : PopupPositionProvider {
+internal class MenuPosition(private val density: Density) : PopupPositionProvider {
     override fun calculatePosition(anchorBounds: IntRect, windowSize: IntSize, layoutDirection: LayoutDirection, popupContentSize: IntSize): IntOffset {
         with(density) {
             val room = ShadowRoom.roundToPx()
