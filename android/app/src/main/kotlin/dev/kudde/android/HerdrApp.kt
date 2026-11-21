@@ -100,6 +100,9 @@ class KuddeApp : Application() {
     /** The zoom each terminal was left at while watching, for this run of the app. */
     val terminalZoom = ZoomMemory()
 
+    /** The most recent measured terminal grid in this process; never a chat seed. */
+    var lastPhoneGrid: dev.kudde.android.ui.terminal.GridSize? = null
+
     /** Terminal or Chat, the view chosen last, in its own preferences file. */
     lateinit var chatView: ChatViewSetting
         private set
