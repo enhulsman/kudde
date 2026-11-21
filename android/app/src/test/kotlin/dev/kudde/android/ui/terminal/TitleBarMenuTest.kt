@@ -1,5 +1,7 @@
 package dev.kudde.android.ui.terminal
 
+import androidx.activity.BackEventCompat
+import dev.kudde.android.ui.agent.AgentRouteScenario
 import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.MotionEvent
@@ -221,4 +223,86 @@ class TitleBarMenuTest {
         assertEquals("finger left: the next stop", listOf(true), tabs)
         assertFalse("and the menu did not open", menu.open)
     }
+
+    // red until 4.1
+    @Test
+    fun aDragOutsideTheMenuStepsNothingAndCloses() = AgentRouteScenario().use { host ->
+        host.show()
+        val title = host.titleBounds()
+        val key = host.rig.home.openKey
+        val before = host.opened.view.calls.toList()
+        host.tap("More options")
+        val popup = windowRoots().last()
+        val location = IntArray(2).also(popup::getLocationOnScreen)
+        val down = SystemClock.uptimeMillis()
+        // Coordinates are screen coordinates translated into the popup's own window.
+        // Send the entire gesture to that window; never manually forward it to the terminal.
+        fun send(action: Int, x: Float) {
+            val e = MotionEvent.obtain(down, SystemClock.uptimeMillis(), action,
+                x - location[0], title.center.y - location[1], 0)
+            try { popup.dispatchTouchEvent(e) } finally { e.recycle() }
+            host.rig.frames(2)
+        }
+        send(MotionEvent.ACTION_DOWN, title.width * .65f)
+        repeat(12) { send(MotionEvent.ACTION_MOVE, title.width * .65f - (it + 1) * 25f) }
+        send(MotionEvent.ACTION_UP, title.width * .65f - 300f)
+        assertNull("outside drag must close the menu", nodeSaying("Changes"))
+        assertEquals("outside menu drag reached onTab", key, host.rig.home.openKey)
+        assertEquals("outside menu drag sent terminal input", before, host.opened.view.calls)
+        assertEquals("outside menu drag attached another pane", 1, host.rig.ports.opens.size)
+        // The window must itself own the inert title area: dispatching to it alone cannot
+        // prove the system would select it if that area lies outside its bounds.
+        assertTrue("menu window does not cover the title bar against outside drag pass-through",
+            location[0] <= 0 && location[1] <= title.top &&
+                location[0] + popup.width >= title.right && location[1] + popup.height >= title.bottom)
+    }
+
+    // red until 4.1
+    @Test
+    fun aTapInsideTheMenuPanelDoesNotClose() = AgentRouteScenario().use { host ->
+        host.show()
+        host.tap("More options")
+        val item = nodeSaying("Changes")!!.boundsInWindow
+        val popup = windowRoots().last()
+        // The panel has 4 dp vertical padding. This point is inside that panel,
+        // 2 dp above the first item, rather than in the outer 24 dp shadow room.
+        val x = item.center.x
+        val y = item.top - 2f * host.activity.resources.displayMetrics.density
+        val down = SystemClock.uptimeMillis()
+        for (action in listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP)) {
+            val event = MotionEvent.obtain(down, SystemClock.uptimeMillis(), action, x, y, 0)
+            try { popup.dispatchTouchEvent(event) } finally { event.recycle() }
+            host.rig.frames(2)
+        }
+        assertNotNull("tap inside menu panel padding dismissed the menu", nodeSaying("Changes"))
+        assertTrue("panel padding must not open Changes", host.rig.ports.changes.isEmpty())
+        assertEquals(host.rig.key, host.rig.home.openKey)
+    }
+
+    // red until 4.1
+    @Test
+    fun backClosesTheMenuAndNotTheChat() = AgentRouteScenario().use { host ->
+        host.show(chat = true)
+        host.edit("keep chat open")
+        val before = host.opened.view.calls.toList()
+        // The legacy key path remains a positive control, then exercise the activity dispatcher.
+        host.tap("More options")
+        val popup = windowRoots().last()
+        popup.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_BACK))
+        popup.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_BACK))
+        host.rig.frames()
+        assertNull("key Back closes only the menu", nodeSaying("Changes"))
+        assertEquals("key Back must keep the chat", host.rig.key, host.rig.home.openKey)
+        host.tap("More options")
+        val dispatcher = host.activity.onBackPressedDispatcher
+        dispatcher.dispatchOnBackStarted(BackEventCompat(0f, 100f, 0f, BackEventCompat.EDGE_LEFT))
+        dispatcher.dispatchOnBackProgressed(BackEventCompat(100f, 100f, .5f, BackEventCompat.EDGE_LEFT))
+        dispatcher.onBackPressed()
+        host.rig.frames()
+        assertEquals("menu Back reached the chat and left the agent", host.rig.key, host.rig.home.openKey)
+        assertNull("dispatcher Back must close the menu", nodeSaying("Changes"))
+        assertEquals("keep chat open", host.fieldText())
+        assertEquals("menu Back must send nothing and detach nothing", before, host.opened.view.calls)
+    }
+
 }

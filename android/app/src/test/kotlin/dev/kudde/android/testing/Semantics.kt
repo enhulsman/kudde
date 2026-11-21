@@ -56,3 +56,16 @@ fun SemanticsNode.click(): Boolean = config.getOrNull(SemanticsActions.OnClick)?
 /** The node spoken as [description], or showing [text], in any window. */
 fun nodeSaying(text: String): SemanticsNode? =
     semanticsNodes().firstOrNull { text in it.descriptions() || it.texts() == listOf(text) }
+
+/** Raw composition nodes as well as the merged reader tree: detects a hidden field kept alive. */
+fun unmergedSemanticsNodes(): List<SemanticsNode> = windowRoots().flatMap(::composeRoots).flatMap { root ->
+    val nodes = mutableListOf<SemanticsNode>()
+    fun walk(node: SemanticsNode) {
+        nodes += node
+        node.children.forEach(::walk)
+    }
+    walk(root.semanticsOwner.unmergedRootSemanticsNode)
+    nodes
+}
+
+fun SemanticsNode.focused(): Boolean = config.getOrNull(SemanticsProperties.Focused) == true
