@@ -44,7 +44,8 @@ class TerminalTouchTest {
         controller.pause().stop().destroy()
         shadowOf(Looper.getMainLooper()).idle()
     }
-    private val hub = snapshot(machines = listOf(connected("workstation")), agents = listOf(row("t1", AgentAttention.WORKING)))
+    private var hub = snapshot(machines = listOf(connected("workstation")), agents = listOf(row("t1", AgentAttention.WORKING)))
+    private val opened = mutableListOf<AgentKey>()
 
     private fun idle() = shadowOf(Looper.getMainLooper()).idle()
 
@@ -78,7 +79,7 @@ class TerminalTouchTest {
         actions = terminalActions(
             screen,
             onBack = {},
-            onOpen = {},
+            onOpen = { opened += it },
             onSwipe = { swipes += if (it) "up" else "down"; true },
             onTab = { tabs += if (it) "next" else "previous"; true },
             onPhoneGrid = {},
@@ -271,6 +272,55 @@ class TerminalTouchTest {
         dragOnTitle(midX, midX + 20f, dy = -300f)
         assertEquals(listOf("up"), swipes)
         assertEquals(emptyList<String>(), tabs)
+    }
+
+    // spaces spec, "Steps start only on the title bar": a drag that starts on the queue strip never
+    // steps, whatever its direction; a real tap on it still opens the next agent that needs you.
+    private fun needsYouToo() {
+        hub = snapshot(
+            machines = listOf(connected("workstation")),
+            agents = listOf(row("t1", AgentAttention.WORKING), row("t2", AgentAttention.NEEDS_YOU, kind = "Permission")),
+        )
+    }
+
+    private fun stripY(): Float = terminalTop() + KuddeLayout.queueStripHeight.value * activity.resources.displayMetrics.density / 2
+
+    private fun dragOnStrip(x0: Float, x1: Float, dy: Float = 0f) {
+        val y = stripY()
+        val down = SystemClock.uptimeMillis()
+        send(MotionEvent.obtain(down, down, MotionEvent.ACTION_DOWN, x0, y, 0))
+        for (i in 1..10) {
+            send(MotionEvent.obtain(down, down + i * 10L, MotionEvent.ACTION_MOVE, x0 + (x1 - x0) * i / 10, y + dy * i / 10, 0))
+        }
+        send(MotionEvent.obtain(down, down + 120, MotionEvent.ACTION_UP, x1, y + dy, 0))
+    }
+
+    @Test
+    fun aSidewaysDragOnTheQueueStripNeverOpensTheNextAgent() {
+        needsYouToo()
+        open(TermPhase.Typing, 53, 40, typing = true)
+        dragOnStrip(midX + 150f, midX - 150f)
+        dragOnStrip(midX - 150f, midX + 150f)
+        assertEquals("no open", emptyList<AgentKey>(), opened)
+        assertEquals("no step", emptyList<String>(), swipes)
+        assertEquals("no tab step", emptyList<String>(), tabs)
+    }
+
+    @Test
+    fun aVerticalDragOnTheQueueStripNeverOpensTheNextAgent() {
+        needsYouToo()
+        open(TermPhase.Typing, 53, 40, typing = true)
+        dragOnStrip(midX, midX, dy = 120f)
+        assertEquals(emptyList<AgentKey>(), opened)
+        assertEquals(emptyList<String>(), swipes)
+    }
+
+    @Test
+    fun aTapOnTheQueueStripStillOpensTheNextAgent() {
+        needsYouToo()
+        open(TermPhase.Typing, 53, 40, typing = true)
+        tap(midX, stripY())
+        assertEquals(listOf(AgentKey("workstation", "t2")), opened)
     }
 
     // spaces spec, "A draft in the compose sheet": a step in any direction is
