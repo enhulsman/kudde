@@ -1,5 +1,6 @@
 package dev.kudde.android.ui.terminal
 
+import dev.kudde.android.ui.agent.AgentMotion
 import dev.kudde.android.ui.agents.AgentsHome
 import dev.kudde.android.ui.agents.agentSheet
 import dev.kudde.android.ui.agents.agentsUi
@@ -341,6 +342,15 @@ internal fun TitleBar(
     val view = LocalView.current
     val context = LocalContext.current
     val density = LocalDensity.current
+    var shownHeader by remember { mutableStateOf(header) }
+    val titleOpacity = remember { Animatable(1f) }
+    LaunchedEffect(header) {
+        if (shownHeader != header) {
+            if (animationsOn(context)) titleOpacity.animateTo(0f, tween(AgentMotion.titleFadeMs))
+            shownHeader = header
+            titleOpacity.snapTo(1f)
+        }
+    }
     val threshold = with(density) { SWIPE_STEP.toPx() }
     val bounceBy = with(density) { TITLE_BAR_BOUNCE_DISTANCE.toPx() }
     // The bar's content, moved at a tab's end and sprung back (design D3); the background stays.
@@ -449,8 +459,11 @@ internal fun TitleBar(
         ) {
             ChevronIcon(Chevron.Left, 22.dp, c.fg)
         }
-        ProgramMark(header.icon, Modifier.padding(start = 6.dp, end = 12.dp), size = 20.dp)
-        NameAndGauge(header, stepActions, gauge, Modifier.weight(1f))
+        // A layer only while fading, and no wrapper: at rest the title must draw and lay out
+        // exactly as it did without motion.
+        val fade = if (titleOpacity.value < 1f) Modifier.graphicsLayer { alpha = titleOpacity.value } else Modifier
+        ProgramMark(shownHeader.icon, Modifier.padding(start = 6.dp, end = 12.dp).then(fade), size = 20.dp)
+        NameAndGauge(shownHeader, stepActions, gauge, Modifier.weight(1f).then(fade))
         Spacer(Modifier.width(6.dp))
         map?.let { TitleMapButton(it, onMap) }
         switch?.invoke()

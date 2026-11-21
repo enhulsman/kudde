@@ -1,5 +1,7 @@
 package dev.kudde.android.ui.components
 
+import dev.kudde.android.ui.agent.AgentMotion
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -48,6 +50,8 @@ fun ModalPopup(
     popupPositionProvider: PopupPositionProvider,
     onDismissRequest: () -> Unit,
     shadowRoom: Dp = 0.dp,
+    motionProgress: Float = 1f,
+    opening: Boolean = true,
     content: @Composable () -> Unit,
 ) {
     var anchor by remember { mutableStateOf(IntRect.Zero) }
@@ -73,7 +77,8 @@ fun ModalPopup(
         properties = PopupProperties(focusable = true, usePlatformDefaultWidth = false),
     ) {
         ModalPopupLayer(anchor, popupPositionProvider, onDismissRequest, shadowRoom,
-            parentWindowOnScreen = { parentView.rootView.screenOrigin() }, content = content)
+            parentWindowOnScreen = { parentView.rootView.screenOrigin() },
+            motionProgress = motionProgress, opening = opening, content = content)
     }
 }
 
@@ -94,6 +99,8 @@ fun ModalPopupLayer(
     popupPositionProvider: PopupPositionProvider,
     onDismissRequest: () -> Unit,
     shadowRoom: Dp = 0.dp,
+    motionProgress: Float = 1f,
+    opening: Boolean = true,
     /** Where the window [anchorBounds] is measured in starts on screen; default: this layer's own window. */
     parentWindowOnScreen: (() -> Offset)? = null,
     content: @Composable () -> Unit,
@@ -157,7 +164,17 @@ fun ModalPopupLayer(
         val x = position.x + room
         val y = position.y + room
         panel.rect = Rect(x.toFloat(), y.toFloat(), (x + placeable.width - room * 2).toFloat(), (y + placeable.height - room * 2).toFloat())
-        layout(width, height) { placeable.place(position.x, position.y) }
+        layout(width, height) {
+            placeable.placeWithLayer(position.x, position.y) {
+                val frame = AgentMotion.menuFrame(motionProgress, opening)
+                alpha = frame.alpha.coerceIn(0f, 1f)
+                scaleX = frame.scale; scaleY = frame.scale
+                transformOrigin = TransformOrigin(
+                    (localAnchor.center.x - position.x).toFloat() / placeable.width.coerceAtLeast(1),
+                    room.toFloat() / placeable.height.coerceAtLeast(1),
+                )
+            }
+        }
     }
 }
 

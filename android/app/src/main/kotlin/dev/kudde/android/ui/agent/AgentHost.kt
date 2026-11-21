@@ -99,6 +99,7 @@ fun AgentHost(app: KuddeApp, home: AgentsHome, key: AgentKey, ports: AgentPorts 
         @Suppress("UNUSED_VARIABLE")
         val observedRevision = revision.intValue
         val top = keeper.top
+        val motion = remember(keeper) { ScreenStackHostState(top) }
         // The Android input view exists only with its terminal destination.
         val terminalInput = remember(keeper) { arrayOf<TerminalInputHandle>(TerminalInputHandle.None) }
         fun <T> navigate(change: () -> T): T = keeper.navigate(
@@ -186,8 +187,12 @@ fun AgentHost(app: KuddeApp, home: AgentsHome, key: AgentKey, ports: AgentPorts 
 
         val sink = remember(session) {
             object : KeyboardSink {
-                override fun type(text: String) = session.type(text)
-                override fun backspace() = session.backspace()
+                override fun type(text: String) {
+                    if (keeper.top == AgentScreen.Terminal && !motion.running && motion.settled == AgentScreen.Terminal) session.type(text)
+                }
+                override fun backspace() {
+                    if (keeper.top == AgentScreen.Terminal && !motion.running && motion.settled == AgentScreen.Terminal) session.backspace()
+                }
             }
         }
         val imeVisible = WindowInsets.isImeVisible
@@ -233,6 +238,8 @@ fun AgentHost(app: KuddeApp, home: AgentsHome, key: AgentKey, ports: AgentPorts 
         }
         ScreenStackHost(
             top,
+            state = motion,
+            overviewKey = key,
             backTarget = {
                 if (keeper.stack.cover == null) null
                 else if (keeper.chat.switch.chat) AgentScreen.Chat else AgentScreen.Terminal
@@ -241,7 +248,10 @@ fun AgentHost(app: KuddeApp, home: AgentsHome, key: AgentKey, ports: AgentPorts 
         ) { destination ->
             when (destination) {
                 AgentScreen.Terminal -> {
-                    val input = TerminalKeyboard(key, sink)
+                    // Drawing an outgoing terminal must not retain its Android editor.
+                    // A cancelled leave keeps top unchanged and therefore keeps this view.
+                    val input = if (top == AgentScreen.Terminal) TerminalKeyboard(key, sink)
+                        else TerminalInputHandle.None
                     DisposableEffect(keeper, input) {
                         terminalInput[0] = input
                         onDispose {

@@ -8,6 +8,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.snap
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.text.BasicText
@@ -62,7 +63,7 @@ class ScreenStackHostTest {
         BoundedFrames.step(4)
     }
 
-    private fun show(animated: Boolean = false, innerBack: Boolean = false) {
+    private fun show(animated: Boolean = false, innerBack: Boolean = false, cut: Boolean = false) {
         activity.setContent {
             CompositionLocalProvider(LocalSoftwareKeyboardController provides keyboard) {
                 ScreenStackHost(
@@ -73,7 +74,8 @@ class ScreenStackHostTest {
                     transitionFor = { from, to, reason ->
                         selected += Triple(from, to, reason)
                         AgentMotion.transitionFor(from, to, reason).let {
-                            if (animated) it.copy(progressSpec = tween(1000, easing = LinearEasing)) else it
+                            if (animated) it.copy(progressSpec = tween(1000, easing = LinearEasing))
+                            else if (cut) it.copy(progressSpec = snap()) else it
                         }
                     },
                 ) { destination ->
@@ -133,7 +135,7 @@ class ScreenStackHostTest {
     }
 
     @Test fun onlyTheTopsContentIsComposedAtRest() {
-        show()
+        show(cut = true)
         assertEquals(setOf(AgentScreen.Chat), composed)
         for (destination in listOf(AgentScreen.Changes, AgentScreen.Terminal, AgentScreen.Overview("space", "tab"), AgentScreen.Chat)) {
             top.value = destination
@@ -155,7 +157,7 @@ class ScreenStackHostTest {
     }
 
     @Test fun aPointerInputInALeftDestinationReceivesNothing() {
-        show()
+        show(cut = true)
         touch()
         assertTrue((touches[AgentScreen.Chat] ?: 0) > 0)
         change(AgentScreen.Changes)
@@ -166,7 +168,7 @@ class ScreenStackHostTest {
     }
 
     @Test fun theBackHandlersOfALeftDestinationDoNotRun() {
-        show(innerBack = true)
+        show(innerBack = true, cut = true)
         activity.onBackPressedDispatcher.onBackPressed()
         frames()
         assertEquals(1, backs[AgentScreen.Chat])
@@ -206,7 +208,7 @@ class ScreenStackHostTest {
     }
 
     @Test fun transitionForIsChosenPerChangeAndReason() {
-        show()
+        show(cut = true)
         change(AgentScreen.Terminal)
         change(AgentScreen.Changes)
         activity.onBackPressedDispatcher.onBackPressed()
@@ -280,6 +282,142 @@ class ScreenStackHostTest {
         pulse(600); pulse(1600)
         assertEquals(setOf(top.value), composed)
         assertFalse(host.running)
+    }
+
+    @Test fun reducedMotionCutsAndCommitsOrCancelsInOneFrame() {
+        val resolver = activity.contentResolver
+        val old = android.provider.Settings.Global.getString(resolver, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE)
+        android.provider.Settings.Global.putFloat(resolver, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 0f)
+        try {
+            show(animated = true)
+            for (destination in listOf(AgentScreen.Terminal, AgentScreen.Chat, AgentScreen.Overview("space", "tab"), AgentScreen.Chat, AgentScreen.Changes)) {
+                change(destination)
+                assertFalse(host.running)
+                assertEquals(setOf(destination), composed)
+            }
+            startBack(.5f)
+            activity.onBackPressedDispatcher.dispatchOnBackCancelled()
+            frames(1)
+            assertFalse(host.running)
+            assertEquals(AgentScreen.Changes, top.value)
+            startBack(.5f)
+            activity.onBackPressedDispatcher.onBackPressed()
+            frames(1)
+            assertFalse(host.running)
+            assertEquals(AgentScreen.Chat, top.value)
+        } finally {
+            android.provider.Settings.Global.putString(resolver, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, old)
+        }
+    }
+
+    @Test fun noTouchReachesTheScreenUnderneathDuringOrAfterATransition() {
+        show(animated = true)
+        change(AgentScreen.Changes)
+        pulse(0); pulse(500)
+        val before = touches.toMap()
+        touch()
+        assertEquals(before, touches)
+        pulse(1000); pulse(2000)
+        val chatBefore = touches[AgentScreen.Chat]
+        touch()
+        assertEquals(chatBefore, touches[AgentScreen.Chat])
+        assertTrue((touches[AgentScreen.Changes] ?: 0) > 0)
+    }
+
+    @Test fun aPredictiveReleaseBelowTheThresholdCancels() {
+        show(animated = true)
+        change(AgentScreen.Changes)
+        pulse(0); pulse(1000)
+        startBack(.2f)
+        activity.onBackPressedDispatcher.onBackPressed()
+        frames()
+        pulse(2000); pulse(3000)
+        assertEquals(AgentScreen.Changes, top.value)
+        assertEquals(setOf(AgentScreen.Changes), composed)
+        assertFalse(host.running)
+    }
+
+    @Test fun cancellingLeaveKeepsFocusAndKeyboardOwnershipAtEveryFrame() {
+        focusOnArrival = true
+        show(animated = true, innerBack = false)
+        assertTrue(unmergedSemanticsNodes().any { it.focused() })
+        val hidden = hide
+        startBack(.5f)
+        assertTrue("seeking leave retains focus", unmergedSemanticsNodes().any { it.focused() })
+        activity.onBackPressedDispatcher.dispatchOnBackCancelled()
+        frames(1)
+        pulse(0); pulse(250)
+        assertTrue("rollback retains focus", unmergedSemanticsNodes().any { it.focused() })
+        pulse(1000); pulse(2000)
+        assertTrue("settling rollback retains focus", unmergedSemanticsNodes().any { it.focused() })
+        assertEquals(hidden, hide)
+        assertEquals(0, left)
+        assertEquals(setOf(AgentScreen.Chat), composed)
+    }
+
+    @Test fun animatedArrivalOwnsTouchAndBackAfterItSettles() {
+        show(animated = true, innerBack = true)
+        change(AgentScreen.Changes)
+        pulse(0); pulse(500)
+        val before = touches.toMap()
+        touch()
+        assertEquals(before, touches)
+        pulse(1000); pulse(2000)
+        touch()
+        assertTrue((touches[AgentScreen.Changes] ?: 0) > 0)
+        assertEquals(null, touches[AgentScreen.Chat])
+        activity.onBackPressedDispatcher.onBackPressed()
+        frames()
+        assertEquals(null, backs[AgentScreen.Chat])
+        pulse(3000); pulse(4000)
+        assertEquals(AgentScreen.Chat, top.value)
+        activity.onBackPressedDispatcher.onBackPressed()
+        frames()
+        assertEquals(1, backs[AgentScreen.Chat])
+        assertEquals(0, left)
+    }
+
+    @Test fun aPredictiveReleaseHandsVelocityToTheRemainingDistance() {
+        show()
+        change(AgentScreen.Changes)
+        pulse(0); pulse(1000)
+        startBack(.5f)
+        activity.onBackPressedDispatcher.dispatchOnBackProgressed(
+            BackEventCompat(160f, 110f, .6f, BackEventCompat.EDGE_LEFT))
+        frames()
+        activity.onBackPressedDispatcher.onBackPressed()
+        frames()
+        assertNotNull(host.releaseAnimation)
+        assertEquals(.6f, host.progress, .001f)
+        assertTrue("the fixture carries a nonzero finger velocity", host.releaseVelocityDp > 0f)
+        assertTrue(host.releaseDistanceDp > 0f)
+        assertEquals(host.releaseVelocityDp / host.releaseDistanceDp, host.releaseAnimation!!.velocity, .001f)
+        pulse(2000); pulse(3000)
+        assertEquals(AgentScreen.Chat, top.value)
+        assertFalse(host.running)
+    }
+
+    @Test fun aRightEdgeFlingUsesVelocityTowardBack() {
+        show()
+        change(AgentScreen.Changes)
+        pulse(0); pulse(1000)
+        activity.onBackPressedDispatcher.dispatchOnBackStarted(
+            BackEventCompat(800f, 100f, 0f, BackEventCompat.EDGE_RIGHT))
+        frames()
+        activity.onBackPressedDispatcher.dispatchOnBackProgressed(
+            BackEventCompat(780f, 100f, .05f, BackEventCompat.EDGE_RIGHT))
+        frames()
+        activity.onBackPressedDispatcher.dispatchOnBackProgressed(
+            BackEventCompat(500f, 100f, .2f, BackEventCompat.EDGE_RIGHT))
+        frames()
+        activity.onBackPressedDispatcher.onBackPressed()
+        frames()
+        assertTrue(host.rightEdge)
+        assertNotNull("a fling commits below the distance threshold", host.releaseAnimation)
+        assertTrue(host.releaseVelocityDp > AgentMotion.backFling)
+        assertEquals(host.releaseVelocityDp / host.releaseDistanceDp, host.releaseAnimation!!.velocity, .001f)
+        pulse(2000); pulse(3000)
+        assertEquals(AgentScreen.Chat, top.value)
     }
 
     /** A stopped animation clock; only explicit pulses move animation time. */

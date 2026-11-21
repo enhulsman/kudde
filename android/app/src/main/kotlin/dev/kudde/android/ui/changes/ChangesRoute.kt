@@ -98,7 +98,9 @@ fun ChangesRoute(changes: ChangesInterface?, agent: String, space: String, onClo
             ChangesBack.Close -> onClose()
         }
     }
-    BackHandler(onBack = back)
+    // A file owns the ordinary step back to the list. On the list, the host
+    // owns Back so its predictive pop can seek, cancel and commit the cover.
+    BackHandler(enabled = backFrom(view) == ChangesBack.ToList, onBack = back)
     ChangesScreen(
         agent = agent,
         space = space,

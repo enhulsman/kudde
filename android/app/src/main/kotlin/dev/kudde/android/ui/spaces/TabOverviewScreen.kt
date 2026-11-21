@@ -31,6 +31,17 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.animation.core.Animatable
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInRoot
+import dev.kudde.android.ui.agent.AgentMotion
+import dev.kudde.android.ui.agent.LocalAgentMotion
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -107,8 +118,31 @@ fun TabOverviewScreen(
             if (tilesFit(ui.cells, width.value, height.value)) {
                 Box(Modifier.padding(start = KuddeSpacing.s16, top = KuddeSpacing.s4).size(width, height)) {
                     val gap = 8.dp
-                    for (tile in ui.tiles) {
+                    for ((index, tile) in ui.tiles.withIndex()) {
+                        val motion = LocalAgentMotion.current
+                        val entry = remember { Animatable(if (motion?.host?.running == true) 0f else 1f) }
+                        LaunchedEffect(motion?.host?.running) {
+                            if (motion?.host?.running == true && motion.host.motion.name == "pushOverview" && motion.host.durationScale != 0f) {
+                                delay(AgentMotion.tileDelay(index))
+                                entry.animateTo(1f, AgentMotion.springs.getValue("fastSpatial"))
+                            } else if (motion?.host?.running == true && motion.host.motion.name == "popOverview" && motion.host.durationScale != 0f) {
+                                entry.animateTo(0f, AgentMotion.springs.getValue("fastEffects"))
+                            } else entry.snapTo(1f)
+                        }
                         val place = Modifier
+                            .graphicsLayer {
+                                val t = if (tile is OverviewTile.Terminal && tile.key == motion?.overviewKey) 1f else entry.value
+                                val exiting = motion?.host?.running == true && motion.host.motion.name == "popOverview"
+                                alpha = if (exiting) t.coerceIn(0f, 1f) else minOf(1f, AgentMotion.tileOpacityRate * t).coerceAtLeast(0f)
+                                scaleX = if (exiting) AgentMotion.tileExitScale + (1 - AgentMotion.tileExitScale) * t
+                                    else AgentMotion.tileScale + (1 - AgentMotion.tileScale) * t
+                                scaleY = scaleX
+                            }
+                            .onGloballyPositioned { coordinates ->
+                                if (tile is OverviewTile.Terminal && tile.key == motion?.overviewKey) {
+                                    motion?.host?.overviewTile = coordinates.boundsInRoot()
+                                }
+                            }
                             .offset(width * tile.x + gap / 2, height * tile.y + gap / 2)
                             .size(width * tile.w - gap, height * tile.h - gap)
                         when (tile) {
@@ -227,7 +261,12 @@ private fun TerminalTile(tile: OverviewTile.Terminal, spin: Boolean, modifier: M
                 }
             }
         }
-        BasicText(tile.name, style = KuddeType.rowName.copy(color = c.fg), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        val motion = LocalAgentMotion.current
+        BasicText(tile.name, modifier = Modifier.graphicsLayer {
+            if (motion != null && tile.key == motion.overviewKey && motion.host.running && motion.host.motion.name == "pushOverview") {
+                alpha = motion.host.progress.coerceIn(0f, 1f)
+            }
+        }, style = KuddeType.rowName.copy(color = c.fg), maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
