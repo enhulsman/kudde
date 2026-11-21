@@ -72,7 +72,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import uniffi.kudde_mobile.ChatImage
-import uniffi.kudde_mobile.Chat
+import uniffi.kudde_mobile.ChatInterface
 
 // Images in the chat (spec "Images show in the chat", "Photos can be
 // attached from the phone"). The agent's images are fetched one at a time
@@ -258,7 +258,7 @@ class DeskImages internal constructor(
     private val now: () -> Long = { SystemClock.elapsedRealtime() },
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : ChatImageSource {
-    constructor(chat: Chat?) : this(fetch = { key -> chat?.image(key) })
+    constructor(chat: ChatInterface?) : this(fetch = { key -> chat?.image(key) })
 
     private class Entry(val picture: MutableState<ImageBitmap?>, var digest: ByteArray?, var checked: Long) {
         var image by picture

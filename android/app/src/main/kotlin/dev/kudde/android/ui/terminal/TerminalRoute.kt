@@ -1,6 +1,5 @@
 package dev.kudde.android.ui.terminal
 
-import android.os.SystemClock
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -21,6 +20,8 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import dev.kudde.android.ui.agent.AgentPorts
+import dev.kudde.android.ui.agent.HubPorts
 import dev.kudde.android.KuddeApp
 import dev.kudde.android.ui.agents.AgentKey
 import dev.kudde.android.ui.agents.AgentsHome
@@ -51,7 +52,7 @@ import uniffi.kudde_mobile.TerminalViewInterface
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun TerminalRoute(app: KuddeApp, home: AgentsHome, key: AgentKey) {
+fun TerminalRoute(app: KuddeApp, home: AgentsHome, key: AgentKey, ports: AgentPorts = HubPorts(app)) {
     val context = LocalContext.current
     val res = context.resources
     val snapshot by app.hubHost.snapshot.collectAsState()
@@ -60,7 +61,7 @@ fun TerminalRoute(app: KuddeApp, home: AgentsHome, key: AgentKey) {
     val session = remember(key, generation) { TerminalSession(key, context.mainExecutor) }
     val screen = remember(key) { TerminalScreenState(app.terminalZoom[key]) }
     // The chat view (issue 17): over the live terminal, so switching back is instant.
-    val chat = rememberChatVisit(app, key)
+    val chat = rememberChatVisit(app, key, ports::openChat)
     val switch = chat.switch
     // The Changes screen (issue 19) over either view; nothing is sent to the terminal for it.
     var changesOpen by remember(key) { mutableStateOf(false) }
@@ -73,30 +74,30 @@ fun TerminalRoute(app: KuddeApp, home: AgentsHome, key: AgentKey) {
         // Reached by a step: wait before taking the desk's terminal (design D5). A reopen
         // after the background does not wait; nor does an open from a row, the strip or an alert.
         val dwell = if (generation == 0 && home.arrivedByStep) TerminalOpener.STEP_DWELL_MS else 0L
-        TerminalOpener(session, arrivalMs = SystemClock.uptimeMillis(), dwellMs = dwell) { size ->
+        TerminalOpener(session, arrivalMs = ports.now(), dwellMs = dwell) { size ->
             // Opened at the phone's size (phone check round 2) unless the chat shows over it;
             // closing lets the desk take its size back.
             val lead = atPhoneSizeOnOpen(switch.chat)
-            app.hubHost.hub?.openTerminal(key.machine, key.address, size.cols.toUShort(), size.rows.toUShort(), lead, session.listener)
+            ports.openTerminal(key, size.cols.toUShort(), size.rows.toUShort(), lead, session.listener)
         }
     }
     // Input during the wait opens the terminal first, then goes to it (design D5).
     DisposableEffect(opener) {
-        session.onInputWithoutView = { opener.openNow(SystemClock.uptimeMillis()) }
+        session.onInputWithoutView = { opener.openNow(ports.now()) }
         onDispose { opener.dispose() }
     }
     LaunchedEffect(opener) {
-        val wait = opener.dueAtMs - SystemClock.uptimeMillis()
+        val wait = opener.dueAtMs - ports.now()
         if (wait > 0) delay(wait)
-        opener.tick(SystemClock.uptimeMillis())
+        opener.tick(ports.now())
     }
     var phone by remember(key) { mutableStateOf<GridSize?>(null) }
     // A reopened generation opens again at the last phone size.
     LaunchedEffect(phone, generation) {
         val size = phone ?: return@LaunchedEffect
-        opener.onPhoneGrid(size, SystemClock.uptimeMillis())
+        opener.onPhoneGrid(size, ports.now())
         delay(TerminalMetrics.SETTLE_MS)
-        opener.tick(SystemClock.uptimeMillis())
+        opener.tick(ports.now())
     }
 
     // Instant open: the last screen, until the live first paint replaces it; after a
@@ -239,7 +240,7 @@ fun TerminalRoute(app: KuddeApp, home: AgentsHome, key: AgentKey) {
             }
         }
         if (changesOpen) {
-            val changes = remember(key) { app.hubHost.hub?.openChanges(key.machine, key.address) }
+            val changes = remember(key) { ports.openChanges(key) }
             ChangesRoute(changes, ui.header.name, ui.header.lineTwo.substringBefore(" · ")) {
                 changesOpen = false
                 heldGrid?.let { phone = it }
