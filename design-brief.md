@@ -103,6 +103,27 @@ in v1.1.
 | `question-other-paper` | The Something else field open on a single-choice card, with its own send |
 | `question-large-text-paper` | The card at a large font scale |
 
+## First-run drafts (awaiting owner sign-off)
+
+Each ID shows graphite and paper. Open `design/renders/screens.html?only=<id>`;
+existing `?s=<id>` links still work. These drafts follow
+`openspec/changes/first-run-walkthrough/design.md`, including D13's fourth step.
+
+| Render | Shows |
+|---|---|
+| `first-run-welcome` | Existing ear-tag mark, WL1–WL7 and WL13, four steps, setup action and Setup guide; no skip |
+| `first-run-lock` | Lock notice before step 1, plus its home-notice variant after completion; no bypass |
+| `first-run-address` | Step 1: Address, User, Port, optional Name; waiting and F1 no-answer variants |
+| `first-run-manual` | Step 2 manual detail: exact D3 design command in a scrollable MonoBox, Copy/Share, restriction notes, both choices and Compare the fingerprint |
+| `first-run-key-refused` | Step 2 rejection: K1, password-once choice first, manual second, retry and Change the address |
+| `first-run-connected` | Step 3: machine, core version, agent count and Continue |
+| `first-run-alerts` | Step 4 after Turn on alerts: AL6 test received, plus AL7 no-test variant; both retain Show my agents |
+| `first-run-trust` | Existing trust-dialog look with D1/D2 manual wording, fingerprint and unchanged trust actions |
+| `first-run-home` | Unfinished setup notice, Continue setup and New terminal; WL11/WL12 empty-home variant after completion |
+
+The D3 command keeps the spec's abbreviated example public key. Its complete
+text is scrollable at the existing MonoBox type size; it is not reduced to fit.
+
 ## Components
 
 Each component below has its full spec in `design-tokens.json` under `components`:
