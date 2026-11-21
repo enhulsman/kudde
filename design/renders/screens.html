@@ -266,6 +266,34 @@ button{font-family:inherit;color:inherit}
 .otile .nm{font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .otile.ph{background:transparent;border:1px dashed var(--input);align-items:center;justify-content:center;color:var(--dim);font-size:13px}
 .omap{margin:4px 16px 8px;padding:12px;border-radius:12px;background:var(--canvas);border:1px solid var(--border);flex:none}
+/* First-run sign-off drafts; reuse the existing chrome, fields, buttons and dialog. */
+.fr-set{display:flex;align-items:flex-start;gap:24px;flex-wrap:wrap}
+.fr-variant{display:flex;flex-direction:column;gap:10px}
+.fr-label{font-size:13px;font-weight:500;color:#98999b}
+.fr-body{flex:1;min-height:0;overflow:auto;padding:16px 20px 20px;display:flex;flex-direction:column;gap:16px}
+.fr-body h2{margin:0;font-size:22px;font-weight:600;letter-spacing:-.01em}
+.fr-body p{margin:0;font-size:14px;line-height:1.5;color:var(--muted)}
+.fr-step{font-size:13px;color:var(--muted)}
+.fr-footer{padding:12px 20px 8px;display:flex;flex-direction:column;gap:8px;flex:none}
+.fr-link{color:var(--muted);text-decoration:underline;text-underline-offset:3px;font-size:14px;min-height:44px;display:flex;align-items:center;justify-content:center}
+.fr-field{display:flex;flex-direction:column;gap:6px;font-size:14px;color:var(--muted)}
+.fr-field .field{min-height:0;color:var(--fg)}
+.fr-field small{font-size:13px;line-height:1.45}
+.fr-fields{display:flex;flex-direction:column;gap:14px}
+.fr-notice{padding:14px;border:1px solid var(--border);background:var(--canvas);border-radius:12px;display:flex;flex-direction:column;gap:8px;font-size:14px;line-height:1.5}
+.fr-notice p{font-size:14px}
+.fr-steps{display:flex;flex-direction:column;gap:18px}
+.fr-steps b{display:block;font-size:16px;font-weight:500;margin-bottom:4px}
+.fr-actions{display:flex;gap:10px}
+.fr-actions>.btn{flex:1;padding:0 10px}
+.fr-choices{display:flex;gap:10px}
+.fr-choice{flex:1;min-width:0;display:flex;flex-direction:column;gap:10px}
+.fr-choice .btn{height:auto;min-height:52px;white-space:normal;padding:8px 10px;font-size:14px;text-align:center}
+.fr-choice p{font-size:13px}
+.fr-command{white-space:pre;word-break:normal;overflow-wrap:normal;margin:0;max-height:260px;overflow:auto;flex:none}
+.fr-home-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:24px 32px;text-align:center}
+.fr-home-empty h2{font-size:20px;font-weight:600;margin:0}
+.fr-home-empty p{font-size:14px;color:var(--muted);line-height:1.5;margin:0}
 </style>
 </head>
 <body>
@@ -929,6 +957,88 @@ function tabOverview(){
     ${navbar()}
   </div>`;
   return `<div style="display:flex;gap:40px">${tiles}${rows}</div>`;
+// ---------- first-run-walkthrough: drafts for owner sign-off ----------
+const frCommand = "(\n  umask 077\n  if [ -L \"$HOME/.ssh\" ] ||\n     { [ -e \"$HOME/.ssh\" ] && { [ ! -d \"$HOME/.ssh\" ] ||\n       [ -z \"$(find \"$HOME/.ssh\" -prune -user \"$(id -u)\" -print)\" ]; }; } ||\n     [ -L \"$HOME/.ssh/authorized_keys\" ] ||\n     { [ -e \"$HOME/.ssh/authorized_keys\" ] && { [ ! -f \"$HOME/.ssh/authorized_keys\" ] ||\n       [ -z \"$(find \"$HOME/.ssh/authorized_keys\" -prune -user \"$(id -u)\" -print)\" ]; }; }\n  then\n    printf '%s\\n' 'Setup stopped: ~/.ssh and authorized_keys must be owned by you and must not be links or other file types.' >&2\n    exit 1\n  fi\n  if ! { mkdir -p \"$HOME/.ssh\" && chmod 700 \"$HOME/.ssh\" &&\n         touch \"$HOME/.ssh/authorized_keys\" && chmod 600 \"$HOME/.ssh/authorized_keys\" &&\n         cat >> \"$HOME/.ssh/authorized_keys\" <<'KUDDE_KEY'\n\nrestrict,command=\"sh -c '\u2026'\" ecdsa-sha2-nistp256 AAAA\u2026 kudde\nKUDDE_KEY\n  }; then\n    printf '%s\\n' 'Setup failed: could not create, secure or write ~/.ssh/authorized_keys. Check your account permissions and disk space, then try again.' >&2\n    exit 1\n  fi\n  ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub\n)";
+const frEscape = text => text.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
+const frTop = () => `<div class="top" style="padding-left:4px"><button class="iconbtn" style="color:var(--fg)" aria-label="Back">${ico.back}</button><h1 style="font-size:20px">Set up a machine</h1></div>`;
+const frGuide = () => `<a class="fr-link" href="../../README.md#setting-up">Setup guide</a>`;
+const frButton = (text, solid=true) => `<button class="btn${solid?' solid':''}">${text}</button>`;
+const frPhone = (theme,body,footer='',top=frTop()) => `<div class="phone ${theme}">${sysbar()}${top}${body}${footer?`<div class="fr-footer">${footer}</div>`:''}${navbar()}</div>`;
+const frBody = (n,title,body) => `<div class="fr-body">${n?`<div class="fr-step">Step ${n} of 4</div>`:''}<h2>${title}</h2>${body}</div>`;
+const frBoth = variants => `<div class="fr-set">${variants.flatMap(([label,fn])=>['graphite','paper'].map(theme=>`<div class="fr-variant"><div class="fr-label">${label} · ${theme}</div>${fn(theme)}</div>`)).join('')}</div>`;
+const frChoices = (descriptions=false) => `<div class="fr-choices">
+  <div class="fr-choice">${frButton('kudde adds it for you',false)}${descriptions?`<p>kudde signs in once as dev with that account's password, adds the same key and signs out. The password is not stored.</p>`:''}</div>
+  <div class="fr-choice">${frButton('Add it yourself',false)}${descriptions?`<p>Run one command at the machine. kudde never sees a password.</p>`:''}</div>
+</div>`;
+function frWelcome(theme){
+  return frPhone(theme,`<div class="fr-body" style="padding-top:28px;gap:22px">
+    <img src="../brand/kudde-tag-A1.svg" alt="kudde" width="64" height="64">
+    <h2>Set up your first machine</h2>
+    <p>See which agents need you, read their work and reply on your own machines.</p>
+    <div style="font-size:16px;font-weight:500">Set up in four steps</div>
+    <div class="fr-steps">
+      <div><b>1 · Find your machine</b><p>Linux or WSL running herdr-core and OpenSSH, on the same Wi-Fi or VPN as your phone.</p></div>
+      <div><b>2 · Add this phone's key</b><p>kudde uses your password once, or you run one command yourself.</p></div>
+      <div><b>3 · Connect</b><p>kudde checks the machine and shows how many agents run there.</p></div>
+      <div><b>4 · Turn on alerts, if you like</b><p>Hear when an agent needs you, also with kudde closed.</p></div>
+    </div>
+  </div>`,frButton('Set up a machine')+frGuide(),'');
+}
+function frLock(theme){
+  return frPhone(theme,frBody(0,'Set a screen lock first',`<p>kudde keeps its SSH key in the phone's secure hardware. Android allows that only on a phone with a PIN, pattern or password.</p>`),frButton('Set a screen lock'));
+}
+function frLockHome(theme){
+  return frPhone(theme,`<div class="mcard" style="padding:16px;display:flex;flex-direction:column;gap:14px"><h2 style="font-size:20px;margin:0">Set a screen lock first</h2><p style="font-size:14px;line-height:1.5;color:var(--muted);margin:0">kudde keeps its SSH key in the phone's secure hardware. Android allows that only on a phone with a PIN, pattern or password.</p>${frButton('Set a screen lock')}</div><div style="flex:1"></div>`,'',agentsTop(true));
+}
+const frField = (label,value,help='') => `<div class="fr-field"><span>${label}</span><div class="field">${value}</div>${help?`<small>${help}</small>`:''}</div>`;
+function frAddress(theme,failed=false){
+  return frPhone(theme,frBody(1,'Where is it?',`<div class="fr-fields">
+    ${frField('Address','workstation',"The machine's name on your network or VPN, or its IP address.")}
+    ${frField('User','dev')}
+    ${frField('Port','22')}
+    ${frField('Name','<span style="color:var(--dim)">optional</span>','How kudde lists this machine. Leave it empty to use the address.')}
+    </div><p>Tailscale SSH does not work with the phone key: use an address and port where OpenSSH answers.</p>
+    ${failed?`<div class="fr-notice"><b style="font-weight:500">No answer from workstation.</b><p>Check that the phone is on the same Wi-Fi or VPN as the machine, and that the address is right.</p></div>`:`<div class="fr-notice"><span>Connecting to workstation…</span><p>Still no answer. This can take 20 seconds.</p></div>`}`),failed?frButton('Try again'):`<button class="btn solid" disabled style="opacity:.38">Continue</button>`);
+}
+function frManual(theme){
+  return frPhone(theme,frBody(2,"This phone's key",`<p>On workstation, signed in as dev, paste this into a terminal and press Enter:</p>
+    <pre class="fp fr-command" tabindex="0" aria-label="Setup command">${frEscape(frCommand)}</pre>
+    <div class="fr-actions">${frButton('Copy',false)}${frButton('Share',false)}</div>
+    <p>Sending it to yourself in a note or a message is fine: nothing in it is secret.</p>
+    <p>It adds this phone's key, then prints the machine's host key. With this key, SSH runs only herdr-core: no terminal session, no forwarding. herdr-core can still run commands as that user, so treat the key like a shell login.</p>
+    <p>For sh, bash and zsh.</p>
+    ${frChoices()}`),frButton('Compare the fingerprint'));
+}
+function frRefused(theme){
+  return frPhone(theme,frBody(2,"This phone's key",`<div class="fr-notice"><b style="font-weight:500">workstation did not accept the phone key.</b><p>Choose how to add it, signed in as dev. If you already ran the command, check that its quotes arrived unchanged, then try again.</p></div>
+    ${frChoices(true)}<p>Both ways add only this phone's public key, limited to herdr-core. Existing keys stay in place.</p>`),frButton('Try again')+frButton('Change the address',false));
+}
+function frConnected(theme){
+  return frPhone(theme,frBody(3,'Connected',`<div class="fr-notice"><div style="display:flex;align-items:center;gap:10px"><span class="dot" style="background:var(--a2)"></span><span>workstation is connected.</span></div><p>herdr-core 0.1.16</p></div><p>3 agents are running there.</p>`),frButton('Continue'));
+}
+function frAlerts(theme,state='received'){
+  const missed=state==='missed';
+  return frPhone(theme,frBody(4,'Alerts',`<p>kudde can tell you when an agent needs you or has finished, also while the app is closed.</p>
+    <p>It needs two things: a UnifiedPush app such as ntfy on this phone, and kudde-push running on workstation. The setup guide shows how to install kudde-push.</p>
+    ${frGuide()}
+    ${state==='before'?'':`<div class="fr-notice">${missed?`<span>No test alert from workstation within 30 seconds.</span><p>Check that kudde-push runs there; the setup guide shows how.</p>`:`<span style="display:flex;align-items:center;gap:10px"><span class="dot" style="background:var(--a2)"></span>Alerts reach this phone.</span>`}</div>`}`),
+    state==='before'?frButton('Turn on alerts')+frButton('Show my agents',false):missed?frButton('Try again')+frButton('Show my agents',false):frButton('Show my agents'));
+}
+function frTrust(theme){
+  const behind=frManual(theme);
+  return behind.replace(/(<div class="phone [^"]+">)/,`$1<div class="scrim" style="z-index:1"></div><div class="dialog" style="z-index:2">
+    <h3>Trust this machine?</h3>
+    <p>First connection to <span style="color:var(--fg)">workstation:22</span>. The command you ran there printed its host key. Trust it only if the fingerprint is the same:</p>
+    <div class="fp">ED25519<br>SHA256:q3Vb8m2N4sR7tK0yL9wE1aZ5cX6vB3nM8jH2gF4dS0p</div>
+    <p>Not the same? Do not trust it. Something else answered at that address: Tailscale SSH, or another SSH server on that port.</p>
+    <p style="font-size:13px">After this, a different key stops the connection.</p>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:4px">${frButton('Cancel',false)}${frButton('Trust and connect')}</div>
+  </div>`);
+}
+function frHome(theme,empty=false){
+  return frPhone(theme,empty?`<div class="fr-home-empty"><h2>No machines yet</h2><p>Add a machine that runs herdr-core to see its agents here.</p>${frButton('Set up a machine')}</div>`:`<div class="notice"><span class="ring"></span><span style="flex:1;color:var(--fg)">workstation · finish setup</span>${ico.right}</div>
+    <div class="fr-notice" style="margin:12px 16px"><span>workstation is not connected yet</span><p>Its setup is not finished.</p>${frButton('Continue setup',false)}</div>
+    <div class="fr-home-empty"><h2>No agents yet</h2>${frButton('New terminal',false)}</div>`,'',agentsTop(!empty));
 }
 
 const SCREENS = [
@@ -960,8 +1070,18 @@ const SCREENS = [
   ['spaces-light','Spaces view (paper)',()=>spaces('paper')],
   ['terminal-map','The quieter title bar: tab map, menu, icon switch, gauge (graphite and paper; 412 dp at 130%, 360 dp at 2x)',terminalMap],
   ['tab-overview','Tab overview: tiles, and the row fallback for six panes',tabOverview],
+  ['first-run-welcome','First run · Welcome',()=>frBoth([['Welcome',frWelcome]])],
+  ['first-run-lock','First run · Screen lock',()=>frBoth([['Before step 1',frLock],['Home after completion',frLockHome]])],
+  ['first-run-address','First run · Address',()=>frBoth([['Waiting',frAddress],['No answer (F1)',t=>frAddress(t,true)]])],
+  ['first-run-manual','First run · Manual key setup',()=>frBoth([['Manual detail',frManual]])],
+  ['first-run-key-refused','First run · Key refused',()=>frBoth([['Key refused',frRefused]])],
+  ['first-run-connected','First run · Connected',()=>frBoth([['Connected',frConnected]])],
+  ['first-run-alerts','First run · Alerts',()=>frBoth([['Before (AL4)',t=>frAlerts(t,'before')],['Test received (AL6)',t=>frAlerts(t,'received')],['No test alert (AL7)',t=>frAlerts(t,'missed')]])],
+  ['first-run-trust','First run · Compare the fingerprint',()=>frBoth([['Trust dialog',frTrust]])],
+  ['first-run-home','First run · Home',()=>frBoth([['Finish setup',frHome],['Empty after completion',t=>frHome(t,true)]])],
 ];
-const want = new URLSearchParams(location.search).get('s');
+const params = new URLSearchParams(location.search);
+const want = params.get('only') || params.get('s');
 document.body.className = want ? 'single' : 'gallery';
 document.body.insertAdjacentHTML('beforeend', SCREENS.filter(([id])=>!want||id===want).map(([id,label,fn])=>`<section class="frame" id="${id}"><h2>${label}</h2>${fn()}</section>`).join(''));
 </script>
