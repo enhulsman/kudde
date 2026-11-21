@@ -1,0 +1,302 @@
+package dev.kudde.android.ui.agent
+
+import android.os.SystemClock
+import android.view.MotionEvent
+import androidx.activity.BackEventCompat
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.setContent
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.SoftwareKeyboardController
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.runtime.snapshots.Snapshot
+import dev.kudde.android.testing.*
+import kotlin.coroutines.resume
+import kotlinx.coroutines.CancellableContinuation
+import kotlinx.coroutines.suspendCancellableCoroutine
+import org.junit.After
+import org.junit.Assert.*
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.Robolectric
+import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
+
+@RunWith(KuddeTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+@Config(qualifiers = "w412dp-h915dp-xhdpi")
+class ScreenStackHostTest {
+    private val paused = PopupSafeClock.paused()
+    private val controller = Robolectric.buildActivity(ComponentActivity::class.java).setup()
+    private val activity get() = controller.get()
+    private val top = mutableStateOf<AgentScreen>(AgentScreen.Chat)
+    private val clock = TestClock()
+    private val host = ScreenStackHostState<AgentScreen>(top.value, clock)
+    private val composed = mutableSetOf<AgentScreen>()
+    private val touches = mutableMapOf<AgentScreen, Int>()
+    private val backs = mutableMapOf<AgentScreen, Int>()
+    private val requester = FocusRequester()
+    private var left = 0
+    private var hide = 0
+    private var focusOnArrival = false
+    private val selected = mutableListOf<Triple<AgentScreen, AgentScreen?, AgentChangeReason>>()
+    private val keyboard = object : SoftwareKeyboardController {
+        override fun show() = Unit
+        override fun hide() { hide++ }
+    }
+
+    @After fun close() {
+        controller.pause().stop().destroy()
+        BoundedFrames.step(4)
+    }
+
+    private fun show(animated: Boolean = false, innerBack: Boolean = false) {
+        activity.setContent {
+            CompositionLocalProvider(LocalSoftwareKeyboardController provides keyboard) {
+                ScreenStackHost(
+                    top = top.value,
+                    state = host,
+                    backTarget = { if (top.value == AgentScreen.Changes) AgentScreen.Chat else null },
+                    onBack = { if (top.value == AgentScreen.Changes) top.value = AgentScreen.Chat else left++ },
+                    transitionFor = { from, to, reason ->
+                        selected += Triple(from, to, reason)
+                        AgentMotion.transitionFor(from, to, reason).let {
+                            if (animated) it.copy(progressSpec = tween(1000, easing = LinearEasing)) else it
+                        }
+                    },
+                ) { destination ->
+                    DisposableEffect(destination) {
+                        composed += destination
+                        onDispose { composed -= destination }
+                    }
+                    if (innerBack && destination == AgentScreen.Chat) BackHandler {
+                        backs[destination] = (backs[destination] ?: 0) + 1
+                    }
+                    Box(Modifier.fillMaxSize().pointerInput(destination) {
+                        awaitPointerEventScope {
+                            while (true) {
+                                awaitPointerEvent()
+                                touches[destination] = (touches[destination] ?: 0) + 1
+                            }
+                        }
+                    }) {
+                        if (destination == AgentScreen.Chat) {
+                            BasicTextField("draft", {}, Modifier.focusRequester(requester))
+                            if (focusOnArrival) LaunchedEffect(Unit) { requester.requestFocus() }
+                        } else BasicText(destination.toString())
+                    }
+                }
+            }
+        }
+        frames()
+    }
+
+    private fun frames(n: Int = 4) {
+        Snapshot.sendApplyNotifications()
+        BoundedFrames.step(n)
+    }
+
+    private fun pulse(ms: Long) {
+        clock.pulse(ms)
+        frames()
+    }
+
+    private fun change(to: AgentScreen) { top.value = to; frames() }
+
+    private fun touch() {
+        val decor = activity.window.decorView
+        val now = SystemClock.uptimeMillis()
+        listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP).forEachIndexed { i, action ->
+            val event = MotionEvent.obtain(now, now + i * 16L, action, decor.width / 2f, decor.height / 2f, 0)
+            try { decor.dispatchTouchEvent(event) } finally { event.recycle() }
+            frames(1)
+        }
+    }
+
+    private fun startBack(progress: Float) {
+        activity.onBackPressedDispatcher.dispatchOnBackStarted(BackEventCompat(0f, 100f, 0f, BackEventCompat.EDGE_LEFT))
+        frames()
+        activity.onBackPressedDispatcher.dispatchOnBackProgressed(BackEventCompat(100f, 100f, progress, BackEventCompat.EDGE_LEFT))
+        frames()
+    }
+
+    @Test fun onlyTheTopsContentIsComposedAtRest() {
+        show()
+        assertEquals(setOf(AgentScreen.Chat), composed)
+        for (destination in listOf(AgentScreen.Changes, AgentScreen.Terminal, AgentScreen.Overview("space", "tab"), AgentScreen.Chat)) {
+            top.value = destination
+            frames(1)
+            assertEquals("the placeholder cuts in one frame", setOf(destination), composed)
+        }
+    }
+
+    @Test fun aFocusedFieldInALeftDestinationIsUnfocusedAndTheKeyboardHidden() {
+        focusOnArrival = true
+        show()
+        assertTrue(unmergedSemanticsNodes().any { it.focused() })
+        change(AgentScreen.Changes)
+        assertFalse(unmergedSemanticsNodes().any { it.focused() })
+        assertTrue("the controller is asked to hide; SDK 35 cannot report Compose IME visibility", hide > 0)
+        focusOnArrival = false
+        change(AgentScreen.Chat)
+        assertFalse("a return without a request stays unfocused", unmergedSemanticsNodes().any { it.focused() })
+    }
+
+    @Test fun aPointerInputInALeftDestinationReceivesNothing() {
+        show()
+        touch()
+        assertTrue((touches[AgentScreen.Chat] ?: 0) > 0)
+        change(AgentScreen.Changes)
+        val before = touches[AgentScreen.Chat]
+        touch()
+        assertEquals(before, touches[AgentScreen.Chat])
+        assertTrue((touches[AgentScreen.Changes] ?: 0) > 0)
+    }
+
+    @Test fun theBackHandlersOfALeftDestinationDoNotRun() {
+        show(innerBack = true)
+        activity.onBackPressedDispatcher.onBackPressed()
+        frames()
+        assertEquals(1, backs[AgentScreen.Chat])
+        change(AgentScreen.Changes)
+        activity.onBackPressedDispatcher.onBackPressed()
+        frames()
+        assertEquals(AgentScreen.Chat, top.value)
+        assertEquals(1, backs[AgentScreen.Chat])
+        assertEquals(0, left)
+    }
+
+    @Test fun theOutgoingDestinationTakesNoInputOrSemanticsMidTransition() {
+        focusOnArrival = true
+        show(animated = true, innerBack = true)
+        assertTrue(unmergedSemanticsNodes().any { it.focused() })
+        focusOnArrival = false
+        change(AgentScreen.Changes)
+        pulse(0)
+        pulse(500)
+        assertEquals(.5f, host.progress, .001f)
+        assertEquals(setOf(AgentScreen.Chat, AgentScreen.Changes), composed)
+        assertFalse("no outgoing focus survives the first half of the motion", unmergedSemanticsNodes().any { it.focused() })
+        assertTrue(hide > 0)
+        // The merged tree is what a screen reader reads: clearAndSetSemantics drops the outgoing
+        // subtree from it, while the unmerged tree still lists the cleared children.
+        assertFalse("the outgoing chat field is not reachable by a screen reader", semanticsNodes().any { it.config.getOrNull(SemanticsActions.SetText) != null })
+        assertNotNull(nodeSaying("Changes"))
+        val before = touches.toMap()
+        touch()
+        assertEquals("both destinations are touch-gated with the animation clock stopped", before, touches)
+        activity.onBackPressedDispatcher.onBackPressed()
+        frames()
+        assertEquals("the outgoing chat BackHandler is disabled", null, backs[AgentScreen.Chat])
+        assertEquals("Back interrupts at the current progress", .5f, host.progress, .001f)
+        pulse(1000)
+        pulse(2000)
+    }
+
+    @Test fun transitionForIsChosenPerChangeAndReason() {
+        show()
+        change(AgentScreen.Terminal)
+        change(AgentScreen.Changes)
+        activity.onBackPressedDispatcher.onBackPressed()
+        frames()
+        activity.onBackPressedDispatcher.onBackPressed()
+        frames()
+        assertTrue(selected.contains(Triple(AgentScreen.Chat, AgentScreen.Terminal, AgentChangeReason.BaseSwitch)))
+        assertTrue(selected.contains(Triple(AgentScreen.Terminal, AgentScreen.Changes, AgentChangeReason.Push)))
+        assertTrue(selected.contains(Triple(AgentScreen.Changes, AgentScreen.Chat, AgentChangeReason.Pop)))
+        assertTrue(selected.contains(Triple(AgentScreen.Chat, null, AgentChangeReason.Leave)))
+        assertEquals(1, left)
+        val overview = AgentScreen.Overview("space", "tab")
+        assertEquals(AgentMotion.pushOverview, AgentMotion.transitionFor(AgentScreen.Chat, overview, AgentChangeReason.Push))
+        assertEquals(AgentMotion.popOverview, AgentMotion.transitionFor(overview, AgentScreen.Chat, AgentChangeReason.Pop))
+        assertEquals(AgentMotion.toChat, AgentMotion.transitionFor(AgentScreen.Terminal, AgentScreen.Chat, AgentChangeReason.BaseSwitch))
+        assertEquals(AgentMotion.toTerminal, AgentMotion.transitionFor(AgentScreen.Chat, AgentScreen.Terminal, AgentChangeReason.BaseSwitch))
+        assertEquals(AgentMotion.pushChanges, AgentMotion.transitionFor(AgentScreen.Chat, AgentScreen.Changes, AgentChangeReason.Push))
+        assertEquals(AgentMotion.popChanges, AgentMotion.transitionFor(AgentScreen.Changes, AgentScreen.Chat, AgentChangeReason.Pop))
+        assertEquals(AgentMotion.leave, AgentMotion.transitionFor(AgentScreen.Chat, null, AgentChangeReason.Leave))
+    }
+
+    @Test fun aSeekedGestureSetsTheProgressAndACancelRestoresIt() {
+        show(animated = true)
+        // Finish the opening motion before starting the gesture.
+        change(AgentScreen.Changes)
+        pulse(0); pulse(1000)
+        startBack(.5f)
+        assertEquals(.5f, host.progress, .001f)
+        assertEquals(AgentScreen.Changes, top.value)
+        val hidden = hide
+        activity.onBackPressedDispatcher.dispatchOnBackCancelled()
+        frames()
+        pulse(2000); pulse(3000)
+        assertEquals(0f, host.progress, .001f)
+        assertEquals(setOf(AgentScreen.Changes), composed)
+        assertEquals(AgentScreen.Changes, top.value)
+        assertEquals(hidden, hide)
+        assertEquals(0, left)
+        startBack(.5f)
+        activity.onBackPressedDispatcher.onBackPressed()
+        frames()
+        pulse(4000); pulse(5000)
+        assertEquals(AgentScreen.Chat, top.value)
+        assertEquals(setOf(AgentScreen.Chat), composed)
+        requester.requestFocus()
+        frames()
+        assertTrue(unmergedSemanticsNodes().any { it.focused() })
+        startBack(.5f)
+        assertEquals(.5f, host.progress, .001f)
+        activity.onBackPressedDispatcher.dispatchOnBackCancelled()
+        frames()
+        pulse(6000); pulse(7000)
+        assertTrue("a cancelled leave preserves focus", unmergedSemanticsNodes().any { it.focused() })
+        assertEquals(0, left)
+        assertEquals(setOf(AgentScreen.Chat), composed)
+        startBack(.5f)
+        activity.onBackPressedDispatcher.onBackPressed()
+        frames()
+        pulse(8000); pulse(9000)
+        assertEquals(1, left)
+    }
+
+    @Test fun aSecondChangeRetargetsFromTheCurrentProgress() {
+        show(animated = true)
+        change(AgentScreen.Changes)
+        pulse(0); pulse(500)
+        val half = host.progress
+        assertEquals(.5f, half, .001f)
+        change(AgentScreen.Overview("space", "tab"))
+        assertEquals("retargeting does not reset progress", half, host.progress, .001f)
+        pulse(600); pulse(1600)
+        assertEquals(setOf(top.value), composed)
+        assertFalse(host.running)
+    }
+
+    /** A stopped animation clock; only explicit pulses move animation time. */
+    private class TestClock : MonotonicFrameClock {
+        private val waiting = mutableListOf<CancellableContinuation<Long>>()
+        override suspend fun <R> withFrameNanos(onFrame: (Long) -> R): R {
+            val nanos = suspendCancellableCoroutine<Long> { continuation ->
+                waiting += continuation
+                continuation.invokeOnCancellation { waiting -= continuation }
+            }
+            return onFrame(nanos)
+        }
+        fun pulse(ms: Long) {
+            val pending = waiting.toList()
+            waiting.clear()
+            pending.forEach { if (it.isActive) it.resume(ms * 1_000_000L) }
+        }
+    }
+
+}
