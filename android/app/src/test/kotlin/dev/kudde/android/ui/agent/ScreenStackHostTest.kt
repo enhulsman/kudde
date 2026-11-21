@@ -559,6 +559,142 @@ class ScreenStackHostTest {
         assertEquals(AgentScreen.Chat, top.value)
     }
 
+    // Task 029b: a gesture that starts while the previous one's cancel or finish still runs.
+    private fun frameOf(edge: Int, p: Float, cardTag: String, why: String) {
+        val density = activity.resources.displayMetrics.density
+        val width = activity.window.decorView.width.toFloat()
+        val sign = if (edge == BackEventCompat.EDGE_RIGHT) -1f else 1f
+        val scale = 1 - (1 - AgentMotion.backScale) * p
+        val x = sign * AgentMotion.backShift * p * density
+        assertEquals("$why: host progress follows its event", p, host.progress, .001f)
+        assertEquals("$why: card left", x, left(cardTag)!!, 1.5f)
+        assertEquals("$why: card right", minOf(width, x + width * scale), bounds(cardTag)!!.right, 1.5f)
+    }
+
+    private fun reentry(edge: Int, cardTag: String, baseTag: String) {
+        val dispatcher = activity.onBackPressedDispatcher
+        val x = if (edge == BackEventCompat.EDGE_RIGHT) 800f else 0f
+        for (settleFrames in listOf(1, 3)) {
+            dispatcher.dispatchOnBackStarted(BackEventCompat(x, 100f, 0f, edge))
+            frames(1)
+            dispatcher.dispatchOnBackProgressed(BackEventCompat(x, 100f, .4f, edge))
+            frames(1)
+            frameOf(edge, .4f, cardTag, "first gesture")
+            dispatcher.dispatchOnBackCancelled()
+            frames(1)
+            var now = clockNow + 1000
+            val trace = mutableListOf(host.progress)
+            pulse(now); trace += host.progress
+            repeat(settleFrames) { now += 100; pulse(now); trace += host.progress }
+            val midCancel = host.progress
+            assertTrue("the cancel is animating back from .4 (trace $trace)", midCancel < .4f && midCancel > 0f)
+            dispatcher.dispatchOnBackStarted(BackEventCompat(x, 100f, 0f, edge))
+            frames(1)
+            for (p in listOf(.1f, .3f, .2f)) {
+                dispatcher.dispatchOnBackProgressed(BackEventCompat(x, 100f, p, edge))
+                frames(1)
+                frameOf(edge, p, cardTag, "re-entry after $settleFrames cancel frames, p=$p")
+                val order = tags()
+                assertTrue("base below the card", order.indexOf(baseTag) < order.indexOf(cardTag))
+            }
+            dispatcher.dispatchOnBackCancelled()
+            frames(1)
+            now += 100; pulse(now); now += 2000; pulse(now); now += 2000; pulse(now)
+            assertEquals("the cancel returns to full screen", 0f, host.progress, .001f)
+            assertEquals(0f, left(cardTag)!!, 1.5f)
+            assertFalse(host.running)
+            clockNow = now
+        }
+    }
+    private var clockNow = 1000L
+
+    @Test fun aGestureAfterACancelStillRunningFollowsItsOwnEvents_changes_left() {
+        show(animated = true); change(AgentScreen.Changes); pulse(0); pulse(1000)
+        reentry(BackEventCompat.EDGE_LEFT, "dest-Changes", "dest-Chat")
+        assertEquals(AgentScreen.Changes, top.value)
+    }
+    @Test fun aGestureAfterACancelStillRunningFollowsItsOwnEvents_changes_right() {
+        show(animated = true); change(AgentScreen.Changes); pulse(0); pulse(1000)
+        reentry(BackEventCompat.EDGE_RIGHT, "dest-Changes", "dest-Chat")
+    }
+    @Test fun aGestureAfterACancelStillRunningFollowsItsOwnEvents_leave_left() {
+        show(animated = true)
+        reentry(BackEventCompat.EDGE_LEFT, "dest-Chat", "dest-leave")
+        assertEquals(0, left)
+    }
+    @Test fun aGestureAfterACancelStillRunningFollowsItsOwnEvents_leave_right() {
+        show(animated = true)
+        reentry(BackEventCompat.EDGE_RIGHT, "dest-Chat", "dest-leave")
+    }
+
+    private fun duringTheFinish(edge: Int, startOnChanges: Boolean) {
+        if (startOnChanges) { change(AgentScreen.Changes); pulse(0); pulse(1000) }
+        val dispatcher = activity.onBackPressedDispatcher
+        val x = if (edge == BackEventCompat.EDGE_RIGHT) 800f else 0f
+        dispatcher.dispatchOnBackStarted(BackEventCompat(x, 100f, 0f, edge))
+        frames(1)
+        dispatcher.dispatchOnBackProgressed(BackEventCompat(x, 100f, .4f, edge))
+        frames(1)
+        dispatcher.onBackPressed()
+        frames(1)
+        pulse(2000); pulse(2200)
+        val mid = host.progress
+        pulse(2300)
+        assertTrue("the finish only moves toward the end", host.progress >= mid && mid > .4f)
+        dispatcher.dispatchOnBackStarted(BackEventCompat(x, 100f, 0f, edge))
+        frames(1)
+        dispatcher.dispatchOnBackProgressed(BackEventCompat(x, 100f, .1f, edge))
+        frames(1)
+        dispatcher.dispatchOnBackCancelled()
+        frames(1)
+        pulse(2400); pulse(5000); pulse(8000)
+        assertFalse(host.running)
+        assertEquals("popped exactly once", if (startOnChanges) AgentScreen.Chat else AgentScreen.Chat, top.value)
+        assertEquals(setOf(AgentScreen.Chat), composed)
+    }
+    @Test fun aGestureDuringACommittedFinishNeitherReversesItNorPopsTwice_left() {
+        show(animated = true); duringTheFinish(BackEventCompat.EDGE_LEFT, true); assertEquals(0, left)
+    }
+    @Test fun aGestureDuringACommittedFinishNeitherReversesItNorPopsTwice_right() {
+        show(animated = true); duringTheFinish(BackEventCompat.EDGE_RIGHT, true); assertEquals(0, left)
+    }
+
+    private fun fastRelease(edge: Int, cardTag: String) {
+        val dispatcher = activity.onBackPressedDispatcher
+        val sign = if (edge == BackEventCompat.EDGE_RIGHT) -1f else 1f
+        val x0 = if (edge == BackEventCompat.EDGE_RIGHT) 800f else 0f
+        dispatcher.dispatchOnBackStarted(BackEventCompat(x0, 100f, 0f, edge))
+        frames()
+        dispatcher.dispatchOnBackProgressed(BackEventCompat(x0 + sign * 100f, 100f, .1f, edge))
+        frames()
+        dispatcher.dispatchOnBackProgressed(BackEventCompat(x0 + sign * 700f, 100f, .5f, edge))
+        frames()
+        dispatcher.onBackPressed()
+        frames()
+        assertTrue("the release carries a fast velocity toward Back", host.releaseVelocityDp > 0f)
+        var last = host.progress
+        var now = 2000L
+        pulse(now)
+        repeat(40) {
+            now += 16; pulse(now)
+            val p = host.progress
+            assertTrue("progress only moves to the end: $last -> $p", p >= last - 1e-4f)
+            val cardLeft = left(cardTag)
+            if (cardLeft != null) assertTrue("the card never comes back in: $cardLeft", sign * cardLeft >= -1f)
+            last = p
+        }
+        pulse(now + 3000)
+        assertFalse(host.running)
+    }
+    @Test fun aFastCommittedReleaseOnlyMovesTowardTheEnd_changes_left() {
+        show(animated = true); change(AgentScreen.Changes); pulse(0); pulse(1000)
+        fastRelease(BackEventCompat.EDGE_LEFT, "dest-Changes")
+    }
+    @Test fun aFastCommittedReleaseOnlyMovesTowardTheEnd_changes_right() {
+        show(animated = true); change(AgentScreen.Changes); pulse(0); pulse(1000)
+        fastRelease(BackEventCompat.EDGE_RIGHT, "dest-Changes")
+    }
+
     /** A stopped animation clock; only explicit pulses move animation time. */
     private class TestClock : MonotonicFrameClock {
         private val waiting = mutableListOf<CancellableContinuation<Long>>()
