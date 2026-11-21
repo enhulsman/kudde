@@ -43,8 +43,8 @@ stand-in that re-implements them.
 
 ## 4. Popups that block (independent of the stack)
 
-- [ ] 4.1 `ui/components/ModalPopup.kt`: `ModalPopupLayer` (plain composable: catcher plus placed panel) and `ModalPopup` (`Popup { ModalPopupLayer }`), design D6; `TitleBarMenu` on it, look unchanged. 2.7's menu cases pass on the layer, plus `ModalPopupWindowTest.aWindowOpensWithTheLayerInIt` under the bounded clock; the other `TitleBarMenuTest` cases and the `terminal-menu-open-*`, `chat-menu-open-*` goldens unchanged. Check: `./gradlew :app:testDebugUnitTest --tests '*TitleBarMenuTest' --tests '*ModalPopup*' && ./gradlew :app:verifyRoborazziDebug`
-- [ ] 4.2 (the gauge's detail is not in this change; it stays in `usage-gauge`.) Nothing to do: the chat's gauge strip and its goldens are untouched. Check: `git diff --stat` shows no change to `ChatScreen`'s gauge code or to `gauge-*` goldens
+- [x] 4.1 `ui/components/ModalPopup.kt`: `ModalPopupLayer` (plain composable: catcher plus placed panel) and `ModalPopup` (`Popup { ModalPopupLayer }`), design D6; `TitleBarMenu` on it, look unchanged. 2.7's menu cases pass on the layer, plus `ModalPopupWindowTest.aWindowOpensWithTheLayerInIt` under the bounded clock; the other `TitleBarMenuTest` cases and the `terminal-menu-open-*`, `chat-menu-open-*` goldens unchanged. Check: `./gradlew :app:testDebugUnitTest --tests '*TitleBarMenuTest' --tests '*ModalPopup*' && ./gradlew :app:verifyRoborazziDebug`
+- [x] 4.2 (the gauge's detail is not in this change; it stays in `usage-gauge`.) Nothing to do: the chat's gauge strip and its goldens are untouched. Check: `git diff --stat` shows no change to `ChatScreen`'s gauge code or to `gauge-*` goldens
 
 ## 5. One screen at a time, with motion
 
