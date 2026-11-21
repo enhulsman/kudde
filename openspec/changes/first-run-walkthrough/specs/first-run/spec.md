@@ -5,35 +5,84 @@ approval before it ships; the full list, with the strings they replace, is in
 `design.md` under "Texts". Names in the scenarios are invented: the machine
 "workstation", the user "dev", the address `192.0.2.10`.
 
-### Requirement: The empty home says what setup needs
-While no machine is listed, the Agents home SHALL show a welcome in place of
-the list: the title "Set up your first machine", one paragraph on what kudde
-does, the caption "What you need" over three numbered points (a machine that
-runs herdr-core, a way for the phone to reach it, a few minutes at that
-machine), and two actions: "Set up a machine", which opens setup at step 1,
-and "Import a machine list", which opens the file picker the Machines screen
-uses. The welcome SHALL ask for no permission, start no connection and store
-nothing; it SHALL show again whenever the list is empty, and SHALL NOT show
-once a machine is listed.
+### Requirement: First start shows a full-screen welcome before the app
+On a fresh install the app SHALL show a full-screen welcome before home,
+Machines, or an incoming navigation destination. It SHALL show kudde's existing
+mark, "Set up your first machine", a one-line description, "Set up in three
+steps", the three numbered steps of design WL4 to WL6, and one main action
+"Set up a machine". It SHALL request no permission and start no connection.
+On the first visit the main action SHALL open full-screen setup at step 1,
+or the screen-lock notice first if needed; with a checkpoint it SHALL resume
+that setup step instead. Import SHALL remain in Machines, not on the welcome.
+
+Until a real machine connects at step 3, every start SHALL return to the
+welcome or saved setup step before any app destination. There SHALL be no
+skip action or way out into home or Machines. Closing the app, pressing Back,
+receiving an alert, listing/importing a machine, confirming its key or running
+the installation SHALL NOT count as completion. Back on the welcome SHALL
+close the app rather than skip setup. Leaving and returning SHALL resume
+the same screen and step. Demo scope remains open (decision 3); any future
+demo entered from welcome SHALL lead back into setup.
+
+First-setup progress and the non-secret checkpoint in design D1 SHALL survive
+cold launches and process death in app-private preferences excluded from
+backup/transfer. Neither SHALL contain a password or password-session state.
+A real connection at step 3 SHALL record completed and clear the unfinished
+checkpoint. An update without a progress record SHALL infer completion only
+from a recorded successful machine connection, never merely from a listed
+machine. After completion, removing the last machine SHALL show "No machines
+yet", its existing explanation and "Set up a machine", without repeating the
+once-only welcome. Clearing app data SHALL restore first setup.
 
 #### Scenario: First launch
-- **GIVEN** a fresh install on a phone with a screen lock
+- **GIVEN** a fresh install, with or without a screen lock
 - **WHEN** the person opens kudde
-- **THEN** the home shows "Set up your first machine", the three points under "What you need", "Set up a machine" and "Import a machine list", and no permission prompt appears
+- **THEN** the separate welcome shows the mark, headline, one line, three numbered steps and main setup button before any app screen, connection or permission prompt, with no skip action
 
-#### Scenario: The last machine is removed
-- **GIVEN** one machine is listed
-- **WHEN** the person removes it
-- **THEN** the home shows the welcome again
+#### Scenario: Every start until a real machine connects
+- **GIVEN** no real machine has connected and the person has left the welcome or any unfinished setup step
+- **WHEN** the person starts kudde again, including after a cold launch or process death, any number of times
+- **THEN** the welcome shows if setup has not started, otherwise the same setup step, machine, fields and key-install choice resume; home and Machines remain unavailable until a real connection succeeds
 
-#### Scenario: A machine is listed but not connected
-- **GIVEN** one machine is listed and its setup is not finished
-- **WHEN** the person opens the home
-- **THEN** the welcome does not show (the unfinished machine does, see "An unfinished setup is easy to find")
+#### Scenario: Back on the welcome closes the app
+- **GIVEN** the welcome shows before any real machine has connected
+- **WHEN** the person presses Android Back
+- **THEN** the app closes without showing home or marking setup completed, and the next start shows the welcome again
 
-#### Scenario: Importing from the welcome
-- **WHEN** the person taps "Import a machine list" and picks an exported list with two machines
-- **THEN** both machines are listed without host keys, the welcome is gone, and each machine reads as not set up yet
+#### Scenario: Successful first connection
+- **GIVEN** setup is unfinished
+- **WHEN** a real machine connects and step 3 shows
+- **THEN** first setup is marked completed and the connected screen offers the normal routes to agents or starting one
+
+#### Scenario: Existing successful installation
+- **GIVEN** a machine has a recorded successful connection and no first-setup progress is stored
+- **WHEN** the person updates and opens kudde
+- **THEN** home opens without repeating welcome and first setup is marked completed
+
+#### Scenario: Listed does not mean connected
+- **GIVEN** a machine is listed but none has ever connected, and no first-setup completion is recorded
+- **WHEN** the person opens kudde
+- **THEN** welcome or the saved setup step shows, with no way into home merely because a machine exists
+
+#### Scenario: The last machine is removed after completion
+- **GIVEN** a real machine connected and first setup completed
+- **WHEN** the person removes the last machine and restarts
+- **THEN** home shows "No machines yet" and "Set up a machine", not the first-start welcome
+
+#### Scenario: Import after first connection
+- **GIVEN** first setup completed through a real connection
+- **WHEN** the person opens Machines and imports an exported list with two machines
+- **THEN** both are listed without trusted host keys and can use the shared setup steps; import does not supply proof of connection
+
+#### Scenario: An alert cannot bypass first setup
+- **GIVEN** no real machine has connected
+- **WHEN** kudde is opened through an alert
+- **THEN** welcome or the saved setup step shows first; no agent opens ahead of it
+
+#### Scenario: Clearing app data
+- **GIVEN** first setup was completed
+- **WHEN** app data is cleared and kudde is launched
+- **THEN** the full-screen welcome shows again
 
 ### Requirement: One link leads to the setup guide
 The welcome SHALL offer "Setup guide", and the "herdr-core was not found"
@@ -51,10 +100,11 @@ out if the owner says no.)
 - **THEN** nothing happens and the app does not crash
 
 ### Requirement: A phone without a screen lock is told so first
-The home SHALL show "Set a screen lock first" when the phone has no secure
+After the first-start welcome, or on home after first connection, the app SHALL
+show "Set a screen lock first" when the phone has no secure
 screen lock (`KeyguardManager.isDeviceSecure` is false), which the phone
 key needs: with the reason in words and the action "Set a screen lock", in
-place of the welcome and in place of "Could not start the connections";
+place of step 1 or the home error "Could not start the connections";
 "Set up a machine" SHALL NOT be offered. The action SHALL
 open Android's screen for choosing a PIN, pattern or password, or the
 security settings when the phone has no such screen. On each return to the
@@ -65,13 +115,13 @@ SHALL keep today's "Could not start the connections" with its reason and
 
 #### Scenario: No screen lock
 - **GIVEN** a phone with no PIN, pattern or password
-- **WHEN** the person opens kudde for the first time
-- **THEN** the home shows "Set a screen lock first", why, and "Set a screen lock"; it shows neither the welcome nor a raw key store error
+- **WHEN** the person opens kudde for the first time and taps "Set up a machine" on the welcome
+- **THEN** the full-screen notice shows "Set a screen lock first", why and "Set a screen lock", with no raw key store error
 
 #### Scenario: A lock is set meanwhile
 - **GIVEN** the home shows "Set a screen lock first"
 - **WHEN** the person sets a PIN in Android settings and returns to kudde
-- **THEN** the home shows the welcome, with no restart of the app
+- **THEN** step 1 opens with no restart of the app and without repeating the welcome
 
 #### Scenario: The phone has no screen for it
 - **WHEN** no activity answers the request to choose a screen lock and the person taps "Set a screen lock"
@@ -80,25 +130,26 @@ SHALL keep today's "Could not start the connections" with its reason and
 #### Scenario: Another start failure
 - **GIVEN** a phone with a screen lock whose key store fails
 - **WHEN** the person opens kudde
-- **THEN** the home shows "Could not start the connections", the reason and "Try again", as today
+- **THEN** after the first welcome main action, or on home after first connection, "Could not start the connections", the reason and "Try again" show; first setup remains on the failure until it can continue
 
 ### Requirement: Setup is three steps, the same for every machine
 Adding a machine SHALL be one flow of three steps in a fixed order, each on
 its own screen under the title "Set up a machine" with "Step n of 3": step 1
-"Where is it?", step 2 "At the machine", step 3 "Connected". The welcome's
+"Where is it?", step 2 "This phone's key", step 3 "Connected". The welcome's
 "Set up a machine" and the Machines screen's "Add machine" SHALL both open
 step 1. A step SHALL be reached only when the one before it is done: step 2
 only for a machine that is listed, step 3 only for a machine that is
 connected.
 
 #### Scenario: From the welcome
+- **GIVEN** no saved setup checkpoint
 - **WHEN** the person taps "Set up a machine"
 - **THEN** step 1 shows, titled "Set up a machine", reading "Step 1 of 3" and "Where is it?"
 
 #### Scenario: A second machine
 - **GIVEN** one machine is connected
 - **WHEN** the person taps "Add machine" on the Machines screen
-- **THEN** the same step 1 shows
+- **THEN** the same full-screen step 1 shows directly, without the welcome, and follows the same key choices and connected screen
 
 #### Scenario: Steps cannot be skipped
 - **GIVEN** step 1 shows and nothing was reached yet
@@ -211,7 +262,7 @@ that cannot be reached SHALL offer "Change the address", which opens step
 - **THEN** the step reads "Could not connect to 192.0.2.10: " followed by that reason
 
 ### Requirement: One command at the machine adds the key and shows the host key
-Step 2 SHALL show one command to run on the machine, as the user of step 1,
+The "Add it yourself" detail of step 2 SHALL show one command to run on the machine, as the user of step 1,
 and SHALL say so with the machine's name and the user. The command SHALL:
 create `~/.ssh` when missing and correct its mode to 700 even when it
 already exists; verify that this directory and any existing `authorized_keys`
@@ -231,10 +282,9 @@ The command SHALL contain no secret and no other
 action, SHALL work pasted as it is into sh, bash and zsh, and SHALL be
 built next to the line (one source for both). Under the command the step
 SHALL say what it does and what the key is limited to, in the words the
-phone key screen uses today. Besides the command, step 2 SHALL offer to
-run the same installation from the phone with the account's password once
-(see "The app can run the setup with the password once"); the command SHALL
-stay on the step either way. The app SHALL NOT ask for a password anywhere
+phone key screen uses today. Step 2 SHALL keep "Add it yourself" available from the password detail
+(see "The app can run the setup with the password once"); selecting it SHALL
+show the command without requiring a password or losing this machine's step. The app SHALL NOT ask for a password anywhere
 else.
 
 The Phone key row under "This phone" SHALL show the same command without
@@ -243,7 +293,7 @@ the host key part, and "Copy only the key line" for people who manage
 
 #### Scenario: The command for a machine that presented an Ed25519 key
 - **GIVEN** workstation presented an ED25519 host key in step 1
-- **WHEN** step 2 shows
+- **WHEN** the person chooses "Add it yourself" on step 2
 - **THEN** it reads "On workstation, signed in as dev, paste this into a terminal and press Enter:", and the command's fingerprint invocation prints the fingerprint of `/etc/ssh/ssh_host_ed25519_key.pub`
 
 #### Scenario: Running it on a clean account
@@ -281,7 +331,7 @@ the host key part, and "Copy only the key line" for people who manage
 
 #### Scenario: A host key type the app has no file name for
 - **GIVEN** the machine presented a host key of a type other than ED25519, ECDSA or RSA
-- **WHEN** step 2 shows
+- **WHEN** the manual detail of step 2 shows
 - **THEN** the command's fingerprint invocation prints the fingerprints of every `/etc/ssh/ssh_host_*_key.pub`
 
 #### Scenario: From the Phone key row
@@ -311,15 +361,15 @@ sensitive. Copy and Share SHALL give byte for byte the command shown.
 The app SHALL trust a machine's host key only after the person confirms the
 fingerprint it shows, and SHALL NOT sign with the phone key before that
 (unchanged from machine-connection, "Host keys are confirmed once and then
-enforced"; nothing in this change loosens it). Step 2 SHALL offer "Compare
+enforced"; nothing in this change loosens it). The manual detail of step 2 SHALL offer "Compare
 the fingerprint" once the machine has presented a host key; it SHALL open
 the confirm of render 8, which SHALL say that the command printed the
 machine's host key, show the key type and fingerprint, and say what a
 different fingerprint means. "Trust and connect" SHALL confirm exactly the
 fingerprint the dialog showed. While the machine has not been reached, the
 step SHALL say so in place of the button. A machine whose host key waits
-for confirmation SHALL lead to step 2 from its card, so the command is at
-hand, never to a dialog alone.
+for confirmation SHALL lead to step 2 from its card, with both key choices and the manual command one choice away, never to a
+dialog alone.
 
 #### Scenario: Comparing
 - **GIVEN** step 2 for workstation, which presented an ED25519 key
@@ -346,15 +396,82 @@ hand, never to a dialog alone.
 #### Scenario: From the card
 - **GIVEN** an imported machine whose card reads "Host key not confirmed yet"
 - **WHEN** the person taps "Check the host key"
-- **THEN** step 2 shows for that machine, with the command and "Compare the fingerprint"
+- **THEN** step 2 shows for that machine, with both key choices; "Add it yourself" shows the command and "Compare the fingerprint"
 
 #### Scenario: No signature before trust
 - **GIVEN** a machine added in step 1 and never trusted
 - **WHEN** the app connects, reconnects and returns from the background any number of times
 - **THEN** the phone key signs nothing for that machine and no "Unlock the SSH key" prompt appears for it
 
+### Requirement: Both key-install choices are shared with Machines
+Full-screen step 2 SHALL show "This phone's key", the machine and user, and
+two choices together: "kudde adds it for you" first, "Add it yourself" second,
+with R2/R18 descriptions and R19's shared restriction note. The two choices
+SHALL appear side by side where text fits and stack in that order at large
+text or narrow widths. Choosing either SHALL open its detail within step 2;
+the other choice SHALL remain available, with any password cleared on switching.
+Exception: after R16, the password choice SHALL be unavailable for the rest
+of that visit, as required below; the manual choice stays available.
+Neither choice SHALL install a key merely by being displayed or selected.
+
+Machines > Add machine SHALL use the same full-screen steps 1 to 3 without
+the welcome. A listed machine whose key is rejected SHALL offer these same
+two choices together on its card, in the same order and responsive layout,
+and each SHALL open the corresponding step 2 detail for that machine. This
+SHALL apply to imported, never-connected and previously connected machines.
+It SHALL NOT create a duplicate machine or discard a confirmed host pin.
+The password path SHALL require host confirmation if unconfirmed and SHALL
+reject a changed pin before authentication; it SHALL NOT offer a way around
+the existing mismatch and confirmed-forget flow. All password safeguards,
+manual fallback, retries and completion SHALL be the same as in first setup.
+
+#### Scenario: Both choices before an error
+- **GIVEN** workstation has presented its host key in step 1
+- **WHEN** step 2 opens
+- **THEN** both choices and descriptions show together, password-once first, without asking for a password or requiring a failed phone-key attempt
+
+#### Scenario: Switching to manual
+- **GIVEN** the password detail with text typed
+- **WHEN** the person chooses "Add it yourself"
+- **THEN** the field is cleared and the command, Copy, Share and fingerprint comparison show for the same machine at step 2
+
+#### Scenario: Adding from Machines
+- **WHEN** the person chooses Add machine in Machines and reaches the machine
+- **THEN** step 1 led directly to the shared step 2 with both choices, no welcome was shown, and either successful path leads to step 3
+
+#### Scenario: A listed key is refused
+- **GIVEN** workstation's card reads "Phone key not accepted"
+- **WHEN** the person views Machines
+- **THEN** both choices show on that card, "kudde adds it for you" first; either opens its step 2 detail for workstation without adding a machine
+
+#### Scenario: Repair with password once
+- **GIVEN** workstation connected before, its phone key is now rejected and fingerprint A is pinned
+- **WHEN** the person chooses "kudde adds it for you" on its card and supplies the password to a server presenting A
+- **THEN** the shared installation runs once, forgets the password, retries with the restricted key and opens step 3 on connection, keeping the same machine and pin
+
+#### Scenario: Repair by hand
+- **GIVEN** workstation's phone key is rejected
+- **WHEN** the person chooses "Add it yourself" on its card
+- **THEN** the same command, Copy/Share and comparison flow show, and running the command then connecting opens step 3
+
+#### Scenario: Repair meets another host key
+- **GIVEN** a listed machine pins A and rejects the phone key
+- **WHEN** its password choice meets B
+- **THEN** no password or user name is sent and the existing changed-key screen shows; the repair action does not replace A
+
+#### Scenario: Imported machine still needs confirmation
+- **GIVEN** an imported machine has no confirmed host key
+- **WHEN** the password choice is opened from its setup
+- **THEN** confirmation of the presented fingerprint comes before the probe and password field
+
+#### Scenario: Both choices at large text
+- **GIVEN** 2x font or a width too narrow for adjacent choices
+- **WHEN** step 2 or a rejected-key card shows
+- **THEN** the choices stack password-once first, without clipping, and both remain reachable by scrolling
+
 ### Requirement: The app can run the setup with the password once
-Step 2 SHALL offer "Run it from this phone" under the command. It SHALL
+Step 2 SHALL offer "kudde adds it for you" as its first choice beside
+"Add it yourself". It SHALL
 send no password and no user name to a machine before its host key is
 confirmed: for a machine whose host key is not confirmed yet it SHALL first
 show the trust dialog with that key's type and fingerprint and the one
@@ -395,11 +512,11 @@ nothing on this path.
 
 #### Scenario: Straight through with a password
 - **GIVEN** step 2 for workstation, whose machine takes passwords, and the host key not confirmed yet
-- **WHEN** the person taps "Run it from this phone", confirms the fingerprint, types the right password and taps "Add the key"
+- **WHEN** the person taps "kudde adds it for you", confirms the fingerprint, types the right password and taps "Add the key"
 - **THEN** `authorized_keys` for dev holds the restricted line exactly as the command adds it, the session ends, step 2 reads "Connecting to workstation…", and step 3 shows
 
 #### Scenario: The dialog warns
-- **WHEN** the trust dialog of "Run it from this phone" shows
+- **WHEN** the trust dialog of "kudde adds it for you" shows
 - **THEN** it reads that if the key is not the machine's, whoever answered gets the password and setup can still look as if it worked, and it shows the line that prints the fingerprint at the machine
 
 #### Scenario: Keyboard-interactive only
@@ -438,8 +555,8 @@ nothing on this path.
 
 #### Scenario: Password login off
 - **GIVEN** the machine's SSH server offers neither `password` nor `keyboard-interactive`
-- **WHEN** the person taps "Run it from this phone" and confirms the fingerprint
-- **THEN** no password field shows, step 2 reads "workstation does not take a password over SSH." and points to the command, which is still on the step
+- **WHEN** the person taps "kudde adds it for you" and confirms the fingerprint
+- **THEN** no password field shows, step 2 reads "workstation does not take a password over SSH." and points to "Add it yourself", which opens the command without another password prompt
 
 #### Scenario: More than a password
 - **GIVEN** the machine asks a second prompt or a prompt that echoes, such as a code
@@ -447,7 +564,7 @@ nothing on this path.
 - **THEN** the session ends without answering it, and step 2 reads "workstation asks for more than a password, such as a code." and points to the command
 
 #### Scenario: The person refuses the host key
-- **GIVEN** the trust dialog of "Run it from this phone" shows
+- **GIVEN** the trust dialog of "kudde adds it for you" shows
 - **WHEN** the person taps "Cancel"
 - **THEN** nothing is trusted, no password field shows, and no connection carried a user name or password
 
@@ -579,6 +696,7 @@ retry.
 - **THEN** suppression ends and cannot be restored or rearmed by a saved screen
 
 #### Scenario: The command was not run
+- **GIVEN** the manual detail of step 2 shows
 - **WHEN** the machine refuses the phone key on the first attempt
 - **THEN** step 2 reads "workstation did not accept the phone key." with what to do and "Try again", and the command is still on screen
 
@@ -634,12 +752,12 @@ turned on, and SHALL NOT ask for the notification permission.
 
 ### Requirement: The title bar explains itself once
 The app SHALL show a hint under the title bar the first time a terminal
-or its chat opens while the title bar shows the tab's map, that is in a
-tab of more than one pane (decision 11, answered as picked; the scenarios follow its
-pick). The hint SHALL name the bar's gestures as capability
+or its chat opens while the title bar shows the tab's map, including a
+one-pane tab (revised decision 11 pick, following spaces-navigation 8.2).
+A terminal in no pane has no map and SHALL leave the hint due. The hint SHALL name the bar's gestures as capability
 spaces (change `spaces-navigation`) and agent-list define them, and no
 others: a sideways swipe walks the panes of the open tab and the bar
-bounces at its ends; a swipe up opens the next agent that needs the
+bounces at its ends, including only bouncing in a one-pane tab; a swipe up opens the next agent that needs the
 person and down goes back; a tap on the tab's map opens the tab overview.
 The hint SHALL NOT cover the keys, the compose sheet or the chat's message
 box, SHALL NOT cover the terminal's cursor row (it moves to just above
@@ -662,8 +780,18 @@ be built only once those gestures are on main.
 
 #### Scenario: A tab of one pane
 - **GIVEN** the hint has never been closed
-- **WHEN** the person opens a terminal in a tab of one pane, where the title bar shows no map
-- **THEN** no hint shows, and it is still due for the first terminal in a tab of more panes
+- **WHEN** the person opens a terminal in a tab of one pane with its one-cell map
+- **THEN** the hint shows, explains that sideways only bounces there, and tapping the map opens that tab's overview
+
+#### Scenario: A terminal outside a tab
+- **GIVEN** the hint has never been closed
+- **WHEN** a terminal in no pane opens with no map
+- **THEN** the hint does not show and remains due
+
+#### Scenario: Sideways in a one-pane tab
+- **GIVEN** the hint shows on a one-pane tab
+- **WHEN** the person swipes sideways on the title bar
+- **THEN** the bar bounces and the same terminal stays open
 
 #### Scenario: Typing in a terminal
 - **GIVEN** the hint is due and a fresh terminal's prompt sits in its top row
@@ -681,7 +809,7 @@ be built only once those gestures are on main.
 - **THEN** the hint shows over the chat, and its message box is not covered
 
 #### Scenario: The gestures work under it
-- **GIVEN** the hint shows
+- **GIVEN** the hint shows in a tab of two panes, on its first pane
 - **WHEN** the person swipes sideways on the title bar
 - **THEN** the next pane of the tab opens, as without the hint
 
@@ -692,7 +820,7 @@ be built only once those gestures are on main.
 
 #### Scenario: What it explains
 - **WHEN** the hint shows
-- **THEN** it names the sideways swipe inside the tab with its bounce, up and down through the agents that need the person, and the tap on the tab's map, and nothing else
+- **THEN** it names the sideways swipe inside the tab with its bounce (only a bounce with one pane), up and down through the agents that need the person, and the tap on the tab's map, and nothing else
 
 #### Scenario: With TalkBack
 - **WHEN** the hint appears with TalkBack on
@@ -719,17 +847,18 @@ empty text SHALL name that machine and offer "Continue setup", not "No
 agents yet". When machines are connected and none runs an agent, "No
 agents yet" SHALL also offer "New terminal". On the Machines screen, the
 card of an unfinished machine SHALL offer a row that opens the same step:
-"Check the host key" and "Add the phone key" as today, "Change the
+"Check the host key" for unconfirmed trust, the two key-install choices
+for a rejected key, "Change the
 address" for one that cannot be reached, "Continue setup" otherwise.
 
 #### Scenario: Left after step 1
 - **GIVEN** workstation was reached in step 1 and the person closed the app
 - **WHEN** they open kudde the next day
-- **THEN** the home reads "workstation is not connected yet" with "Continue setup", which opens step 2 for workstation
+- **THEN** step 2 for workstation resumes before home until the first real connection; for later machine additions, home offers "Continue setup"
 
 #### Scenario: Left with a wrong address
 - **GIVEN** the app was closed while step 1 read "No answer from 192.0.2.99."
-- **WHEN** the person opens kudde and taps "Continue setup"
+- **WHEN** the person opens kudde (or taps "Continue setup" for a later machine addition)
 - **THEN** step 1 shows with the address, user and port of that machine filled in, and the reason it could not be reached
 
 #### Scenario: One machine works, one waits
@@ -746,21 +875,26 @@ address" for one that cannot be reached, "Continue setup" otherwise.
 - **THEN** the home reads "No agents yet" with its text and "New terminal"
 
 ### Requirement: Setup survives leaving the app
-Setup SHALL be where the person left it when they return: the same step,
+Except after successful connection advances to step 3, setup SHALL be where
+the person left it when they return: the same step,
 the same machine and, in step 1, the typed fields, after a switch to
 another app, 60 seconds in the background, a rotation, and a process
-death. (The person has to leave the app during step 2, to get the command
+death and a cold launch, including the selected key-install detail. (The person has to leave the app during step 2, to get the command
 to the machine.) A step SHALL
 NOT go back to an earlier one by itself; "Change the address" is the only
-way from step 2 to step 1. Back SHALL close a dialog first; from step 1
-it SHALL return to where setup was opened, taking off the list a machine
-that this visit added and that was never reached; from step 2 and step 3
-it SHALL open the Machines screen with the machine listed. Nothing else a
-person typed or added SHALL be dropped, except a password, which is never
-kept (see "The password is never kept").
+way from step 2 to step 1. Back SHALL close a dialog first, then a key-install
+detail to its two-choice screen. Before first setup completes, Back from the
+welcome, a step root or the lock notice SHALL close the app, preserving the
+same screen, checkpoint, fields and listed machine for the next start; it
+SHALL NOT open home or Machines. For later additions after first completion,
+Back from step 1 SHALL return to the opener and remove only a machine added
+by that visit which was never reached; Back from step 2 SHALL open Machines
+with the machine listed. Step 3 follows a successful real connection and
+Back SHALL open Machines. No other typed or added data SHALL be dropped,
+except a password, which is never kept (see "The password is never kept").
 
 #### Scenario: Sending the command to yourself
-- **GIVEN** step 2 for workstation
+- **GIVEN** the manual detail of step 2 for workstation
 - **WHEN** the person shares the command to a chat app, spends three minutes at the desk and returns
 - **THEN** step 2 for workstation shows, reconnects by itself and offers "Compare the fingerprint" again
 
@@ -770,12 +904,12 @@ kept (see "The password is never kept").
 - **THEN** step 2 for workstation shows
 
 #### Scenario: Back from step 1
-- **GIVEN** step 1 with fields typed and nothing listed
+- **GIVEN** step 1 opened from Machines after first setup completed, with fields typed and nothing listed
 - **WHEN** the person presses back
-- **THEN** the screen setup was opened from shows, and no machine was added
+- **THEN** the screen setup was opened from shows, no machine was added and the unsent fields remain in the checkpoint for resuming
 
 #### Scenario: Back after a failed try
-- **GIVEN** step 1 reads "No answer from 192.0.2.99." for a machine this visit added
+- **GIVEN** first setup completed earlier and step 1 of a later addition reads "No answer from 192.0.2.99." for a machine this visit added
 - **WHEN** the person presses back
 - **THEN** that machine is no longer listed
 
@@ -785,11 +919,17 @@ kept (see "The password is never kept").
 - **THEN** step 2 stays, and step 1 does not show
 
 #### Scenario: Back from step 2
-- **WHEN** the person presses back on step 2
+- **GIVEN** setup was opened from Machines after first setup completed and its step 2 choices show
+- **WHEN** the person presses back
 - **THEN** the Machines screen shows workstation with its link back into setup
 
+#### Scenario: Back within first setup
+- **GIVEN** first setup is unfinished and step 2 choices show
+- **WHEN** the person presses Back, then starts kudde again
+- **THEN** the app closed without showing home or Machines and the same step 2 resumes, with no lost machine or fields
+
 #### Scenario: A tapped alert during setup
-- **GIVEN** step 2 for workstation, and another machine sends an alert
+- **GIVEN** first setup completed earlier, step 2 of a later addition for workstation, and another machine sends an alert
 - **WHEN** the person taps the alert
 - **THEN** that agent opens, and workstation stays listed with its way back into setup
 
@@ -802,7 +942,7 @@ scroll, with no text cut off and no button off screen without scrolling.
 
 #### Scenario: Arriving on step 2 with TalkBack
 - **WHEN** step 2 opens with TalkBack on
-- **THEN** it reads "Step 2 of 3, At the machine", not the command
+- **THEN** it reads "Step 2 of 3, This phone's key", not the command
 
 #### Scenario: A failure with TalkBack
 - **WHEN** "workstation did not accept the phone key." appears
