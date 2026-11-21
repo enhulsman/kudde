@@ -332,3 +332,51 @@ class AgentIoTracker {
         signals.forEach { it.release() }
     }
 }
+
+/** Advance an exact interval, including a partial final frame for the 399/400 ms boundary. */
+fun AgentRouteRig.advanceExactly(ms: Long) {
+    require(ms >= 0)
+    val full = ms / BoundedFrames.FRAME_MS
+    repeat((full / BoundedFrames.MAX_FRAMES).toInt()) { frames(BoundedFrames.MAX_FRAMES) }
+    frames((full % BoundedFrames.MAX_FRAMES).toInt())
+    val tail = ms % BoundedFrames.FRAME_MS
+    if (tail != 0L) {
+        shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(tail))
+    }
+}
+
+/** A listed file for real ChangesRoute hit tests; no navigation or screen state in the fake. */
+fun FakeAgentPorts.withListedChanges(): AgentPorts {
+    val delegate = this
+    return object : AgentPorts by delegate {
+        override fun openChanges(key: AgentKey): ChangesInterface {
+            changes += key
+            val signal = io.signal()
+            val view = ChangesView(ChangesList.Listed(listOf(
+                uniffi.kudde_mobile.ChangesEntry("docs/guide.md", "changed", 2uL, 1uL, true),
+            ), false), null, null)
+            return object : ChangesInterface {
+                override fun read() = io.call { view }
+                override fun open(path: String?) = io.call { view }
+                override fun waitChange(timeoutMs: UInt) = io.waitForEvent(signal)
+                override fun leave() = io.call { signal.release() }
+            }
+        }
+    }
+}
+
+/**
+ * Lets [ms] pass on both clocks: Robolectric's (frames) and the wall clock, because the
+ * routes' delay() calls (the 400 ms dwell, the size settle) run on a real-time timer in
+ * Compose, not on Robolectric's looper. Bounded: at most 2 s of real time.
+ */
+fun AgentRouteRig.advanceBoth(ms: Long) {
+    require(ms in 0..2_000) { "wall-clock budget must be bounded" }
+    val start = System.nanoTime()
+    advance(ms)
+    while ((System.nanoTime() - start) / 1_000_000 < ms + 50) {
+        Thread.sleep(10)
+        frames(1)
+    }
+    frames(2)
+}
