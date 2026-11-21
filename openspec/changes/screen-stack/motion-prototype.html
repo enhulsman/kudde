@@ -1,0 +1,518 @@
+<title>Kudde screen motion</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: the phone on the left (stacked on narrow screens), the try-list and controls beside it.
+   Colours are kudde's own two themes: Paper (light) and Graphite (dark). */
+:root {
+  --bg: #ffffff; --chrome: #f1f1ee; --canvas: #fafaf9; --popover: #ffffff; --raised: #f6f6f6;
+  --border: #00000017; --fg: #1b1b1e; --term: #25272c; --muted: #69696a; --dim: #969698;
+  --accent: #1f62d0; --working: #9a6700; --sel: #00000012; --scrim: rgba(20,20,30,.16);
+  --red: #c62a2a; --green: #1a7f37; --yellow: #8f5d00; --blue: #1f62d0; --magenta: #7a45c8;
+  --page: #ecece8; --shadow: 0 20px 60px rgba(0,0,0,.14), 0 2px 8px rgba(0,0,0,.06);
+  --ui: "Geist", ui-sans-serif, system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #17191d; --chrome: #101114; --canvas: #131518; --popover: #25272b; --raised: #2c2e31;
+  --border: #ffffff18; --fg: #eeeeef; --term: #d2d4d9; --muted: #98999b; --dim: #696a6d;
+  --accent: #96b2d7; --working: #e5c07b; --sel: #ffffff17; --scrim: rgba(0,0,0,.42);
+  --red: #dc8c95; --green: #a6bd91; --yellow: #d8be87; --blue: #96b2d7; --magenta: #b5a2ce;
+  --page: #0b0c0e; --shadow: 0 20px 60px rgba(0,0,0,.6), 0 0 0 1px #ffffff10; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #17191d; --chrome: #101114; --canvas: #131518; --popover: #25272b; --raised: #2c2e31;
+  --border: #ffffff18; --fg: #eeeeef; --term: #d2d4d9; --muted: #98999b; --dim: #696a6d;
+  --accent: #96b2d7; --working: #e5c07b; --sel: #ffffff17; --scrim: rgba(0,0,0,.42);
+  --red: #dc8c95; --green: #a6bd91; --yellow: #d8be87; --blue: #96b2d7; --magenta: #b5a2ce;
+  --page: #0b0c0e; --shadow: 0 20px 60px rgba(0,0,0,.6), 0 0 0 1px #ffffff10; color-scheme: dark }
+
+html, body { height: auto }
+body { background: var(--page); color: var(--fg); font-family: var(--ui); font-size: 15px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 20px 40px }
+.wrap { max-width: 980px; margin: 0 auto; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 40px; align-items: start }
+@media (max-width: 820px) { .wrap { grid-template-columns: minmax(0, 1fr); gap: 24px } }
+h1 { font-size: 22px; font-weight: 600; letter-spacing: -0.01em; margin: 0 0 4px; text-wrap: balance }
+.lede { color: var(--muted); margin: 0 0 20px; max-width: 60ch }
+
+/* ---------- phone ---------- */
+.phone { --W: min(400px, 100%, calc(76vh * 412 / 860)); width: var(--W); aspect-ratio: 412 / 860; margin: 0 auto;
+  background: var(--canvas); border-radius: 28px; overflow: hidden; position: relative; box-shadow: var(--shadow);
+  display: flex; flex-direction: column; user-select: none; -webkit-user-select: none; touch-action: manipulation }
+.bar { height: 64px; flex: none; background: var(--chrome); display: flex; align-items: center; gap: 4px; padding: 0 8px 0 14px; position: relative; z-index: 5; border-bottom: 1px solid var(--border) }
+.bar .title { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; transition: opacity 120ms }
+.bar .title.fade { opacity: 0 }
+.bar .name { font-size: 17px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.bar .sub { font-size: 12.5px; color: var(--dim); white-space: nowrap }
+.bar .stack { display: flex; flex-direction: column; min-width: 0; line-height: 1.25 }
+.ib { width: 40px; height: 40px; border: 0; background: transparent; color: var(--muted); border-radius: 12px; display: grid; place-items: center; cursor: pointer; flex: none; font: inherit }
+.ib:active { background: var(--sel) }
+.ib:focus-visible, .seg button:focus-visible, .tile:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px }
+.ib svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round }
+.tabs-count { width: 18px; height: 18px; border: 1.7px solid currentColor; border-radius: 5px; font-size: 11px; font-weight: 600; display: grid; place-items: center; line-height: 1 }
+.spin { width: 15px; height: 15px; border-radius: 50%; border: 3px solid color-mix(in srgb, var(--working) 24%, transparent); border-top-color: var(--working); animation: spin 900ms linear infinite; flex: none }
+@keyframes spin { to { transform: rotate(360deg) } }
+
+.stage { flex: 1; position: relative; overflow: hidden; background: var(--canvas) }
+.layer { position: absolute; inset: 0; overflow: hidden; background: var(--canvas); transform-origin: 0 0; will-change: transform }
+.sub-layer { position: absolute; inset: 0; transform-origin: 50% 50%; background: var(--canvas) }
+.dim { position: absolute; inset: 0; background: var(--scrim); opacity: 0; pointer-events: none }
+.shield { position: absolute; inset: 0; z-index: 50 }
+
+pre.term { margin: 0; padding: 6px 10px; font-family: var(--mono); font-size: 12.2px; line-height: 1.25; color: var(--term);
+  font-variant-ligatures: none; white-space: pre; overflow: hidden; height: 100% }
+.c-r { color: var(--red) } .c-g { color: var(--green) } .c-y { color: var(--yellow) } .c-b { color: var(--blue) } .c-m { color: var(--magenta) } .c-d { color: var(--dim) }
+
+.chat { display: flex; flex-direction: column; height: 100% }
+.chat .msgs { flex: 1; padding: 14px 16px; display: flex; flex-direction: column; gap: 14px; overflow: hidden }
+.chat .you { align-self: flex-end; max-width: 85%; background: var(--raised); border-radius: 14px; padding: 9px 12px }
+.chat .tool { font-family: var(--mono); font-size: 12.5px; color: var(--muted); display: flex; gap: 8px; align-items: baseline }
+.chat .tool b { font-weight: 500; color: var(--term) }
+.chat p { margin: 0 }
+.chat .box { margin: 0 12px 12px; border: 1px solid var(--border); border-radius: 12px; padding: 11px 14px; color: var(--dim); background: var(--bg) }
+
+.changes { height: 100%; overflow: auto; touch-action: pan-y; background: var(--canvas) }
+.changes .row { display: flex; align-items: baseline; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--border) }
+.changes .path { font-family: var(--mono); font-size: 13px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.changes .n { font-family: var(--mono); font-size: 12.5px; font-variant-numeric: tabular-nums }
+.changes h3 { font-size: 13px; font-weight: 500; color: var(--muted); margin: 0; padding: 16px 16px 6px }
+.changes pre { margin: 0; padding: 4px 0 24px; font-family: var(--mono); font-size: 12.2px; line-height: 1.45; color: var(--term); white-space: pre; overflow: hidden }
+.changes pre span { display: block; padding: 0 16px }
+.add { background: color-mix(in srgb, var(--green) 14%, transparent) } .del { background: color-mix(in srgb, var(--red) 14%, transparent) }
+#changes { transform-origin: 50% 50% }
+
+.overview { background: transparent }
+.ov-bg { position: absolute; inset: 0; background: var(--chrome); opacity: 0 }
+.tile { position: absolute; border: 0; padding: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; transform-origin: 50% 40% }
+.thumb { position: relative; overflow: hidden; border-radius: 14px; background: var(--canvas); box-shadow: 0 0 0 1px var(--border) }
+.mini { position: absolute; left: 0; top: 0; transform-origin: 0 0; pointer-events: none }
+.tile .lab { display: flex; gap: 8px; align-items: baseline; padding: 6px 2px 0; font-size: 13px }
+.tile .lab b { font-weight: 600 }
+.tile .lab span { color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.tile.cur .thumb { box-shadow: 0 0 0 2px var(--accent) }
+
+.scrim { position: absolute; inset: 0; z-index: 20 }
+.menu { position: absolute; top: 56px; right: 10px; z-index: 21; min-width: 200px; background: var(--popover); border-radius: 14px; padding: 6px;
+  box-shadow: 0 12px 32px rgba(0,0,0,.22), 0 0 0 1px var(--border); transform-origin: calc(100% - 22px) 0 }
+.menu button { display: block; width: 100%; text-align: left; border: 0; background: none; color: var(--fg); font: inherit; font-size: 14.5px; padding: 10px 12px; border-radius: 9px; cursor: pointer }
+.menu button:active { background: var(--sel) }
+
+/* ---------- side panel ---------- */
+.panel { min-width: 0 }
+.controls { display: grid; gap: 12px; margin-bottom: 24px }
+.ctl { display: flex; align-items: center; gap: 12px; flex-wrap: wrap }
+.ctl > span { width: 92px; font-size: 13px; color: var(--muted) }
+.seg { display: inline-flex; background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 3px; gap: 2px }
+.seg button { border: 0; background: none; color: var(--muted); font: inherit; font-size: 13.5px; padding: 6px 12px; border-radius: 9px; cursor: pointer }
+.seg button[aria-pressed="true"] { background: var(--fg); color: var(--bg) }
+.tries { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; counter-reset: t }
+.tries li { counter-increment: t; display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 4px 10px; padding: 12px 0; border-top: 1px solid var(--border) }
+.tries li::before { content: counter(t); font-family: var(--mono); font-size: 12px; color: var(--dim); padding-top: 3px }
+.tries b { font-weight: 600 }
+.tries p { margin: 2px 0 0; color: var(--muted); font-size: 14px; grid-column: 2 }
+.note { margin-top: 20px; font-size: 13.5px; color: var(--muted); max-width: 62ch }
+.note code { font-family: var(--mono); font-size: 12.5px }
+@media (prefers-reduced-motion: reduce) { .spin { animation: none } }
+</style>
+
+<div class="wrap">
+  <div>
+    <div class="phone" id="phone">
+      <div class="bar" id="bar">
+        <button class="ib" id="back" aria-label="Back" hidden><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+        <div class="title" id="title"></div>
+        <button class="ib" id="bMode" aria-label="Chat"></button>
+        <button class="ib" id="bChanges" aria-label="Changes"><svg viewBox="0 0 24 24"><path d="M12 4v8M8 8h8M8 18h8"/></svg></button>
+        <button class="ib" id="bTabs" aria-label="Tabs"><span class="tabs-count">3</span></button>
+        <button class="ib" id="bMenu" aria-label="More"><svg viewBox="0 0 24 24"><circle cx="12" cy="5.5" r=".9"/><circle cx="12" cy="12" r=".9"/><circle cx="12" cy="18.5" r=".9"/></svg></button>
+      </div>
+      <div class="stage" id="stage">
+        <div class="layer overview" id="overview" hidden><div class="ov-bg" id="ovbg"></div></div>
+        <div id="tabsHost"></div>
+        <div class="layer" id="changes" hidden>
+          <div class="changes" id="changesBody">
+            <h3>3 files changed</h3>
+            <div class="row"><span class="path">src/components/Hero.tsx</span><span class="n c-g">+3</span><span class="n c-r">−1</span></div>
+            <div class="row"><span class="path">src/styles/hero.css</span><span class="n c-g">+6</span><span class="n c-r">−0</span></div>
+            <div class="row"><span class="path">tests/hero.test.ts</span><span class="n c-g">+12</span><span class="n c-r">−2</span></div>
+            <h3>src/components/Hero.tsx</h3>
+            <pre><span class="c-d">@@ -18,7 +18,9 @@ export function Hero() {</span><span>   return (</span><span>     &lt;section className="hero"&gt;</span><span class="del">-      &lt;img src={hero} alt="" /&gt;</span><span class="add">+      &lt;img src={hero} alt=""</span><span class="add">+        width={1600} height={900}</span><span class="add">+        decoding="async" /&gt;</span><span>       &lt;h1&gt;{title}&lt;/h1&gt;</span><span>     &lt;/section&gt;</span><span>   );</span></pre>
+            <h3>src/styles/hero.css</h3>
+            <pre><span class="c-d">@@ -1,4 +1,10 @@</span><span> .hero {</span><span class="add">+  aspect-ratio: 16 / 9;</span><span class="add">+  overflow: hidden;</span><span> }</span><span class="add">+.hero img {</span><span class="add">+  width: 100%; height: auto;</span><span class="add">+}</span></pre>
+          </div>
+        </div>
+        <div class="shield" id="shield" hidden></div>
+      </div>
+      <div class="scrim" id="scrim" hidden></div>
+      <div class="menu" id="menu" hidden role="menu">
+        <button role="menuitem">Rename tab</button>
+        <button role="menuitem">Text size</button>
+        <button role="menuitem">Copy screen text</button>
+        <button role="menuitem">Settings</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h1>Screen motion</h1>
+    <p class="lede">A prototype of how kudde moves between the screens inside an agent. The screens and text are stand-ins. What you're judging is the movement.</p>
+    <div class="controls">
+      <div class="ctl"><span>Spring feel</span><div class="seg" data-k="scheme"><button data-v="expressive" aria-pressed="true">Expressive</button><button data-v="standard" aria-pressed="false">Standard</button></div></div>
+      <div class="ctl"><span>Speed</span><div class="seg" data-k="speed"><button data-v="1" aria-pressed="true">Real</button><button data-v="0.2" aria-pressed="false">5× slower</button></div></div>
+      <div class="ctl"><span>Animations</span><div class="seg" data-k="motion"><button data-v="on" aria-pressed="true">On</button><button data-v="off" aria-pressed="false">Off (Android setting)</button></div></div>
+    </div>
+    <ol class="tries">
+      <li><b>Terminal and chat</b><p>Tap the chat icon in the title bar, then the terminal icon. The old view fades out, and the new one fades in while growing slightly into place. No slide, because a sideways swipe already means "next agent".</p></li>
+      <li><b>Open Changes</b><p>Tap the ± icon. Changes slides in from the right, and the terminal shifts a little to the left and dims behind it.</p></li>
+      <li><b>Swipe back from Changes</b><p>Drag sideways anywhere on Changes and hold. The screen follows your thumb, shrinks to a card and shows the terminal behind it. Let go past a third of the way (or flick) to go back. Drag back toward where you started and it cancels. On the phone this is Android's own back swipe from the edge.</p></li>
+      <li><b>Tab overview</b><p>Tap the square with the 3. The terminal shrinks into its own tile, and the other tabs come in after it. Tap another tile and that one grows to full screen. The back arrow returns to the tab you came from.</p></li>
+      <li><b>Title bar menu</b><p>Tap the three dots. The menu grows out of the button. A tap anywhere else only closes it; nothing underneath reacts.</p></li>
+      <li><b>Spring feel</b><p>Expressive is the feel of Android 16 on your Pixel: a little life in things smaller than the screen (the menu, the tiles). Standard is calmer. Whole screens never overshoot in either: you'd see a gap at the edge.</p></li>
+    </ol>
+    <p class="note">While anything moves, the screen ignores touches, so a tap mid-transition can't land on the screen underneath. That fixes the bug where a swipe reached the terminal behind the overview. With animations off, every change is an instant cut. Spring values follow Compose's Material 3 motion schemes; the app uses the same values without adding that library.</p>
+  </div>
+</div>
+
+<script>
+(() => {
+const $ = id => document.getElementById(id);
+const phone = $('phone'), stage = $('stage'), shield = $('shield');
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const lerp = (a, b, t) => a + (b - a) * t;
+
+/* Material 3 motion schemes (stiffness k, damping ratio z) */
+const SCHEMES = {
+  expressive: { spatial: { k: 380, z: 0.8 }, fastSpatial: { k: 800, z: 0.6 }, effects: { k: 1600, z: 1 }, fastEffects: { k: 3800, z: 1 } },
+  standard:   { spatial: { k: 700, z: 0.9 }, fastSpatial: { k: 1400, z: 0.9 }, effects: { k: 1600, z: 1 }, fastEffects: { k: 3800, z: 1 } }
+};
+let scheme = 'expressive', speed = 1;
+let motionOff = false;
+try { motionOff = matchMedia('(prefers-reduced-motion: reduce)').matches } catch (e) {}
+const S = n => SCHEMES[scheme][n];
+const screenS = () => ({ k: S('spatial').k, z: Math.max(1, S('spatial').z) }); // whole screens never overshoot
+
+function spring({ from = 0, to = 1, k, z, v = 0, onUpdate }) {
+  return new Promise(res => {
+    if (motionOff) { onUpdate(to); res(); return }
+    let x = from, vel = v, last = performance.now();
+    const c = 2 * z * Math.sqrt(k);
+    function frame(now) {
+      const dt = Math.min(0.05, (now - last) / 1000) * speed; last = now;
+      const n = Math.max(1, Math.ceil(dt / 0.002)), h = dt / n;
+      for (let i = 0; i < n; i++) { const a = -k * (x - to) - c * vel; vel += a * h; x += vel * h }
+      onUpdate(x);
+      if (Math.abs(x - to) < 0.0008 && Math.abs(vel) < 0.02) { onUpdate(to); res(); return }
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  });
+}
+const wait = ms => new Promise(r => setTimeout(r, motionOff ? 0 : ms / speed));
+
+/* ---------- content ---------- */
+const TERM = [
+`<span class="c-d">~/website</span>
+<span class="c-m">✻</span> Claude Code
+
+<span class="c-d">&gt;</span> make the hero image load without the page
+  jumping, and keep LCP under 2 s
+
+<span class="c-g">●</span> Read(src/components/Hero.tsx)
+  <span class="c-d">⎿</span>  Read 48 lines
+
+<span class="c-g">●</span> Update(src/components/Hero.tsx)
+  <span class="c-d">⎿</span>  Updated with 3 additions and 1 removal
+     <span class="c-r">- &lt;img src={hero} alt="" /&gt;</span>
+     <span class="c-g">+ &lt;img src={hero} alt=""</span>
+     <span class="c-g">+   width={1600} height={900}</span>
+     <span class="c-g">+   decoding="async" /&gt;</span>
+
+<span class="c-g">●</span> Update(src/styles/hero.css)
+  <span class="c-d">⎿</span>  Updated with 6 additions
+
+<span class="c-g">●</span> Bash(npm test -- hero)
+  <span class="c-d">⎿</span>  14 passed (1.8 s)
+
+The hero has a fixed size now, so the page no
+longer shifts when it loads. Measuring LCP next.
+
+<span class="c-y">✳</span> Measuring… <span class="c-d">(12s · esc to interrupt)</span>
+
+<span class="c-d">╭─────────────────────────────────────────────╮
+│</span> &gt;                                           <span class="c-d">│
+╰─────────────────────────────────────────────╯</span>
+  <span class="c-d">? for shortcuts</span>`,
+`<span class="c-b">~/website</span> $ npm run dev
+
+  <span class="c-g">VITE v6.2.1</span>  ready in <b>412</b> ms
+
+  <span class="c-g">➜</span>  Local:   <span class="c-b">http://localhost:5173/</span>
+  <span class="c-d">➜  Network: use --host to expose</span>
+
+<span class="c-d">12:04:31</span> <span class="c-b">[vite]</span> page reload src/components/Hero.tsx
+<span class="c-d">12:04:33</span> <span class="c-b">[vite]</span> hmr update /src/styles/hero.css
+<span class="c-d">12:05:10</span> <span class="c-b">[vite]</span> hmr update /src/styles/hero.css
+`,
+`<span class="c-b">~/website</span> $ git log --oneline -8
+<span class="c-y">4e1c2a9</span> feat(hero): fixed size for the hero image
+<span class="c-y">b83f017</span> fix(nav): close the menu on route change
+<span class="c-y">71d0e5c</span> docs: how to run the site locally
+<span class="c-y">e29a4b3</span> feat(blog): reading time on each post
+<span class="c-y">0c5d8f1</span> chore: update vite to 6.2
+<span class="c-y">9a7b6e2</span> fix(footer): links open in the same tab
+<span class="c-y">3f2e1d0</span> feat(docs): search box on the docs pages
+<span class="c-y">d4c3b2a</span> style: tighter spacing on the pricing cards
+<span class="c-b">~/website</span> $ <span style="background:var(--term)"> </span>`
+];
+const CHAT = `<div class="chat"><div class="msgs">
+  <div class="you">make the hero image load without the page jumping, and keep LCP under 2 s</div>
+  <div class="tool">· <span>Read <b>src/components/Hero.tsx</b></span></div>
+  <div class="tool">· <span>Edited <b>src/components/Hero.tsx</b> <span class="c-g">+3</span> <span class="c-r">−1</span></span></div>
+  <div class="tool">· <span>Edited <b>src/styles/hero.css</b> <span class="c-g">+6</span></span></div>
+  <div class="tool">· <span>Ran <b>npm test -- hero</b> · 14 passed</span></div>
+  <p>The hero has a fixed size now, so the page no longer shifts when it loads. Measuring LCP next.</p>
+</div><div class="box">Message website</div></div>`;
+const TABS = [
+  { lab: 'APP', desc: 'Claude Code', chat: true },
+  { lab: '2', desc: 'npm run dev' },
+  { lab: '3', desc: 'zsh' }
+];
+
+const host = $('tabsHost'), ov = $('overview');
+TABS.forEach((t, i) => {
+  const el = document.createElement('div'); el.className = 'layer'; el.hidden = i !== 0;
+  el.innerHTML = `<div class="sub-layer" data-m="term"><pre class="term">${TERM[i]}</pre></div>` +
+    (t.chat ? `<div class="sub-layer" data-m="chat" hidden>${CHAT}</div>` : '') + `<div class="dim"></div>`;
+  host.appendChild(el);
+  t.el = el; t.term = el.querySelector('[data-m=term]'); t.chatEl = el.querySelector('[data-m=chat]'); t.dim = el.querySelector('.dim'); t.mode = 'term';
+  const tile = document.createElement('button'); tile.className = 'tile'; tile.type = 'button';
+  tile.innerHTML = `<div class="thumb"><div class="mini"></div></div><div class="lab"><b>${t.lab}</b><span>${t.desc}</span></div>`;
+  ov.appendChild(tile);
+  t.tile = tile; t.thumb = tile.querySelector('.thumb'); t.mini = tile.querySelector('.mini'); t.label = tile.querySelector('.lab');
+  tile.addEventListener('click', () => { if (!busy && view === 'overview') pickTile(i) });
+});
+const changes = $('changes'), ovbg = $('ovbg');
+
+/* ---------- state ---------- */
+let cur = 0, view = 'tab', busy = false;
+let W = 0, H = 0;
+const measure = () => { const r = stage.getBoundingClientRect(); W = r.width; H = r.height; layoutTiles() };
+const lock = () => { busy = true; shield.hidden = false };
+const unlock = () => { busy = false; shield.hidden = true };
+
+function tileRect(i) {
+  const pad = 16, gap = 12, labH = 26;
+  const tw = (W - pad * 2 - gap) / 2, th = tw * H / W;
+  const col = i % 2, row = Math.floor(i / 2);
+  return { x: pad + col * (tw + gap), y: pad + row * (th + labH + gap), w: tw, h: th };
+}
+function layoutTiles() {
+  TABS.forEach((t, i) => {
+    const r = tileRect(i);
+    Object.assign(t.tile.style, { left: r.x + 'px', top: r.y + 'px', width: r.w + 'px' });
+    t.thumb.style.height = r.h + 'px';
+    Object.assign(t.mini.style, { width: W + 'px', height: H + 'px', transform: `scale(${r.w / W})` });
+  });
+}
+function renderThumbs() {
+  TABS.forEach((t, i) => {
+    const src = t.mode === 'chat' ? t.chatEl : t.term;
+    t.mini.innerHTML = ''; t.mini.appendChild(src.cloneNode(true)).hidden = false;
+    t.tile.classList.toggle('cur', i === cur);
+  });
+}
+
+/* ---------- title bar ---------- */
+const ICON_CHAT = '<svg viewBox="0 0 24 24"><path d="M5 6h14v9H10l-4 3v-3H5z"/></svg>';
+const ICON_TERM = '<svg viewBox="0 0 24 24"><path d="M5 7l4 4-4 4M11 17h8"/></svg>';
+function renderBar() {
+  const title = $('title'); title.classList.add('fade');
+  setTimeout(() => {
+    const t = TABS[cur];
+    if (view === 'tab') title.innerHTML = `${cur === 0 ? '<span class="spin"></span>' : ''}<div class="stack"><span class="name">website${cur ? ' · ' + t.lab : ''}</span><span class="sub">${cur === 0 ? 'Claude Code · working' : t.desc}</span></div>`;
+    if (view === 'changes') title.innerHTML = `<div class="stack"><span class="name">Changes</span><span class="sub">3 files · +21 −3</span></div>`;
+    if (view === 'overview') title.innerHTML = `<div class="stack"><span class="name">Tabs</span><span class="sub">website · 3 tabs</span></div>`;
+    $('back').hidden = view === 'tab';
+    $('bMode').hidden = view !== 'tab' || !t.chat;
+    $('bChanges').hidden = $('bTabs').hidden = view !== 'tab';
+    $('bMenu').hidden = view === 'changes';
+    $('bMode').innerHTML = t.mode === 'chat' ? ICON_TERM : ICON_CHAT;
+    $('bMode').setAttribute('aria-label', t.mode === 'chat' ? 'Terminal' : 'Chat');
+    title.classList.remove('fade');
+  }, motionOff ? 0 : 110 / speed);
+}
+
+/* ---------- 1. terminal <-> chat: fade-through ---------- */
+async function toggleMode() {
+  const t = TABS[cur]; lock();
+  const out = t.mode === 'chat' ? t.chatEl : t.term, inn = t.mode === 'chat' ? t.term : t.chatEl;
+  t.mode = t.mode === 'chat' ? 'term' : 'chat'; renderBar();
+  await spring({ ...S('fastEffects'), onUpdate: x => out.style.opacity = 1 - x });
+  out.hidden = true; out.style.opacity = '';
+  inn.style.opacity = 0; inn.style.transform = 'scale(.96)'; inn.hidden = false;
+  await Promise.all([
+    spring({ ...S('effects'), onUpdate: x => inn.style.opacity = clamp(x) }),
+    spring({ ...screenS(), onUpdate: x => inn.style.transform = `scale(${0.96 + 0.04 * x})` })
+  ]);
+  inn.style.opacity = inn.style.transform = '';
+  unlock();
+}
+
+/* ---------- 2. Changes: slide in from the right ---------- */
+function setPush(t) {
+  const tab = TABS[cur], tc = clamp(t);
+  changes.style.transform = `translateX(${(1 - tc) * W}px)`;
+  tab.el.style.transform = `translateX(${-0.12 * W * tc}px)`;
+  tab.dim.style.opacity = tc;
+}
+async function openChanges() {
+  lock(); changes.hidden = false; changes.style.borderRadius = ''; setPush(0);
+  view = 'changes'; renderBar();
+  await spring({ ...screenS(), onUpdate: setPush });
+  TABS[cur].el.hidden = true; unlock();
+}
+async function closeChanges() {
+  lock(); TABS[cur].el.hidden = false; view = 'tab'; renderBar();
+  await spring({ from: 1, to: 0, ...screenS(), onUpdate: setPush });
+  finishBack();
+}
+function finishBack() {
+  changes.hidden = true; changes.style.transform = changes.style.borderRadius = changes.style.boxShadow = '';
+  const tab = TABS[cur]; tab.el.style.transform = ''; tab.dim.style.opacity = 0;
+  unlock();
+}
+
+/* ---------- 3. predictive back on Changes ---------- */
+let g = null;
+function drawBack(p, dir, dy) {
+  const s = 1 - 0.1 * p, tab = TABS[cur];
+  changes.style.transform = `translate(${dir * 24 * p}px, ${clamp(dy * 0.12, -28, 28) * p}px) scale(${s})`;
+  changes.style.borderRadius = `${(28 * p) / s}px`;
+  changes.style.boxShadow = `0 ${18 * p}px ${48 * p}px rgba(0,0,0,${0.28 * p})`;
+  tab.el.style.transform = `translateX(${-0.12 * W * (1 - 0.45 * p)}px)`;
+  tab.dim.style.opacity = 1 - 0.55 * p;
+}
+changes.addEventListener('pointerdown', e => {
+  if (busy || view !== 'changes') return;
+  g = { x0: e.clientX, y0: e.clientY, id: e.pointerId, active: false, p: 0, dy: 0, pts: [[e.timeStamp, e.clientX]] };
+});
+changes.addEventListener('pointermove', e => {
+  if (!g || e.pointerId !== g.id) return;
+  const dx = e.clientX - g.x0, dy = e.clientY - g.y0;
+  g.pts.push([e.timeStamp, e.clientX]); if (g.pts.length > 8) g.pts.shift();
+  if (!g.active) {
+    if (Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy) * 1.2) {
+      g.active = true; g.dir = Math.sign(dx); g.x0 = e.clientX - dx;
+      try { changes.setPointerCapture(e.pointerId) } catch (err) {}
+      TABS[cur].el.hidden = false;
+    } else if (Math.abs(dy) > 12) { g = null }
+    return;
+  }
+  e.preventDefault();
+  const along = Math.max(0, dx * g.dir);
+  g.p = clamp(along / (W * 0.55)); g.dy = dy;
+  drawBack(g.p, g.dir, dy);
+});
+async function release(e) {
+  if (!g || (e && e.pointerId !== g.id)) return;
+  const st = g; g = null;
+  if (!st.active) return;
+  const a = st.pts[0], b = st.pts[st.pts.length - 1];
+  const vx = (b[0] - a[0]) > 0 ? ((b[1] - a[1]) / (b[0] - a[0])) * 1000 * st.dir : 0; // px/s toward back
+  lock();
+  if (st.p > 0.33 || (vx > 450 && st.p > 0.04)) {
+    view = 'tab'; renderBar();
+    const tab = TABS[cur], s0 = 1 - 0.1 * st.p, tx0 = st.dir * 24 * st.p, ty0 = clamp(st.dy * 0.12, -28, 28) * st.p;
+    const tabX0 = -0.12 * W * (1 - 0.45 * st.p), dim0 = 1 - 0.55 * st.p;
+    await spring({ ...screenS(), v: Math.max(0, vx) / W, onUpdate: c => {
+      const cc = clamp(c);
+      changes.style.transform = `translate(${lerp(tx0, st.dir * W, cc)}px, ${ty0}px) scale(${s0})`;
+      tab.el.style.transform = `translateX(${lerp(tabX0, 0, cc)}px)`;
+      tab.dim.style.opacity = lerp(dim0, 0, cc);
+    } });
+    finishBack();
+  } else {
+    await spring({ from: st.p, to: 0, ...screenS(), onUpdate: p => drawBack(clamp(p), st.dir, st.dy) });
+    changes.style.transform = changes.style.borderRadius = changes.style.boxShadow = '';
+    TABS[cur].el.hidden = true; TABS[cur].el.style.transform = '';
+    unlock();
+  }
+}
+changes.addEventListener('pointerup', release);
+changes.addEventListener('pointercancel', release);
+
+/* ---------- 4. tab overview: shrink into the tile, grow out of it ---------- */
+function setZoom(tab, r, t) {
+  const s = r.w / W, sc = 1 - (1 - s) * t;
+  tab.el.style.transform = `translate(${r.x * t}px, ${r.y * t}px) scale(${sc})`;
+  tab.el.style.borderRadius = `${(14 * clamp(t)) / sc}px`;
+  ovbg.style.opacity = clamp(t);
+  tab.label.style.opacity = clamp(t);
+}
+async function openOverview() {
+  lock(); measure(); renderThumbs();
+  const tab = TABS[cur], r = tileRect(cur);
+  ov.hidden = false;
+  TABS.forEach((t, i) => { t.tile.style.opacity = i === cur ? 1 : 0; t.tile.style.transform = '' });
+  tab.thumb.style.visibility = 'hidden';
+  view = 'overview'; renderBar();
+  const others = TABS.map((t, i) => i).filter(i => i !== cur).map((i, n) => wait(70 + n * 45).then(() =>
+    spring({ ...S('fastSpatial'), onUpdate: x => { TABS[i].tile.style.opacity = clamp(x * 1.4); TABS[i].tile.style.transform = `scale(${0.88 + 0.12 * x})` } })));
+  await spring({ ...S('spatial'), onUpdate: x => setZoom(tab, r, x) });
+  await Promise.all(others);
+  tab.thumb.style.visibility = ''; tab.el.hidden = true; tab.el.style.transform = tab.el.style.borderRadius = '';
+  unlock();
+}
+async function pickTile(j) {
+  lock(); measure();
+  const tab = TABS[j], r = tileRect(j);
+  TABS.forEach(t => { t.el.hidden = true; t.mode === 'chat' ? (t.term.hidden = true, t.chatEl.hidden = false) : (t.term.hidden = false, t.chatEl && (t.chatEl.hidden = true)) });
+  tab.el.hidden = false; setZoom(tab, r, 1); tab.thumb.style.visibility = 'hidden';
+  cur = j; view = 'tab'; renderBar();
+  const fades = TABS.filter((t, i) => i !== j).map(t => spring({ ...S('fastEffects'), onUpdate: x => { t.tile.style.opacity = 1 - x; t.tile.style.transform = `scale(${1 - 0.06 * x})` } }));
+  await spring({ from: 1, to: 0, ...S('spatial'), onUpdate: x => setZoom(tab, r, x) });
+  await Promise.all(fades);
+  ov.hidden = true; tab.thumb.style.visibility = ''; tab.el.style.transform = tab.el.style.borderRadius = ''; tab.label.style.opacity = '';
+  unlock();
+}
+
+/* ---------- 5. menu grows from its button ---------- */
+const menu = $('menu'), scrim = $('scrim');
+let menuOpen = false;
+async function openMenu() {
+  if (menuOpen) return; menuOpen = true;
+  scrim.hidden = false; menu.hidden = false;
+  const items = [...menu.children];
+  await spring({ ...S('fastSpatial'), onUpdate: x => {
+    menu.style.transform = `scale(${0.82 + 0.18 * x})`; menu.style.opacity = clamp(x * 2);
+    items.forEach((it, i) => { const xi = clamp(x * 1.6 - i * 0.12); it.style.opacity = xi; it.style.transform = `translateY(${(1 - xi) * -4}px)` });
+  } });
+}
+async function closeMenu() {
+  if (!menuOpen) return;
+  scrim.hidden = true;
+  await spring({ ...S('fastEffects'), onUpdate: x => { menu.style.opacity = 1 - x; menu.style.transform = `scale(${1 - 0.04 * x})` } });
+  menu.hidden = true; menuOpen = false;
+}
+scrim.addEventListener('pointerdown', e => { e.preventDefault(); closeMenu() });
+menu.addEventListener('click', e => { if (e.target.closest('button')) closeMenu() });
+
+/* ---------- wiring ---------- */
+$('bMode').addEventListener('click', () => !busy && toggleMode());
+$('bChanges').addEventListener('click', () => !busy && openChanges());
+$('bTabs').addEventListener('click', () => !busy && openOverview());
+$('bMenu').addEventListener('click', () => !busy && openMenu());
+$('back').addEventListener('click', () => { if (busy) return; if (view === 'changes') closeChanges(); else if (view === 'overview') pickTile(cur) });
+document.querySelectorAll('.seg').forEach(seg => seg.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  seg.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b));
+  const k = seg.dataset.k, v = b.dataset.v;
+  if (k === 'scheme') scheme = v;
+  if (k === 'speed') speed = parseFloat(v);
+  if (k === 'motion') motionOff = v === 'off';
+}));
+if (motionOff) document.querySelectorAll('[data-k=motion] button').forEach(x => x.setAttribute('aria-pressed', x.dataset.v === 'off'));
+addEventListener('resize', () => { if (!busy) measure() });
+measure(); renderBar();
+})();
+</script>
