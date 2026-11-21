@@ -356,7 +356,7 @@ pane, so the bar is unchanged for most terminals.
 
 ## D8. The tab overview is a sub-screen with name tiles
 
-Tiles show the program mark, the name and the state mark, not a live
+Tiles show the program mark, the name and the state mark (and, since D11, a still picture), not a live
 picture: live tiles would attach to every pane of a tab, and a tab is
 looked at for a second or two. Whether tiles fit is a pure function of the
 cells and the area (every tile at least 96 by 64 dp); otherwise rows. Back
@@ -440,6 +440,31 @@ with `ChangesButton` and `ViewSwitch("Chat")`; the chat
   the owner's answer to decision 10 (the first pick was the map hiding
   before the gauge, rejected). Goldens at 412 dp and 130%, and at 360 dp and 2x
   (task 5.8), hold it.
+
+## D11. Tile pictures are the desk's plain-text read
+
+Answer to task 8.1, from herdr-core's source and `read --help` (confidence:
+high for the message, moderate for the absence of side effects). herdr-core
+reads a terminal's visible screen without attaching:
+`{"method":"terminal.read","params":{"terminal":"t7","lines":0}}`, answered
+with `{text, complete, how:"screen", why?}`. The text is plain, soft wraps
+joined, with no colours or attributes. With `lines:0` and no `caller` the
+read does not attach, resize, scroll or mark anything seen; a `caller` could
+acknowledge a child's news, and positive `lines` can scroll a full-screen
+program, so the hub sends neither.
+
+- The hub gets a read operation through `Client::call`, exposed to Android,
+  and never goes through terminal opening or `mark_seen`.
+- The overview reads every terminal of the shown tab once when it opens and
+  when the tab shown changes, off the main thread; a read that fails or
+  comes back empty leaves that tile as it is without a picture.
+- The tile draws the lines in the terminal font and the muted text colour,
+  scaled to the tile and cropped from the top left, as the terminal's own
+  view crops a wider screen.
+- Owner's choice (2026-11-22): plain text first, tried on the phone. A
+  coloured picture would need a short watch-only attach per pane
+  (`terminal.attach` with `observe:true` gives styled bytes and keeps the
+  desk's size); that waits for the try.
 
 ## Risks
 
