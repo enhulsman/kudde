@@ -11,6 +11,7 @@ import androidx.compose.ui.unit.dp
 import androidx.activity.compose.setContent
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.github.takahirom.roborazzi.captureScreenRoboImage
+import dev.kudde.android.testing.captureWithMenuWindow
 import dev.kudde.android.testing.click
 import dev.kudde.android.ui.spaces.MapKind
 import org.junit.Assert.assertEquals
@@ -232,7 +233,7 @@ class TerminalScreenshotTest {
             val ui = terminalUi(TitleBarFixtures.hub, TitleBarFixtures.pricing, res)
             val session = session(TermPhase.Watching, SessionFixture.frame(96, 44, wide = true, bottom = false))
             val actions = TerminalActions(onBack = {}, onOpen = {}, onSwipe = { false }, onPhoneGrid = {})
-            captureRoboImage("src/test/snapshots/$name.png") {
+            val content: @androidx.compose.runtime.Composable () -> Unit = {
                 KuddeTheme(dark = dark) {
                     Box {
                         TerminalScreen(ui, session, TerminalScreenState(), actions, TerminalInputHandle.None, onChat = {}, onChanges = {}, onMap = {},
@@ -244,6 +245,11 @@ class TerminalScreenshotTest {
                         }
                     }
                 }
+            }
+            if (menuOpen) {
+                captureWithMenuWindow("src/test/snapshots/$name.png", content)
+            } else {
+                captureRoboImage("src/test/snapshots/$name.png", content = content)
             }
         } finally {
             RuntimeEnvironment.setFontScale(1f)

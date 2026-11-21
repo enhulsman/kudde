@@ -8,6 +8,7 @@ import android.graphics.Shader
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import com.github.takahirom.roborazzi.captureRoboImage
+import dev.kudde.android.testing.captureWithMenuWindow
 import dev.kudde.android.ui.terminal.TitleBarFixtures
 import dev.kudde.android.ui.terminal.TitleMap
 import dev.kudde.android.ui.terminal.TitleBarMenuPanel
@@ -161,7 +162,8 @@ class ChatScreenshotTest {
         RuntimeEnvironment.setFontScale(font)
         try {
             for (dark in listOf(false, true)) {
-                captureRoboImage("src/test/snapshots/$scene-${if (dark) "graphite" else "paper"}.png") {
+                val path = "src/test/snapshots/$scene-${if (dark) "graphite" else "paper"}.png"
+                val content: @androidx.compose.runtime.Composable () -> Unit = {
                     KuddeTheme(dark = dark) {
                         Box {
                             ChatScreen(header, actions, poll, ChatState(), source, { now }, onTerminal = {}, onPick = {}, onSend = {},
@@ -174,6 +176,7 @@ class ChatScreenshotTest {
                         }
                     }
                 }
+                if (menuOpen) captureWithMenuWindow(path, content) else captureRoboImage(path, content = content)
             }
         } finally {
             RuntimeEnvironment.setFontScale(1f)
