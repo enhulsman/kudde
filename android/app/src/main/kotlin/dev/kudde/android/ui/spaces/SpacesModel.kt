@@ -44,7 +44,15 @@ sealed interface SpacesItem {
     ) : SpacesItem {
         val attention: AgentAttention? get() = counts.attention
     }
-    data class TabLine(override val key: String, val tab: DeskTabView, val spokenText: String) : SpacesItem
+    /** A tab's line: its map ([cells]) and name; a tap opens the tab overview of [machine]'s space [spaceId]. */
+    data class TabLine(
+        override val key: String,
+        val tab: DeskTabView,
+        val spokenText: String,
+        val machine: String = "",
+        val spaceId: String = "",
+        val cells: List<MapCell> = emptyList(),
+    ) : SpacesItem
     data class Agent(override val key: String, val row: AgentRowUi) : SpacesItem
     data class Other(override val key: String, val row: OtherRowUi) : SpacesItem
     data class LooseHeader(override val key: String, val text: String = "Not in a space") : SpacesItem
@@ -103,7 +111,8 @@ fun spacesUi(snapshot: HubSnapshot, agents: AgentsUi, texts: SpacesTexts): Space
                     val keys = addresses(machine.name, tab)
                     val terminalCount = keys.count { it in rows || it in others }
                     add(SpacesItem.TabLine(listKey("tab", machine.name, tab.id), tab,
-                        texts.tabSpeech(tab.name, terminalCount, counts(keys).needsYou)))
+                        texts.tabSpeech(tab.name, terminalCount, counts(keys).needsYou),
+                        machine.name, space.id, mapCells(tab, { rows[AgentKey(machine.name, it)]?.attention })))
                     keys.forEach(::addRow)
                 }
             }

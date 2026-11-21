@@ -6,13 +6,20 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.platform.LocalContext
 import dev.kudde.android.KuddeApp
 import dev.kudde.android.ui.components.rememberWallClock
 import dev.kudde.android.ui.flows.MachineFlows
+import dev.kudde.android.ui.spaces.SpacesScreen
+import dev.kudde.android.ui.spaces.TabOverviewRoute
+import dev.kudde.android.ui.spaces.spacesTexts
+import dev.kudde.android.ui.spaces.spacesUi
 import dev.kudde.android.ui.terminal.TerminalRoute
 import java.time.Instant
 import java.time.ZoneId
@@ -20,9 +27,11 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 /**
- * The Agents home fed by the app's hub, [flows] (Machines, Add machine) and
- * [home] (the open terminal, "Other terminals"). An open agent shows its
- * terminal screen (TerminalRoute) in place of the list. One clock ticks each second while the
+ * The home fed by the app's hub, [flows] (Machines, Add machine) and
+ * [home] (the open terminal, "Other terminals"): the Agents view or the
+ * Spaces view, the one chosen last (app.homeView), and the tab overview
+ * opened from a tab line. An open agent shows its terminal screen
+ * (TerminalRoute) in place of the list. One clock ticks each second while the
  * screen is started; only the ages read it every tick, and the rows are
  * rebuilt once a minute for "last connected".
  */
@@ -69,18 +78,44 @@ fun AgentsRoute(app: KuddeApp, flows: MachineFlows, home: AgentsHome) {
             onClose = new::close,
         )
     }
+    // The Spaces view's place is held here, above the terminal that replaces the list,
+    // so Back from a terminal shows it where it was (design D6).
+    val spacesState = rememberLazyListState()
+    // The tab overview opened from a tab line; Back from it returns to Spaces, and a
+    // terminal opened from it returns to it.
+    var overview by remember { mutableStateOf<OverviewAt?>(null) }
+    val homeView = app.homeView
     // Since M2 an agent opens its live terminal; the M1 read-only sheet is no longer shown.
     val open = home.openKey
-    if (open != null) {
-        TerminalRoute(app, home, open)
-    } else {
-        BackHandler(enabled = new.sheet != null, onBack = new::close)
-        AgentsScreen(ui, home.othersExpanded, null, clock, spin, actions, new = newUi, newActions = newActions)
+    val at = overview
+    when {
+        open != null -> TerminalRoute(app, home, open)
+        at != null -> TabOverviewRoute(app, at.machine, at.spaceId, at.tabId, onBack = { overview = null }, onOpen = home::open)
+        homeView.spaces -> {
+            BackHandler(enabled = new.sheet != null, onBack = new::close)
+            val spaces = remember(snapshot, ui, res) { spacesUi(snapshot, ui, spacesTexts(res)) }
+            SpacesScreen(
+                spaces, clock, spin, actions,
+                onTab = { machine, spaceId, tabId -> overview = OverviewAt(machine, spaceId, tabId) },
+                state = spacesState,
+                needsYou = ui.needsYou.size,
+                onHomeView = homeView::choose,
+                new = newUi,
+                newActions = newActions,
+            )
+        }
+        else -> {
+            BackHandler(enabled = new.sheet != null, onBack = new::close)
+            AgentsScreen(ui, home.othersExpanded, null, clock, spin, actions, new = newUi, newActions = newActions, onHomeView = homeView::choose)
+        }
     }
 }
 
+/** Where the tab overview opened from the Spaces view shows: a machine's space, at a tab. */
+private data class OverviewAt(val machine: String, val spaceId: String, val tabId: String)
+
 /** "14:05", or "2:05 PM" when the phone uses a 12-hour clock. */
-private fun timeFormat(is24: Boolean): (Long) -> String {
+internal fun timeFormat(is24: Boolean): (Long) -> String {
     val pattern = DateTimeFormatter.ofPattern(if (is24) "HH:mm" else "h:mm a", Locale.getDefault())
     return { ms -> pattern.format(Instant.ofEpochMilli(ms).atZone(ZoneId.systemDefault())) }
 }

@@ -266,6 +266,33 @@
     <string name="title_bar_tab_end">No more terminals in this tab</string>
     <string name="title_bar_none_need_you">No more agents need you</string>
     <string name="title_bar_step_refused">Not moved: the compose text is kept</string>
+    <!-- The quieter title bar (spaces-navigation, decisions 7, 8 and 11; approved texts, task 1.2). -->
+    <string name="title_bar_map">Tab overview, terminal %1$d of %2$d</string>
+    <string name="title_bar_more">More options</string>
+    <string name="view_switch_chat">Chat</string>
+    <string name="view_switch_terminal">Terminal</string>
+    <!-- The Spaces view of the home screen (spaces-navigation; approved texts, task 1.2). -->
+    <string name="home_spaces">Spaces</string>
+    <string name="home_selected">selected</string>
+    <string name="spaces_loose">Not in a space</string>
+    <plurals name="spaces_unreadable_tabs">
+        <item quantity="one">1 tab could not be read</item>
+        <item quantity="other">%d tabs could not be read</item>
+    </plurals>
+    <string name="spaces_layout_unreadable">Layout could not be read</string>
+    <string name="spaces_empty_title">No spaces yet</string>
+    <string name="spaces_empty_body">Spaces you make in the herdr app on your machines show up here, in the desk\'s order.</string>
+    <string name="desk_only">Desk only</string>
+    <!-- Spoken: a space header, "website, 1 needs you, 2 working": the name, then each state that has agents. -->
+    <string name="spaces_spoken_needs_you">%d needs you</string>
+    <string name="spaces_spoken_done">%d done</string>
+    <string name="spaces_spoken_working">%d working</string>
+    <string name="spaces_spoken_idle">%d idle</string>
+    <!-- Spoken: a tab map, "Tab main, 3 terminals, 1 needs you" (the last part only when someone needs you). -->
+    <plurals name="tab_map_spoken">
+        <item quantity="one">Tab %1$s, %2$d terminal</item>
+        <item quantity="other">Tab %1$s, %2$d terminals</item>
+    </plurals>
     <!-- Alerts (M3): notification channels, as Android settings lists them. -->
     <string name="channel_needs_you">Needs you</string>
     <string name="channel_finished">Finished</string>
