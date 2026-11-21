@@ -1,3 +1,4 @@
+import java.time.Duration
 import javax.inject.Inject
 
 plugins {
@@ -190,6 +191,12 @@ tasks.withType<Test>().configureEach {
     inputs.file(designTokens).withPropertyName("designTokens").withPathSensitivity(PathSensitivity.NONE)
     systemProperty("kudde.designTokens", designTokens.asFile.path)
     dependsOn(robolectricJars)
+    // A looping test ends fast instead of crawling for an hour (screen-stack D0):
+    // the worker exits on the first OutOfMemoryError, with a heap smaller than
+    // the daemon's, and the task is cut after 20 minutes.
+    maxHeapSize = "1536m"
+    jvmArgs("-XX:+ExitOnOutOfMemoryError")
+    if (name.startsWith("test")) timeout.set(Duration.ofMinutes(20))
     systemProperty("robolectric.offline", "true")
     systemProperty("robolectric.dependency.dir", robolectricJars.get().destinationDir.path)
 }

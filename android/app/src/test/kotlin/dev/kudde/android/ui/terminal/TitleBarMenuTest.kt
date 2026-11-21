@@ -1,6 +1,5 @@
 package dev.kudde.android.ui.terminal
 
-import android.os.Looper
 import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.MotionEvent
@@ -8,7 +7,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.semantics.Role
+import dev.kudde.android.testing.BoundedFrames
 import dev.kudde.android.testing.KuddeTestRunner
+import dev.kudde.android.testing.PopupSafeClock
 import dev.kudde.android.testing.click
 import dev.kudde.android.testing.clickable
 import dev.kudde.android.testing.descriptions
@@ -30,7 +31,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
-import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import uniffi.kudde_mobile.ChatFound
@@ -44,14 +44,16 @@ import uniffi.kudde_mobile.TermState
 // shows "Changes", read as "Changes", which opens the Changes view once; a tap
 // outside and Back close the menu and send nothing to the terminal; a drag that
 // starts on the button still steps. The menu draws in a Popup's own window, so
-// its nodes are read from every window (testing/Semantics.kt). That a choice, a
-// tap outside or Back closes it is read from the menu's state, not from the
-// window going: in this Robolectric, removing any Compose Popup in a frame runs
-// out of heap (a bare Popup does it too), so no frame runs after a close.
+// its nodes are read from every window (testing/Semantics.kt). The class runs under
+// PopupSafeClock (a paused Choreographer, frames stepped by BoundedFrames): in
+// this Robolectric a Popup under the free-running one never lets a frame end.
 @RunWith(KuddeTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(qualifiers = "w412dp-h915dp-xhdpi")
 class TitleBarMenuTest {
+    // A Popup under a free-running Choreographer never lets a frame end (testing/PopupSafeClock.kt).
+    @Suppress("unused")
+    private val clock = PopupSafeClock.paused()
     private val controller = Robolectric.buildActivity(ComponentActivity::class.java).setup()
     private val activity = controller.get()
     private val view = FakeTerminalView()
@@ -76,10 +78,10 @@ class TitleBarMenuTest {
         idle()
     }
 
-    private fun idle() = shadowOf(Looper.getMainLooper()).idle()
+    private fun idle() = BoundedFrames.settle(minFrames = 3)
 
-    /** One frame, so an opened menu's window is composed. */
-    private fun frame() = shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(20))
+    /** Two bounded frames, so an opened menu's window is composed. */
+    private fun frame() = BoundedFrames.step(2)
 
     private fun showTerminal() {
         session.attach(view)

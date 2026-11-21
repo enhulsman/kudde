@@ -1,8 +1,5 @@
 package dev.kudde.android.testing
 
-import android.os.Looper
-import org.robolectric.Shadows.shadowOf
-
 /**
  * Runs what is due on the main thread when a test ends; [KuddeTestRunner]
  * calls it inside the test's sandbox, before Robolectric resets the loopers.
@@ -16,7 +13,7 @@ import org.robolectric.Shadows.shadowOf
 object MainThreadDrain {
     @JvmStatic
     fun run() {
-        val looper = shadowOf(Looper.getMainLooper())
-        if (!looper.isIdle) looper.idle()
+        // Bounded (BoundedFrames): a looping screen fails the test with a frame count instead of spinning here.
+        BoundedFrames.drain()
     }
 }
