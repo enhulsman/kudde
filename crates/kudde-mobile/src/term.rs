@@ -28,7 +28,7 @@ use tokio::time::Instant;
 use crate::hub::{Conn, HubCore};
 use crate::keys_row::{Key, Mods};
 use crate::vt;
-pub use crate::{TermPhase, TermState};
+pub use crate::{PasteOutcome, TermPhase, TermState};
 
 /// Frames go out at most this often; output in between is coalesced.
 const FRAME_GAP: Duration = Duration::from_millis(8);
@@ -68,7 +68,7 @@ pub(crate) trait TermSink: Send + Sync + 'static {
 }
 
 /// Opens `address` on `machine`. The terminal stays open until the returned
-/// sender is dropped.
+/// handle is dropped.
 pub(crate) fn spawn(
     hub: &Arc<HubCore>,
     machine: &str,
@@ -77,21 +77,78 @@ pub(crate) fn spawn(
     lead: bool,
     sink: Arc<dyn TermSink>,
     bracketed: Arc<AtomicBool>,
-) -> mpsc::UnboundedSender<Cmd> {
+) -> Term {
     let (tx, rx) = mpsc::unbounded_channel();
+    let conns = hub.connection(machine);
+    let paused = Arc::<AtomicBool>::default();
     let task = Task {
         hub: hub.clone(),
-        conns: hub.connection(machine),
+        conns: conns.clone(),
         address: address.to_owned(),
         phone,
         lead,
         cmds: rx,
         sink,
-        bracketed,
+        bracketed: bracketed.clone(),
+        paused: paused.clone(),
         size: (0, 0),
     };
     hub.runtime().spawn(task.run());
-    tx
+    Term {
+        cmds: tx,
+        conns,
+        paused,
+        bracketed,
+    }
+}
+
+/// The screen's handle on an open terminal: its commands go to the task.
+/// Dropping it ends the task and detaches.
+///
+/// The handle exists as soon as the terminal is opened, connected or not, and
+/// the task drops input while it has no attach to give it to. So compose text
+/// is taken only while the task can deliver it (spaces spec, "Input during
+/// the wait is never lost"): the machine is connected and the task is
+/// attaching or attached, not waiting out a failed attach or an ended
+/// terminal. Text taken while it attaches waits in the queue for the attach.
+pub(crate) struct Term {
+    cmds: mpsc::UnboundedSender<Cmd>,
+    conns: watch::Receiver<Option<Conn>>,
+    /// Set by the task while it waits after a failed attach or an ended terminal.
+    paused: Arc<AtomicBool>,
+    bracketed: Arc<AtomicBool>,
+}
+
+impl Term {
+    pub(crate) fn send(&self, cmd: Cmd) -> Result<(), mpsc::error::SendError<Cmd>> {
+        self.cmds.send(cmd)
+    }
+
+    /// Whether input sent now reaches an attach (see [`Term`]).
+    fn takes_input(&self) -> bool {
+        !self.paused.load(Ordering::Acquire)
+            && !self.cmds.is_closed()
+            && self
+                .conns
+                .borrow()
+                .as_ref()
+                .is_some_and(|c| !c.client.is_ended())
+    }
+
+    /// Compose text, pasted without Enter: not attached when the terminal
+    /// cannot take it now, else refused when a line break would run as Enter.
+    pub(crate) fn paste(&self, text: String) -> PasteOutcome {
+        if !self.takes_input() {
+            return PasteOutcome::NotAttached;
+        }
+        if !self.bracketed.load(Ordering::Relaxed) && text.contains(['\n', '\r']) {
+            return PasteOutcome::Refused;
+        }
+        match self.cmds.send(Cmd::Paste(text)) {
+            Ok(()) => PasteOutcome::Sent,
+            Err(_) => PasteOutcome::NotAttached,
+        }
+    }
 }
 
 /// How one attach ended.
@@ -116,6 +173,8 @@ struct Task {
     /// The program's bracketed paste mode, as of the last output: the view
     /// refuses compose text with a line break without it.
     bracketed: Arc<AtomicBool>,
+    /// Failed or ended: input is not taken until the next attach (see [`Term`]).
+    paused: Arc<AtomicBool>,
     /// The size of the last frames, for states that do not change it.
     size: (u16, u16),
 }
@@ -125,6 +184,10 @@ impl Task {
         if let Some(size) = size {
             self.size = size;
         }
+        // Before the screen hears of it: a failed or ended attach is always
+        // followed by a pause, which drops input until the next attach.
+        let paused = matches!(phase, TermPhase::Failed { .. } | TermPhase::Ended { .. });
+        self.paused.store(paused, Ordering::Release);
         self.sink.state(TermState {
             phase,
             cols: self.size.0,
