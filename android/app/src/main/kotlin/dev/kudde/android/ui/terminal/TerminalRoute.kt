@@ -11,6 +11,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -20,6 +21,8 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import dev.kudde.android.ui.agent.AgentKeeper
+import dev.kudde.android.ui.agent.AgentScreen
 import dev.kudde.android.ui.agent.AgentPorts
 import dev.kudde.android.ui.agent.HubPorts
 import dev.kudde.android.KuddeApp
@@ -56,42 +59,46 @@ fun TerminalRoute(app: KuddeApp, home: AgentsHome, key: AgentKey, ports: AgentPo
     val context = LocalContext.current
     val res = context.resources
     val snapshot by app.hubHost.snapshot.collectAsState()
-    val reopen = remember(key) { TerminalReopen() }
-    val generation = reopen.generation
-    val session = remember(key, generation) { TerminalSession(key, context.mainExecutor) }
-    val screen = remember(key) { TerminalScreenState(app.terminalZoom[key]) }
-    // The chat view (issue 17): over the live terminal, so switching back is instant.
+    // Chat creation still follows the hub, independently of terminal generations.
     val chat = rememberChatVisit(app, key, ports::openChat)
-    val switch = chat.switch
-    // The Changes screen (issue 19) over either view; nothing is sent to the terminal for it.
-    var changesOpen by remember(key) { mutableStateOf(false) }
-    // The tab overview (spaces spec), opened from the title bar's map, over either view: its space and tab.
-    var overview by remember(key) { mutableStateOf<Pair<String, String>?>(null) }
-    // While it shows, the phone's grid (it grows when the keyboard hides) is held, not
-    // sent: the desk keeps its size under a permission prompt. Back applies the last one.
-    var heldGrid by remember(key) { mutableStateOf<GridSize?>(null) }
-    val opener = remember(key, generation) {
-        // Reached by a step: wait before taking the desk's terminal (design D5). A reopen
-        // after the background does not wait; nor does an open from a row, the strip or an alert.
-        val dwell = if (generation == 0 && home.arrivedByStep) TerminalOpener.STEP_DWELL_MS else 0L
-        TerminalOpener(session, arrivalMs = ports.now(), dwellMs = dwell) { size ->
-            // Opened at the phone's size (phone check round 2) unless the chat shows over it;
-            // closing lets the desk take its size back.
-            val lead = atPhoneSizeOnOpen(switch.chat)
-            ports.openTerminal(key, size.cols.toUShort(), size.rows.toUShort(), lead, session.listener)
-        }
+    val revision = remember(key) { mutableIntStateOf(0) }
+    val keeper = remember(key) {
+        AgentKeeper(
+            key, ports, context.mainExecutor, chat,
+            arrivedByStep = home.arrivedByStep,
+            zoom = app.terminalZoom[key],
+            lastPhoneGrid = { app.lastPhoneGrid },
+            rememberPhoneGrid = { app.lastPhoneGrid = it },
+            changed = { revision.intValue++ },
+            legacyRoute = true,
+        )
     }
+    keeper.chat = chat
+    val reopen = keeper.reopen
+    val generation = reopen.generation
+    val current = keeper.generation(ports.now())
+    val session = current.session
+    val opener = current.opener
+    val screen = keeper.screen
+    val switch = keeper.chat.switch
+    // The plain stack and grid notify the host synchronously, without owning Compose state.
+    @Suppress("UNUSED_VARIABLE")
+    val observedRevision = revision.intValue
+    val cover = keeper.stack.cover
+    val changesOpen = cover == AgentScreen.Changes
+    val overview = cover as? AgentScreen.Overview
+    // Held until the cover closes; removed with the destination host in 5.3.
+    var heldGrid by remember(key) { mutableStateOf<GridSize?>(null) }
     // Input during the wait opens the terminal first, then goes to it (design D5).
     DisposableEffect(opener) {
-        session.onInputWithoutView = { opener.openNow(ports.now()) }
-        onDispose { opener.dispose() }
+        onDispose { keeper.disposeOpener(current) }
     }
     LaunchedEffect(opener) {
         val wait = opener.dueAtMs - ports.now()
         if (wait > 0) delay(wait)
         opener.tick(ports.now())
     }
-    var phone by remember(key) { mutableStateOf<GridSize?>(null) }
+    val phone = keeper.phone
     // A reopened generation opens again at the last phone size.
     LaunchedEffect(phone, generation) {
         val size = phone ?: return@LaunchedEffect
@@ -115,8 +122,15 @@ fun TerminalRoute(app: KuddeApp, home: AgentsHome, key: AgentKey, ports: AgentPo
         }
         onDispose {
             cancelled = true
-            val last = session.close()
+            val last = keeper.closeGeneration(current)
             if (last != null) app.terminalCacheExecutor.execute { app.terminalCache.store(key, last) }
+        }
+    }
+    DisposableEffect(keeper) {
+        onDispose {
+            keeper.release()?.let { last ->
+                app.terminalCacheExecutor.execute { app.terminalCache.store(key, last) }
+            }
         }
     }
     // Background idle (Stay connected): detach while stopped and keep the last frame;
@@ -126,7 +140,7 @@ fun TerminalRoute(app: KuddeApp, home: AgentsHome, key: AgentKey, ports: AgentPo
         app.terminalIdle.drop(1).collect {
             if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) return@collect
             reopen.onIdle {
-                session.close()?.also { last ->
+                keeper.closeGeneration(current)?.also { last ->
                     app.terminalCacheExecutor.execute { app.terminalCache.store(key, last) }
                 }
             }
@@ -178,14 +192,14 @@ fun TerminalRoute(app: KuddeApp, home: AgentsHome, key: AgentKey, ports: AgentPo
     }
 
     val ui = remember(snapshot, key, res) { terminalUi(snapshot, key, res) }
-    val actions = remember(key, home) {
+    val actions = keeper.actions(home) {
         terminalActions(
             screen,
             onBack = home::close,
             onOpen = home::open,
             onSwipe = home::step,
             onTab = home::tab,
-            onPhoneGrid = { if (changesOpen || overview != null) heldGrid = it else phone = it },
+            onPhoneGrid = { if (keeper.stack.cover != null) heldGrid = it else keeper.rememberGrid(it) },
             onWatchView = { app.terminalZoom[key] = it.zoom },
             // Read after a step: the terminal it opened, as its title bar will show it.
             openHeader = { home.openKey?.let { terminalUi(app.hubHost.snapshot.value, it, res).header } },
@@ -203,13 +217,13 @@ fun TerminalRoute(app: KuddeApp, home: AgentsHome, key: AgentKey, ports: AgentPo
             // The phone's keyboard would cover the screen; the terminal itself is left as it is.
             input.hide()
             if (!screen.typing) screen.inputOpen = false
-            changesOpen = true
+            keeper.stack.push(AgentScreen.Changes)
         }
         val openOverview = {
             ui.map?.let { map ->
                 input.hide()
                 if (!screen.typing) screen.inputOpen = false
-                overview = map.spaceId to map.tabId
+                keeper.stack.push(AgentScreen.Overview(map.spaceId, map.tabId))
             }
             Unit
         }
@@ -242,15 +256,15 @@ fun TerminalRoute(app: KuddeApp, home: AgentsHome, key: AgentKey, ports: AgentPo
         if (changesOpen) {
             val changes = remember(key) { ports.openChanges(key) }
             ChangesRoute(changes, ui.header.name, ui.header.lineTwo.substringBefore(" · ")) {
-                changesOpen = false
-                heldGrid?.let { phone = it }
+                keeper.stack.pop()
+                heldGrid?.let(keeper::rememberGrid)
                 heldGrid = null
             }
         }
         overview?.let { (spaceId, tabId) ->
             val back = {
-                overview = null
-                heldGrid?.let { phone = it }
+                keeper.stack.pop()
+                heldGrid?.let(keeper::rememberGrid)
                 heldGrid = null
             }
             // A tile opens its terminal at once (a tap, not a step); this one's own tile goes back to it.
