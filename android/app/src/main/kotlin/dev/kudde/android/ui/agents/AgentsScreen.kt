@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyItemScope
@@ -104,7 +105,7 @@ data class AgentsActions(
 // Render 1's sizes without a token of their own.
 private val tagStyle = KuddeType.secondary.copy(fontSize = 11.5.sp)
 private val ProgressWidth = 150.dp
-private val StateSlot = 18.dp
+internal val StateSlot = 18.dp
 
 /** The row's mark: 20 dp (components.agentRow). */
 private val MarkSize = 20.dp
@@ -127,11 +128,15 @@ fun AgentsScreen(
     modifier: Modifier = Modifier,
     new: NewEntryUi = NewEntryUi(enabled = true),
     newActions: NewSheetActions = NewSheetActions.Preview,
+    /** The top bar's switch to the Spaces view (true) or back (false). */
+    onHomeView: (spaces: Boolean) -> Unit = {},
 ) {
     val c = KuddeTheme.colors
     Box(modifier.fillMaxSize().background(c.chrome)) {
         Column(Modifier.fillMaxSize().safeDrawingPadding()) {
-            TopBar(ui.machinesBadge, new.enabled, newActions.onNew, actions.onMachines)
+            TopBar(ui.machinesBadge, new.enabled, newActions.onNew, actions.onMachines) {
+                HomeSwitch(spaces = false, needsYou = 0, onChoose = onHomeView)
+            }
             LazyColumn(Modifier.fillMaxWidth().weight(1f)) {
                 ui.storageNotice?.let { text ->
                     item(key = "storage") { StorageNotice(text) }
@@ -194,11 +199,11 @@ private fun LazyListScope.agentSections(ui: AgentsUi, clock: State<Long>, spin: 
 }
 
 /** An agent moving between sections slides into place over 200 ms (motion tokens); never with reduced motion. */
-private fun LazyItemScope.slide(spin: Boolean): Modifier =
+internal fun LazyItemScope.slide(spin: Boolean): Modifier =
     if (spin) Modifier.animateItem(fadeInSpec = null, fadeOutSpec = null, placementSpec = tween(200)) else Modifier
 
 @Composable
-private fun TopBar(badge: Boolean, newEnabled: Boolean, onNew: () -> Unit, onMachines: () -> Unit) {
+internal fun TopBar(badge: Boolean, newEnabled: Boolean, onNew: () -> Unit, onMachines: () -> Unit, title: @Composable RowScope.() -> Unit) {
     val c = KuddeTheme.colors
     val label = stringResource(R.string.machines_title)
     val newLabel = stringResource(R.string.new_button)
@@ -210,12 +215,7 @@ private fun TopBar(badge: Boolean, newEnabled: Boolean, onNew: () -> Unit, onMac
             .padding(start = KuddeSpacing.s20, end = KuddeSpacing.s8),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        BasicText(
-            stringResource(R.string.agents_title),
-            Modifier.weight(1f),
-            style = KuddeType.screenTitle.copy(color = c.fg),
-            maxLines = 1,
-        )
+        Row(Modifier.weight(1f)) { title() }
         // Render 12: dimmed with nothing connected, and a tap still says why.
         Box(
             Modifier
@@ -254,6 +254,46 @@ private fun TopBar(badge: Boolean, newEnabled: Boolean, onNew: () -> Unit, onMac
     }
 }
 
+/**
+ * The home's view switch (components.homeSwitch, renders spaces-dark and
+ * spaces-light): the top bar's title as two words, "Agents" and "Spaces", in
+ * the screen title's type, 18 dp apart; the chosen one in the text colour and
+ * spoken "<word>, selected", the other dim. While Spaces shows and [needsYou]
+ * agents need the person, "Agents" carries the count in the needs-you colour,
+ * as a section header does. Each word is a touch target of at least 48 dp.
+ */
+@Composable
+fun HomeSwitch(spaces: Boolean, needsYou: Int, onChoose: (spaces: Boolean) -> Unit) {
+    val c = KuddeTheme.colors
+    val selected = stringResource(R.string.home_selected)
+    @Composable
+    fun Word(text: String, chosen: Boolean, count: Int?, onClick: () -> Unit) {
+        // The touch target centres the words; inside it they share a baseline.
+        Box(
+            Modifier
+                .heightIn(min = 48.dp)
+                .widthIn(min = 48.dp)
+                .clickable(role = Role.Button, onClick = onClick)
+                .semantics(mergeDescendants = true) { if (chosen) stateDescription = selected },
+            contentAlignment = Alignment.CenterStart,
+        ) { Row {
+            BasicText(text, Modifier.alignByBaseline(), style = KuddeType.screenTitle.copy(color = if (chosen) c.fg else c.dimText), maxLines = 1)
+            if (count != null) {
+                BasicText(
+                    count.toString(),
+                    Modifier.alignByBaseline().padding(start = KuddeSpacing.s6),
+                    style = KuddeType.sectionHeader.copy(color = c.blocked, letterSpacing = 0.sp),
+                    maxLines = 1,
+                )
+            }
+        } }
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(18.dp), verticalAlignment = Alignment.CenterVertically) {
+        Word(stringResource(R.string.agents_title), !spaces, if (spaces && needsYou > 0) needsYou else null) { onChoose(false) }
+        Word(stringResource(R.string.home_spaces), spaces, null) { onChoose(true) }
+    }
+}
+
 /** herdr-app's server icon (design/renders/icons/server.svg): two racks, stroke 1.5 on 24. */
 @Composable
 private fun ServerIcon(color: Color) {
@@ -268,7 +308,7 @@ private fun ServerIcon(color: Color) {
 
 /** A storage problem from the hub, on the hover background like a notice. */
 @Composable
-private fun StorageNotice(text: String) {
+internal fun StorageNotice(text: String) {
     val c = KuddeTheme.colors
     BasicText(
         text,
@@ -283,7 +323,7 @@ private fun StorageNotice(text: String) {
 
 /** components.machineNotice: "server unreachable · last connected 2h ago", leading to Machines. */
 @Composable
-private fun MachineNotice(notice: NoticeUi, onClick: () -> Unit) {
+internal fun MachineNotice(notice: NoticeUi, onClick: () -> Unit) {
     val c = KuddeTheme.colors
     val shape = RoundedCornerShape(KuddeRadius.notice)
     Row(
@@ -316,16 +356,16 @@ private fun MachineNotice(notice: NoticeUi, onClick: () -> Unit) {
 
 /** The idle mark: a 9 dp ring, 1.5 dp, in idle. */
 @Composable
-private fun Ring() {
+internal fun Ring() {
     Box(Modifier.size(9.dp).border(1.5.dp, KuddeTheme.colors.idle, CircleShape))
 }
 
 /** components.sectionHeader: 40 dp, the state's word in its colour, the count in dim. */
 @Composable
-private fun Section(
+internal fun Section(
     label: String,
     color: Color,
-    count: Int,
+    count: Int?,
     modifier: Modifier = Modifier,
     expanded: Boolean? = null,
     onToggle: (() -> Unit)? = null,
@@ -351,7 +391,7 @@ private fun Section(
         horizontalArrangement = Arrangement.spacedBy(7.dp),
     ) {
         BasicText(label, style = KuddeType.sectionHeader.copy(color = color))
-        BasicText(count.toString(), style = KuddeType.sectionHeader.copy(color = c.dimText))
+        count?.let { BasicText(it.toString(), style = KuddeType.sectionHeader.copy(color = c.dimText)) }
         if (expanded != null) {
             Spacer(Modifier.weight(1f))
             ChevronIcon(if (expanded) Chevron.Down else Chevron.Right, 14.dp, c.dimText)
@@ -361,7 +401,7 @@ private fun Section(
 
 /** The signature card (components.needsYouCard): 3 dp red left edge, the kind above the request. */
 @Composable
-private fun NeedsYouCard(row: AgentRowUi, clock: State<Long>, onClick: () -> Unit, modifier: Modifier = Modifier) {
+internal fun NeedsYouCard(row: AgentRowUi, clock: State<Long>, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val c = KuddeTheme.colors
     val shape = RoundedCornerShape(KuddeRadius.card)
     Column(
@@ -436,7 +476,7 @@ private fun Modifier.cardEdge(fill: Color, border: Color, edge: Color): Modifier
 
 /** components.agentRow: mark, name over "folder · machine" (and a progress bar), age, state mark. */
 @Composable
-private fun AgentRow(row: AgentRowUi, clock: State<Long>, spin: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+internal fun AgentRow(row: AgentRowUi, clock: State<Long>, spin: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val c = KuddeTheme.colors
     ListRow(onClick, row.label, modifier) {
         ProgramMark(row.icon, size = MarkSize)
@@ -464,7 +504,7 @@ private fun AgentRow(row: AgentRowUi, clock: State<Long>, spin: Boolean, onClick
 
 /** A terminal that never reported status: no age and no state mark. */
 @Composable
-private fun OtherRow(row: OtherRowUi, modifier: Modifier = Modifier, onClick: () -> Unit) {
+internal fun OtherRow(row: OtherRowUi, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val c = KuddeTheme.colors
     ListRow(onClick, null, modifier) {
         ProgramMark(row.icon, size = MarkSize)
@@ -541,7 +581,7 @@ const val SPINNER_TAG = "spinner"
 
 /** The working spinner (animations.spinner): a 24% ring with a quarter arc, 15 dp, 3.2 on 24, one turn per 900 ms. */
 @Composable
-private fun Spinner(spin: Boolean) {
+internal fun Spinner(spin: Boolean) {
     val turn by rememberLoop(spin, periodMs = 900, still = 0f)
     SpinnerRing { turn }
 }
@@ -574,7 +614,7 @@ internal fun SpinnerRing(turn: () -> Float) {
 
 /** First launch: no machines yet (no signed-off render; the Machines screen's text and button). */
 @Composable
-private fun NoMachines(onAddMachine: () -> Unit) {
+internal fun NoMachines(onAddMachine: () -> Unit) {
     EmptyBlock(stringResource(R.string.agents_empty_machines_title), stringResource(R.string.machines_empty)) {
         OutlineButton(stringResource(R.string.machines_add), onAddMachine, Modifier.fillMaxWidth())
     }
@@ -582,7 +622,7 @@ private fun NoMachines(onAddMachine: () -> Unit) {
 
 /** The hub could not start: the reason as the Machines screen gives it, and Try again (no signed-off render). */
 @Composable
-private fun StartFailed(reason: String, onRetry: () -> Unit) {
+internal fun StartFailed(reason: String, onRetry: () -> Unit) {
     EmptyBlock(stringResource(R.string.agents_start_failed_title), reason) {
         OutlineButton(stringResource(R.string.action_try_again), onRetry, Modifier.fillMaxWidth())
     }
@@ -594,7 +634,7 @@ private fun NoAgents() {
 }
 
 @Composable
-private fun EmptyBlock(title: String, body: String, action: (@Composable () -> Unit)? = null) {
+internal fun EmptyBlock(title: String, body: String, action: (@Composable () -> Unit)? = null) {
     val c = KuddeTheme.colors
     Column(
         Modifier

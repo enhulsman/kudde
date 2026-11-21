@@ -27,6 +27,7 @@ import dev.kudde.android.ui.agents.AgentKey
 import dev.kudde.android.ui.agents.NewTerminal
 import dev.kudde.android.ui.chat.ChatStates
 import dev.kudde.android.ui.chat.ChatViewSetting
+import dev.kudde.android.ui.spaces.HomeViewSetting
 import dev.kudde.android.ui.chat.trimsChats
 import dev.kudde.android.ui.terminal.TerminalCache
 import dev.kudde.android.ui.terminal.ZoomMemory
@@ -103,6 +104,10 @@ class KuddeApp : Application() {
     lateinit var chatView: ChatViewSetting
         private set
 
+    /** Agents or Spaces, the home screen's view chosen last, in its own preferences file. */
+    lateinit var homeView: HomeViewSetting
+        private set
+
     /** Each terminal's chat as the screen holds it (draft, place, last poll), for this run of the app. */
     val chatStates = ChatStates()
 
@@ -127,6 +132,7 @@ class KuddeApp : Application() {
         contrast = ContrastSetting.open(this)
         stayConnected = StayConnectedSetting.open(this)
         chatView = ChatViewSetting.open(this)
+        homeView = HomeViewSetting.open(this)
         pushStore = PushStore.open(this)
         val sink = AndroidAlertSink(this).apply { createChannels() }
         alerts = Alerts(pushStore, sink, resources) { ms -> timeOfDay(this)(ms) }

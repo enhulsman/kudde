@@ -120,7 +120,7 @@ fun ChangesScreen(
 
 /** `.ctop`: back, the name, the line under it. */
 @Composable
-private fun ChangesTitle(name: String, sub: String, onBack: () -> Unit) {
+internal fun ChangesTitle(name: String, sub: String, onBack: () -> Unit) {
     val c = KuddeTheme.colors
     Row(
         Modifier.fillMaxWidth().heightIn(min = KuddeLayout.terminalTitleHeight).background(c.chrome)
