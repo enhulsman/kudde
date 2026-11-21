@@ -32,10 +32,13 @@ if a material3 source is at hand, and change this file (not the code) if they di
 - Predictive Back on Changes, progress p from the system back event (0 to 1):
   Changes scale 1 to 0.90, shift 24 dp x p toward the swipe edge's direction,
   vertical follow 0.12 x finger dy clamped to +-28 dp, times p; corner radius 28 dp x p;
-  shadow grows with p. Base translateX -0.12 W x (1 - 0.45 p), dim x (1 - 0.55 p).
-  Release past p 0.33, or a fling over 450 dp/s toward Back (p above 0.04), finishes:
-  Changes slides off to +-W in the swipe direction at its current scale, base to 0,
-  dim to 0, on screen with the finger's velocity. Otherwise it cancels: p back to 0 on screen.
+  shadow grows with p. Base translateX -0.12 W x (1 - 0.45 p), dim x (1 - 0.55 p);
+  the base's shift takes the side of the swipe edge (from the right edge it comes in
+  from the right, +0.12 W x (1 - 0.45 p), and the card shifts left). The system decides:
+  when it commits Back, the motion finishes from where it is, at the finger's velocity:
+  Changes slides off to +-W in the swipe direction at its current scale, base to 0 (same
+  sign), dim to 0, on screen. When it cancels, p returns to 0 on screen. (The unseeked
+  pop, Back button or key, keeps -0.12 W, as the push mirrors it.)
   (The prototype measured p as distance / 0.55 W; the app uses the system's progress.)
 - `pushOverview`: the current screen shrinks into its tile (translate + uniform scale to
   the tile's rect) on spatial; visual corner radius 14 dp x t; the overview background
@@ -52,8 +55,8 @@ if a material3 source is at hand, and change this file (not the code) if they di
 - Title bar content: crossfade, 110 ms out, then the new content.
 - `leave` (Back from the agent's base to the agent list; the owner's choice,
   "like Changes"): the agent screen moves as Changes does in its predictive
-  Back and its release (same springs, scale, shift, corner radius, thresholds), with the
-  agent list in the base's place (translateX and dim as the base under Changes). A Back
+  Back and its release (same springs, scale, shift, corner radius, system-decided release), with the
+  agent list in the base's place (translateX and dim as the base under Changes, mirrored by the swipe edge). A Back
   button or key runs the same motion unseeked. The list's own content is not animated.
 
 ## Always
