@@ -4,6 +4,8 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -38,6 +40,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -189,6 +193,22 @@ private fun TerminalTile(tile: OverviewTile.Terminal, spin: Boolean, modifier: M
             .clip(shape)
             .background(c.popover)
             .border(KuddeBorder.thin, c.border, shape)
+            // Keep clickable's focus, keyboard, indication and TalkBack action. Cancel its
+            // pointer gesture as soon as movement exceeds slop, even within the tile.
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                    var dragged = false
+                    do {
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                        val pointer = event.changes.firstOrNull { it.id == down.id }
+                        if (pointer == null || (pointer.position - down.position).getDistance() > viewConfiguration.touchSlop) {
+                            dragged = true
+                        }
+                        if (dragged) event.changes.forEach { it.consume() }
+                    } while (event.changes.any { it.pressed })
+                }
+            }
             .clickable(role = Role.Button, onClick = onClick)
             .semantics(mergeDescendants = true) {}
             .padding(KuddeSpacing.s12),
