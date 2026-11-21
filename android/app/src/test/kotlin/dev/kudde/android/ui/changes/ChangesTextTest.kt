@@ -315,7 +315,9 @@ class ChangesTextTest {
     @Test
     fun theFixedTextsAreTheSpecs() {
         assertEquals("Changes", CHANGES)
-        assertEquals("Show the files this agent changed", CHANGES_DESCRIPTION)
+        // The title bar menu's item, shown and spoken as its word (spaces-navigation, decision 11);
+        // the longer description went with the Changes button.
+        assertEquals("Changes", changesMenuItem {}.label)
         assertEquals("Reading the changes…", READING)
         assertEquals("Not a git repository", NOT_A_REPO)
         assertEquals("No changes since the last commit", NONE)

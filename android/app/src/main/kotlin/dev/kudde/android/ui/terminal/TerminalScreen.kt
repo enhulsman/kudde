@@ -38,6 +38,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.layout.SubcomposeLayout
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
@@ -88,8 +93,9 @@ import dev.kudde.android.R
 import dev.kudde.android.ui.agents.AgentKey
 import dev.kudde.android.ui.agents.ProgramIcon
 import dev.kudde.android.ui.agents.ProgramMark
-import dev.kudde.android.ui.changes.ChangesButton
-import dev.kudde.android.ui.chat.ViewSwitch
+import dev.kudde.android.ui.changes.changesMenuItem
+import dev.kudde.android.ui.spaces.MapCell
+import dev.kudde.android.ui.spaces.TabMap
 import dev.kudde.android.ui.components.Chevron
 import dev.kudde.android.ui.components.ChevronIcon
 import dev.kudde.android.ui.components.rememberScreenReaderOn
@@ -120,7 +126,15 @@ data class TerminalHeader(
     val lineTwo: String,
 )
 
-data class TerminalUi(val key: AgentKey, val header: TerminalHeader, val queue: QueueStrip?)
+/**
+ * The open terminal's place in its tab, for the title bar's map (spaces spec, "The title bar
+ * shows where the terminal sits"): the tab's [cells] with the open one marked, and the open
+ * terminal as stop [index] (from 1) of [count], counted over the tab's stops only.
+ */
+data class TitleMap(val cells: List<MapCell>, val index: Int, val count: Int, val spaceId: String, val tabId: String)
+
+/** [map]: null in a tab of one pane and for a terminal in no pane. */
+data class TerminalUi(val key: AgentKey, val header: TerminalHeader, val queue: QueueStrip?, val map: TitleMap? = null)
 
 class TerminalActions(
     val onBack: () -> Unit,
@@ -192,8 +206,12 @@ fun TerminalScreen(
     composeFocus: Boolean = true,
     /** The switch to the chat view; null hides it (no log the chat can follow). */
     onChat: (() -> Unit)? = null,
-    /** Opens the Changes screen; null hides the button. */
+    /** Opens the Changes screen, the title bar menu's item; null leaves it out. */
     onChanges: (() -> Unit)? = null,
+    /** A tap on the title bar's map: opens the tab overview. */
+    onMap: (() -> Unit)? = null,
+    /** Whether the title bar's menu is open. */
+    menuState: TitleBarMenuState = remember { TitleBarMenuState() },
     /**
      * The chat covers the terminal: its grid is not drawn, nor followed, so the
      * agent's output costs no frames there; the rows it missed draw on return.
@@ -208,10 +226,13 @@ fun TerminalScreen(
     val keyboardUp = WindowInsets.isImeVisible
     Box(modifier.fillMaxSize().background(c.chrome)) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
-            TitleBar(ui.header, actions) {
-                onChanges?.let { ChangesButton(it) }
-                onChat?.let { ViewSwitch("Chat", it) }
-            }
+            TitleBar(
+                ui.header, actions,
+                map = ui.map, onMap = onMap,
+                switch = onChat?.let { toChat -> @Composable { ViewSwitchIcon(toChat = true, toChat) } },
+                menu = listOfNotNull(onChanges?.let(::changesMenuItem)),
+                menuState = menuState,
+            )
             ui.queue?.let { QueueStripRow(it) { actions.onOpen(it.next) } }
             Box(Modifier.fillMaxWidth().weight(1f)) {
                 TerminalArea(session, screen, actions, input, keysShown, ui.key.machine, covered)
@@ -278,12 +299,24 @@ interface TerminalInputHandle {
 // --- Title bar and queue strip ---------------------------------------------
 
 /**
- * The terminal's title bar, also the chat's: back, icon, name (no status pill, issue 57),
- * then [trailing] (the chat's gauge, the view switch); swipes step through
- * the agents.
+ * The terminal's title bar, also the chat's (render terminal-map,
+ * components.terminalTitleBar): back, the program's mark, the name over its
+ * line (no status pill, issue 57), then the [gauge] (the chat's), the tab's
+ * [map], the view [switch] and the [menu]'s button last. Where the width runs
+ * out, the gauge gives way first, then the name ([titleBarFit]). Swipes step
+ * through the open tab's panes and the agents that want you.
  */
 @Composable
-internal fun TitleBar(header: TerminalHeader, actions: TerminalActions, trailing: @Composable RowScope.() -> Unit = {}) {
+internal fun TitleBar(
+    header: TerminalHeader,
+    actions: TerminalActions,
+    map: TitleMap? = null,
+    onMap: (() -> Unit)? = null,
+    gauge: (@Composable () -> Unit)? = null,
+    switch: (@Composable () -> Unit)? = null,
+    menu: List<TitleBarMenuItem> = emptyList(),
+    menuState: TitleBarMenuState = remember { TitleBarMenuState() },
+) {
     val c = KuddeTheme.colors
     val view = LocalView.current
     val context = LocalContext.current
@@ -356,6 +389,7 @@ internal fun TitleBar(header: TerminalHeader, actions: TerminalActions, trailing
                 // Up and down step through the agents that want you; sideways through
                 // the open tab's panes. The longer direction of the drag decides, and
                 // the result is decided by titleBarStep (design D4), only played here.
+                // On the whole row, so a drag that starts on a button steps as well.
                 var dx = 0f
                 var dy = 0f
                 detectDragGestures(
@@ -379,10 +413,10 @@ internal fun TitleBar(header: TerminalHeader, actions: TerminalActions, trailing
                     dy += drag.y
                 }
             }
-            .padding(start = KuddeSpacing.s4, end = KuddeSpacing.s12)
+            // `.qbar`: 4 dp at either end.
+            .padding(horizontal = KuddeSpacing.s4)
             .graphicsLayer { translationX = bounce.value },
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         val back = stringResource(R.string.back)
         Box(
@@ -395,16 +429,76 @@ internal fun TitleBar(header: TerminalHeader, actions: TerminalActions, trailing
         ) {
             ChevronIcon(Chevron.Left, 22.dp, c.fg)
         }
-        ProgramMark(header.icon, Modifier.padding(end = 6.dp), size = 20.dp)
-        // One node for the name, its line and the four steps; Back and the trailing controls stay their own.
-        Column(
-            Modifier.weight(1f).semantics(mergeDescendants = true) { customActions = stepActions },
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            BasicText(header.name, style = KuddeType.terminalTitle.copy(color = c.fg), maxLines = 1, overflow = TextOverflow.Ellipsis)
-            BasicText(header.lineTwo, style = KuddeType.secondary.copy(color = c.dimText), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        ProgramMark(header.icon, Modifier.padding(start = 6.dp, end = 12.dp), size = 20.dp)
+        NameAndGauge(header, stepActions, gauge, Modifier.weight(1f))
+        Spacer(Modifier.width(6.dp))
+        map?.let { TitleMapButton(it, onMap) }
+        switch?.invoke()
+        if (menu.isNotEmpty()) TitleBarMenu(menu, menuState)
+    }
+}
+
+/**
+ * The name over its line, and the gauge at the end of the room they share.
+ * The gauge is measured first, in a probe that is never placed nor spoken;
+ * [titleBarFit] decides whether it shows, and the name gets the rest.
+ */
+@Composable
+private fun NameAndGauge(
+    header: TerminalHeader,
+    stepActions: List<CustomAccessibilityAction>,
+    gauge: (@Composable () -> Unit)?,
+    modifier: Modifier,
+) {
+    val c = KuddeTheme.colors
+    val measurer = rememberTextMeasurer()
+    SubcomposeLayout(modifier) { constraints ->
+        val room = constraints.maxWidth
+        val gap = 6.dp.roundToPx()
+        val gaugeWidth = gauge?.let { slot ->
+            subcompose("probe") { Box(Modifier.clearAndSetSemantics {}) { slot() } }
+                .first().measure(Constraints()).width + gap
         }
-        trailing()
+        fun width(text: String) = measurer.measure(text, KuddeType.terminalTitle, maxLines = 1, softWrap = false).size.width
+        val name = header.name
+        val eight = if (name.length > 8) width(name.take(8) + "…") else width(name)
+        val fit = titleBarFit(room, gaugeWidth, eight, width(name.take(1) + "…"))
+        val column = subcompose("name") {
+            // One node for the name, its line and the four steps; Back and the trailing controls stay their own.
+            Column(
+                Modifier.semantics(mergeDescendants = true) { customActions = stepActions },
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                BasicText(header.name, style = KuddeType.terminalTitle.copy(color = c.fg), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                BasicText(header.lineTwo, style = KuddeType.secondary.copy(color = c.dimText), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }.first().measure(Constraints(maxWidth = fit.nameWidth, maxHeight = constraints.maxHeight))
+        val shown = if (fit.gauge && gauge != null) {
+            subcompose("gauge", gauge).first().measure(Constraints(maxHeight = constraints.maxHeight))
+        } else {
+            null
+        }
+        val height = maxOf(column.height, shown?.height ?: 0, constraints.minHeight)
+        layout(room, height) {
+            column.placeRelative(0, (height - column.height) / 2)
+            shown?.placeRelative(room - shown.width, (height - shown.height) / 2)
+        }
+    }
+}
+
+/** The tab's map as a 48 dp button (components.tabMap, titleBar), spoken "Tab overview, terminal 2 of 3". */
+@Composable
+private fun TitleMapButton(map: TitleMap, onMap: (() -> Unit)?) {
+    val spoken = stringResource(R.string.title_bar_map, map.index, map.count)
+    Box(
+        Modifier
+            .size(48.dp)
+            .clip(RoundedCornerShape(KuddeRadius.button))
+            .clickable(role = Role.Button) { onMap?.invoke() }
+            .semantics { contentDescription = spoken },
+        contentAlignment = Alignment.Center,
+    ) {
+        TabMap(map.cells)
     }
 }
 

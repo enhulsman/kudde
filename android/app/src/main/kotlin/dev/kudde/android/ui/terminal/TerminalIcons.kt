@@ -61,12 +61,24 @@ enum class LineIcon(val strokeWidth: Float, val paths: List<String>) {
     Search(2f, listOf("M19 11a8 8 0 1 1-16 0a8 8 0 1 1 16 0z", "m21 21-4.3-4.3")),
     File(2f, listOf("M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z", "M14 2v4a2 2 0 0 0 2 2h4")),
     Close(2f, listOf("M18 6 6 18", "m6 6 12 12")),
-    // The title bar's Changes button (render 13, `ico.changes`): a file with a plus over a minus.
+    // Changes in the title bar's menu (render terminal-map; first render 13, `ico.changes`): a file with a plus over a minus.
     Changes(
         1.7f,
         listOf("M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z", "M14 3v5h5", "M12 10.5v5", "M9.5 13h5", "M9.5 17.5h5"),
     ),
     Back(2f, listOf("m12 19-7-7 7-7", "M19 12H5")),
+    // The quieter title bar (render terminal-map, `ico.more`, `ico.chat`, `ico.term`; lucide, ISC):
+    // the menu button's three dots (ellipsis-vertical, circles of radius 1 as two arcs), and the
+    // view switch's chat (message-square-text) and terminal (square-terminal, the square as a path).
+    More(
+        2f,
+        listOf("M13 5a1 1 0 1 1-2 0a1 1 0 1 1 2 0z", "M13 12a1 1 0 1 1-2 0a1 1 0 1 1 2 0z", "M13 19a1 1 0 1 1-2 0a1 1 0 1 1 2 0z"),
+    ),
+    Chat(1.8f, listOf("M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z", "M13 8H7", "M17 12H7")),
+    TerminalBox(
+        1.8f,
+        listOf("M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z", "m7 11 2-2-2-2", "M11 13h4"),
+    ),
     Tasks(2f, listOf("m3 7 2 2 4-4", "M8 17a2 2 0 1 1-4 0a2 2 0 1 1 4 0z", "M13 7h8", "M13 17h8")),
     Wrench(
         2f,

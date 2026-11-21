@@ -5,9 +5,17 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.activity.compose.setContent
 import com.github.takahirom.roborazzi.captureRoboImage
+import com.github.takahirom.roborazzi.captureScreenRoboImage
+import dev.kudde.android.testing.click
+import dev.kudde.android.ui.spaces.MapKind
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import dev.kudde.android.testing.KuddeTestRunner
 import dev.kudde.android.ui.agents.AgentKey
 import dev.kudde.android.ui.agents.connected
@@ -55,11 +63,57 @@ class TerminalScreenshotTest {
         capture("terminal-watch-graphite", session, TerminalScreenState())
     }
 
-    /** Render 13: the Changes button before the view switch (changes-view, task 4.3). */
+    // --- The quieter title bar (render terminal-map; spaces spec, "The title bar shows where the
+    // terminal sits", "keeps its options in one menu", "The view switch is an icon", "fits its controls") ---
+
+    /** Render terminal-map, row 1: the tab's map (first of three), the switch as an icon, the menu button; 412 dp, 130%. */
+    @Test fun mapGraphite() = bar("terminal-map-graphite", dark = true, font = 1.3f)
+
+    @Test fun mapPaper() = bar("terminal-map-paper", dark = false, font = 1.3f)
+
+    /** Render terminal-map, row 5: 360 dp at 2x; the map, the switch and the menu button whole, the name cut. */
+    @Test fun narrowLargestFontGraphite() = bar("terminal-map-360-2x-graphite", dark = true, font = 2f, widthDp = 360)
+
+    @Test fun narrowLargestFontPaper() = bar("terminal-map-360-2x-paper", dark = false, font = 2f, widthDp = 360)
+
+    /** Render terminal-map, row 4: the menu open under its button, holding Changes (its own window: a screen capture). */
+    @Test fun menuOpenGraphite() = bar("terminal-menu-open-graphite", dark = true, font = 1.3f, menuOpen = true)
+
+    @Test fun menuOpenPaper() = bar("terminal-menu-open-paper", dark = false, font = 1.3f, menuOpen = true)
+
     @Test
-    fun changesButtonGraphite() {
-        val session = session(TermPhase.Watching, SessionFixture.frame(96, 44, wide = true, bottom = false))
-        capture("terminal-changes-button-graphite", session, TerminalScreenState(), chat = {}, changes = {})
+    fun theMapIsTheOpenTerminalsTabWithItsCellMarked() {
+        val map = terminalUi(TitleBarFixtures.hub, TitleBarFixtures.pricing, res).map!!
+        assertEquals(listOf(MapKind.MARKED, MapKind.WORKING, MapKind.PLAIN), map.cells.map { it.kind })
+        assertEquals(1 to 3, map.index to map.count)
+        assertEquals("s-website" to "tb-main", map.spaceId to map.tabId)
+    }
+
+    @Test
+    fun noMapInATabOfOnePane() {
+        assertNull(terminalUi(TitleBarFixtures.hub, AgentKey("workstation", "t4"), res).map)
+    }
+
+    @Test
+    fun noMapForATerminalInNoPane() {
+        assertNull(terminalUi(TitleBarFixtures.hub, AgentKey("workstation", "t7"), res).map)
+        assertNull("nor without a layout", terminalUi(hub, key, res).map)
+    }
+
+    @Test
+    fun theMarkedCellFollowsAStep() {
+        val fakeHub = dev.kudde.android.hub.FakeHub()
+        lateinit var listener: uniffi.kudde_mobile.HubListener
+        val host = dev.kudde.android.hub.HubHost(createHub = { listener = it; fakeHub }, mainExecutor = { it.run() })
+        val home = dev.kudde.android.ui.agents.AgentsHome(host, now = { 0L }) { true }
+        host.start()
+        listener.onSnapshot(TitleBarFixtures.hub)
+        home.onSnapshot(TitleBarFixtures.hub)
+        home.open(TitleBarFixtures.pricing)
+        assertTrue(home.tab(next = true))
+        val map = terminalUi(TitleBarFixtures.hub, home.openKey!!, res).map!!
+        assertEquals(listOf(MapKind.PLAIN, MapKind.MARKED, MapKind.PLAIN), map.cells.map { it.kind })
+        assertEquals(2 to 3, map.index to map.count)
     }
 
     /** Render 4: typing at phone size with the keyboard up; ctrl held. */
@@ -161,6 +215,38 @@ class TerminalScreenshotTest {
                     }
                 }
             }
+        }
+    }
+
+    /**
+     * The terminal screen of [TitleBarFixtures.pricing] in a strip [widthDp] wide and 260 dp
+     * high (the bar, and the terminal under it), at [font] times the font size. With
+     * [menuOpen] the button shows open and the menu is drawn where its window puts it (its
+     * right edge 4 dp in from the button's, its top 6 dp under it: `.qmenu`, right 8 and top
+     * 62 in the strip); a screen capture here leaves the Popup's own window out.
+     */
+    private fun bar(name: String, dark: Boolean, font: Float, widthDp: Int = 412, menuOpen: Boolean = false) {
+        RuntimeEnvironment.setQualifiers("w${widthDp}dp-h260dp-xhdpi")
+        RuntimeEnvironment.setFontScale(font)
+        try {
+            val ui = terminalUi(TitleBarFixtures.hub, TitleBarFixtures.pricing, res)
+            val session = session(TermPhase.Watching, SessionFixture.frame(96, 44, wide = true, bottom = false))
+            val actions = TerminalActions(onBack = {}, onOpen = {}, onSwipe = { false }, onPhoneGrid = {})
+            captureRoboImage("src/test/snapshots/$name.png") {
+                KuddeTheme(dark = dark) {
+                    Box {
+                        TerminalScreen(ui, session, TerminalScreenState(), actions, TerminalInputHandle.None, onChat = {}, onChanges = {}, onMap = {},
+                            menuState = TitleBarMenuState(open = menuOpen))
+                        if (menuOpen) {
+                            Box(Modifier.align(androidx.compose.ui.Alignment.TopEnd).padding(top = 62.dp, end = 8.dp)) {
+                                TitleBarMenuPanel(listOf(dev.kudde.android.ui.changes.changesMenuItem {})) {}
+                            }
+                        }
+                    }
+                }
+            }
+        } finally {
+            RuntimeEnvironment.setFontScale(1f)
         }
     }
 

@@ -23,6 +23,7 @@ import dev.kudde.android.ui.components.rememberStarted
 import dev.kudde.android.ui.components.rememberUptimeTicker
 import dev.kudde.android.ui.terminal.TerminalActions
 import dev.kudde.android.ui.terminal.TerminalHeader
+import dev.kudde.android.ui.terminal.TitleMap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -120,7 +121,16 @@ fun ChatPolling(visit: ChatVisit, app: KuddeApp, screen: () -> List<String>) {
 
 /** The chat over the terminal, while [ChatVisit.switch] shows it. */
 @Composable
-fun ChatRoute(visit: ChatVisit, app: KuddeApp, header: TerminalHeader, actions: TerminalActions, onChanges: (() -> Unit)? = null, onTerminal: () -> Unit) {
+fun ChatRoute(
+    visit: ChatVisit,
+    app: KuddeApp,
+    header: TerminalHeader,
+    actions: TerminalActions,
+    onChanges: (() -> Unit)? = null,
+    map: TitleMap? = null,
+    onMap: (() -> Unit)? = null,
+    onTerminal: () -> Unit,
+) {
     val context = LocalContext.current
     val state = visit.state
     val scope = rememberCoroutineScope()
@@ -198,5 +208,7 @@ fun ChatRoute(visit: ChatVisit, app: KuddeApp, header: TerminalHeader, actions: 
         },
         animate = animate,
         onChanges = onChanges,
+        map = map,
+        onMap = onMap,
     )
 }

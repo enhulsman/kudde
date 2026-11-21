@@ -23,7 +23,6 @@ import dev.kudde.android.ui.agents.AgentsHome
 import dev.kudde.android.ui.agents.connected
 import dev.kudde.android.ui.agents.row
 import dev.kudde.android.ui.agents.snapshot
-import dev.kudde.android.ui.changes.CHANGES_DESCRIPTION
 import dev.kudde.android.ui.chat.ChatImageSource
 import dev.kudde.android.ui.chat.ChatScreen
 import dev.kudde.android.ui.chat.ChatState
@@ -148,8 +147,9 @@ class TitleBarActionsTest {
                 override suspend fun load(key: String): ImageBitmap? = null
             }
         }
-        ChatScreen(terminalUi(hubHost.snapshot.value, k, res).header, actions, poll, remember(k) { ChatState() }, images, { 0L },
-            onTerminal = {}, onPick = {}, onSend = {}, animate = false, onChanges = {})
+        val ui = terminalUi(hubHost.snapshot.value, k, res)
+        ChatScreen(ui.header, actions, poll, remember(k) { ChatState() }, images, { 0L },
+            onTerminal = {}, onPick = {}, onSend = {}, animate = false, onChanges = {}, map = ui.map)
     }
 
     private fun nodes(): List<SemanticsNode> {
@@ -193,9 +193,8 @@ class TitleBarActionsTest {
     fun theTerminalsTitleBarIsOneNodeWithTheFourActions() {
         home.open(key("a"))
         showTerminal()
-        // Back, the switch and the Changes button stay stops of their own (the map and
-        // the menu button arrive with tasks 5.4 and 5.5).
-        assertOneTitleNode("a", listOf(listOf("Back"), listOf("Chat"), listOf(CHANGES_DESCRIPTION)))
+        // Back, the map, the switch and the menu button stay stops of their own (tasks 5.4 to 5.6).
+        assertOneTitleNode("a", listOf(listOf("Back"), listOf("Tab overview, terminal 1 of 2"), listOf("Chat"), listOf("More options")))
     }
 
     @Test
@@ -203,7 +202,7 @@ class TitleBarActionsTest {
         home.open(key("a"))
         showChat()
         val gauge = gaugeLabel(poll.gaugeUsed, poll.gaugeWindow, poll.gaugePercent)!!
-        assertOneTitleNode("a", listOf(listOf("Back"), listOf(gauge), listOf("Terminal"), listOf(CHANGES_DESCRIPTION)))
+        assertOneTitleNode("a", listOf(listOf("Back"), listOf(gauge), listOf("Tab overview, terminal 1 of 2"), listOf("Terminal"), listOf("More options")))
     }
 
     @Test

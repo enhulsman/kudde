@@ -34,6 +34,9 @@ import dev.kudde.android.ui.chat.rememberChatVisit
 import dev.kudde.android.ui.components.undrawnWhen
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.drop
+import dev.kudde.android.ui.spaces.TabOverviewRoute
+import dev.kudde.android.ui.spaces.mapCells
+import uniffi.kudde_mobile.DeskPaneView
 import uniffi.kudde_mobile.HubSnapshot
 import uniffi.kudde_mobile.TerminalViewInterface
 
@@ -61,6 +64,8 @@ fun TerminalRoute(app: KuddeApp, home: AgentsHome, key: AgentKey) {
     val switch = chat.switch
     // The Changes screen (issue 19) over either view; nothing is sent to the terminal for it.
     var changesOpen by remember(key) { mutableStateOf(false) }
+    // The tab overview (spaces spec), opened from the title bar's map, over either view: its space and tab.
+    var overview by remember(key) { mutableStateOf<Pair<String, String>?>(null) }
     // While it shows, the phone's grid (it grows when the keyboard hides) is held, not
     // sent: the desk keeps its size under a permission prompt. Back applies the last one.
     var heldGrid by remember(key) { mutableStateOf<GridSize?>(null) }
@@ -179,7 +184,7 @@ fun TerminalRoute(app: KuddeApp, home: AgentsHome, key: AgentKey) {
             onOpen = home::open,
             onSwipe = home::step,
             onTab = home::tab,
-            onPhoneGrid = { if (changesOpen) heldGrid = it else phone = it },
+            onPhoneGrid = { if (changesOpen || overview != null) heldGrid = it else phone = it },
             onWatchView = { app.terminalZoom[key] = it.zoom },
             // Read after a step: the terminal it opened, as its title bar will show it.
             openHeader = { home.openKey?.let { terminalUi(app.hubHost.snapshot.value, it, res).header } },
@@ -199,9 +204,18 @@ fun TerminalRoute(app: KuddeApp, home: AgentsHome, key: AgentKey) {
             if (!screen.typing) screen.inputOpen = false
             changesOpen = true
         }
+        val openOverview = {
+            ui.map?.let { map ->
+                input.hide()
+                if (!screen.typing) screen.inputOpen = false
+                overview = map.spaceId to map.tabId
+            }
+            Unit
+        }
+        val over = changesOpen || overview != null
         // Under the chat the terminal is left out of accessibility: its keys are covered.
         // Nor is it drawn there: the chat is opaque, and each of its frames would redraw it.
-        Box((if (switch.chat || changesOpen) Modifier.clearAndSetSemantics {} else Modifier).undrawnWhen(switch.chat)) {
+        Box((if (switch.chat || over) Modifier.clearAndSetSemantics {} else Modifier).undrawnWhen(switch.chat)) {
             TerminalScreen(
                 ui, session, screen, actions, input,
                 onChat = if (switch.offered) ({
@@ -212,12 +226,13 @@ fun TerminalRoute(app: KuddeApp, home: AgentsHome, key: AgentKey) {
                     switch.toChat()
                 }) else null,
                 onChanges = openChanges,
+                onMap = openOverview,
                 covered = switch.chat,
             )
         }
         if (switch.chat) {
-            Box(if (changesOpen) Modifier.clearAndSetSemantics {} else Modifier) {
-                ChatRoute(chat, app, ui.header, actions, onChanges = openChanges) {
+            Box(if (over) Modifier.clearAndSetSemantics {} else Modifier) {
+                ChatRoute(chat, app, ui.header, actions, onChanges = openChanges, map = ui.map, onMap = openOverview) {
                     app.chatView.choose(chat = false)
                     switch.toTerminal()
                 }
@@ -231,15 +246,45 @@ fun TerminalRoute(app: KuddeApp, home: AgentsHome, key: AgentKey) {
                 heldGrid = null
             }
         }
+        overview?.let { (spaceId, tabId) ->
+            val back = {
+                overview = null
+                heldGrid?.let { phone = it }
+                heldGrid = null
+            }
+            // A tile opens its terminal at once (a tap, not a step); this one's own tile goes back to it.
+            TabOverviewRoute(app, key.machine, spaceId, tabId, onBack = back) { tile -> if (tile == key) back() else home.open(tile) }
+        }
     }
 }
 
-/** The title bar and queue strip for [key], from the hub's rows. */
+/** The title bar and queue strip for [key], from the hub's rows; the tab's map from its machine's layout. */
 fun terminalUi(snapshot: HubSnapshot, key: AgentKey, res: android.content.res.Resources): TerminalUi {
     val sheet = agentSheet(agentsUi(snapshot, 0L, res, { "" }), key, res)
     val header = sheet?.let { TerminalHeader(it.name, it.icon, it.lineTwo) }
         ?: TerminalHeader(key.address, ProgramIcon.Terminal, key.machine)
-    return TerminalUi(key, header, queueStrip(snapshot.agents, key))
+    return TerminalUi(key, header, queueStrip(snapshot.agents, key), titleMap(snapshot, key))
+}
+
+/**
+ * The tab that holds [key]'s pane, as the title bar's map draws it (spaces
+ * spec, "The title bar shows where the terminal sits"): null for a terminal in
+ * no pane (loose, a sub-agent's vacant pane, no layout) and in a tab of one
+ * pane. The last layout read stays while the machine is out of reach, as in
+ * the Spaces view. Counted over the stops: the terminal cells the phone lists.
+ */
+fun titleMap(snapshot: HubSnapshot, key: AgentKey): TitleMap? {
+    val desk = snapshot.machines.firstOrNull { it.name == key.machine }?.desk ?: return null
+    val attention = snapshot.agents.filter { it.machine == key.machine }.associate { it.address to it.attention }
+    val listed = attention.keys + snapshot.others.filter { it.machine == key.machine }.map { it.address }
+    for (space in desk.spaces) for (tab in space.tabs) {
+        val addresses = tab.cells.mapNotNull { (it.pane as? DeskPaneView.Terminal)?.address }
+        if (key.address !in addresses) continue
+        if (tab.cells.size < 2) return null
+        val stops = addresses.filter { it in listed }
+        return TitleMap(mapCells(tab, { attention[it] }, marked = key.address), stops.indexOf(key.address) + 1, stops.size, space.id, tab.id)
+    }
+    return null
 }
 
 /**

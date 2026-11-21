@@ -1,12 +1,8 @@
 package dev.kudde.android.ui.changes
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -14,20 +10,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import dev.kudde.android.ui.terminal.LineIcon
-import dev.kudde.android.ui.terminal.LineIconImage
-import dev.kudde.android.ui.theme.KuddeRadius
-import dev.kudde.android.ui.theme.KuddeTheme
+import dev.kudde.android.ui.terminal.TitleBarMenuItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.awaitCancellation
@@ -128,14 +116,5 @@ fun ChangesRoute(changes: ChangesInterface?, agent: String, space: String, onClo
     )
 }
 
-/** `.chg`: the title bar's Changes button, in the terminal and the chat view (render 13). */
-@Composable
-fun ChangesButton(onClick: () -> Unit) {
-    val c = KuddeTheme.colors
-    Box(
-        Modifier.size(44.dp).clip(RoundedCornerShape(KuddeRadius.button))
-            .clickable(role = Role.Button, onClick = onClick)
-            .semantics { contentDescription = CHANGES_DESCRIPTION },
-        contentAlignment = Alignment.Center,
-    ) { LineIconImage(LineIcon.Changes, c.muted, 21.dp) }
-}
+/** Changes as the title bar menu's item (changes-view; spaces spec, decision 11): shown and spoken as its word. */
+fun changesMenuItem(onClick: () -> Unit) = TitleBarMenuItem(CHANGES, LineIcon.Changes, onClick)
