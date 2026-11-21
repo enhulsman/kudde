@@ -69,7 +69,10 @@ class ScreenStackHostState<D : Any> internal constructor(
     val progress: Float get() {
         val release = releaseAnimation
         val start = releaseStart
+        val cancel = cancelAnimation
+        val from = cancelStart
         return if (release != null && start != null) start + (1 - start) * release.value
+            else if (cancel != null) from * (1 - cancel.value)
             else animatedProgress.value
     }
     var running by mutableStateOf(false)
@@ -85,6 +88,11 @@ class ScreenStackHostState<D : Any> internal constructor(
     internal var fingerDy by mutableStateOf(0f)
     internal var releaseStart by mutableStateOf<Float?>(null)
     internal var releaseAnimation by mutableStateOf<Animatable<Float, AnimationVector1D>?>(null)
+    // A cancel runs on its own normalized channel (progress = cancelStart x (1 - value)).
+    // SeekableTransitionState.animateTo back to its current state swaps current and target,
+    // and the progress then first moves the wrong way before it returns.
+    internal var cancelAnimation by mutableStateOf<Animatable<Float, AnimationVector1D>?>(null)
+    internal var cancelStart = 0f
     internal var releaseVelocityDp = 0f
     internal var releaseDistanceDp = 0f
     internal var widthDp = 0f
@@ -101,6 +109,7 @@ class ScreenStackHostState<D : Any> internal constructor(
         val retainedProgress = if (running) progress else 0f
         releaseAnimation = null
         releaseStart = null
+        cancelAnimation = null
         if (!running) seekable.snapTo(0f)
         outgoing = from ?: if (running) target ?: outgoing else settled
         target = to
@@ -128,8 +137,14 @@ class ScreenStackHostState<D : Any> internal constructor(
     }
 
     internal suspend fun cancel() {
-        if (durationScale != 0f && motion.progressSpec !is SnapSpec<*>) seekable.animateTo(0f, motion.progressSpec)
+        if (durationScale != 0f && motion.progressSpec !is SnapSpec<*>) {
+            val animation = Animatable(0f)
+            cancelStart = progress
+            cancelAnimation = animation
+            animation.animateTo(1f, motion.progressSpec)
+        }
         seekable.snapTo(0f)
+        cancelAnimation = null
         target = settled
         outgoing = settled
         running = false
