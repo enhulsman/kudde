@@ -12,13 +12,16 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import dev.kudde.android.KuddeApp
 import dev.kudde.android.ui.agents.AgentKey
+import dev.kudde.android.ui.components.rememberScreenReaderOn
 import dev.kudde.android.ui.components.rememberStarted
 import dev.kudde.android.ui.components.rememberUptimeTicker
 import dev.kudde.android.ui.terminal.TerminalActions
@@ -85,6 +88,13 @@ fun ChatPolling(visit: ChatVisit, app: KuddeApp, screen: () -> List<String>) {
     val state = visit.state
     val switch = visit.switch
     val showing = switch.chat
+    // Host lifetime: answers are heard on arrival even while a cover shows.
+    val readerOn by rememberUpdatedState(rememberScreenReaderOn())
+    val view = LocalView.current
+    LaunchedEffect(visit, state.poll?.rows) {
+        val heard = state.poll?.rows?.let { state.announced.next(it, state.live) }.orEmpty()
+        if (readerOn) heard.forEach(view::announceForAccessibility)
+    }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(visit, showing) {
         if (showing) app.chatStates.shown = visit.key

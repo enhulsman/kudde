@@ -3,7 +3,8 @@ package dev.kudde.android.ui.terminal
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.runtime.Composable
@@ -12,12 +13,12 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -26,6 +27,10 @@ import dev.kudde.android.ui.agent.AgentScreen
 import dev.kudde.android.ui.agent.AgentPorts
 import dev.kudde.android.ui.agent.HubPorts
 import dev.kudde.android.KuddeApp
+import dev.kudde.android.R
+import dev.kudde.android.ui.agent.ScreenStackHost
+import dev.kudde.android.ui.theme.KuddeLayout
+import dev.kudde.android.ui.theme.KuddeType
 import dev.kudde.android.ui.agents.AgentKey
 import dev.kudde.android.ui.agents.AgentsHome
 import dev.kudde.android.ui.agents.ProgramIcon
@@ -35,7 +40,6 @@ import dev.kudde.android.ui.chat.ChatPolling
 import dev.kudde.android.ui.changes.ChangesRoute
 import dev.kudde.android.ui.chat.ChatRoute
 import dev.kudde.android.ui.chat.rememberChatVisit
-import dev.kudde.android.ui.components.undrawnWhen
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.drop
 import dev.kudde.android.ui.spaces.TabOverviewRoute
@@ -58,217 +62,237 @@ import uniffi.kudde_mobile.TerminalViewInterface
 fun TerminalRoute(app: KuddeApp, home: AgentsHome, key: AgentKey, ports: AgentPorts = HubPorts(app)) {
     val context = LocalContext.current
     val res = context.resources
-    val snapshot by app.hubHost.snapshot.collectAsState()
-    // Chat creation still follows the hub, independently of terminal generations.
-    val chat = rememberChatVisit(app, key, ports::openChat)
-    val revision = remember(key) { mutableIntStateOf(0) }
-    val keeper = remember(key) {
-        AgentKeeper(
-            key, ports, context.mainExecutor, chat,
-            arrivedByStep = home.arrivedByStep,
-            zoom = app.terminalZoom[key],
-            lastPhoneGrid = { app.lastPhoneGrid },
-            rememberPhoneGrid = { app.lastPhoneGrid = it },
-            changed = { revision.intValue++ },
-            legacyRoute = true,
+    val density = LocalDensity.current
+    val focus = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val estimate = with(density) {
+            phoneGrid(
+                constraints.maxWidth.toFloat(),
+                constraints.maxHeight - KuddeLayout.terminalTitleHeight.toPx() - 2 * KuddeLayout.keysRowHeight.toPx(),
+                KuddeLayout.terminalPaddingX.toPx(), KuddeLayout.terminalPaddingTop.toPx(),
+                KuddeType.terminalPhone.fontSize.toPx(),
+            )
+        }
+        val snapshot by app.hubHost.snapshot.collectAsState()
+        // Chat creation still follows the hub, independently of terminal generations.
+        val chat = rememberChatVisit(app, key, ports::openChat)
+        val revision = remember(key) { mutableIntStateOf(0) }
+        val keeper = remember(key) {
+            AgentKeeper(
+                key, ports, context.mainExecutor, chat,
+                arrivedByStep = home.arrivedByStep,
+                zoom = app.terminalZoom[key],
+                estimate = estimate,
+                lastPhoneGrid = { app.lastPhoneGrid },
+                rememberPhoneGrid = { app.lastPhoneGrid = it },
+                changed = { revision.intValue++ },
+            )
+        }
+        keeper.chat = chat
+        val reopen = keeper.reopen
+        val generation = reopen.generation
+        val current = keeper.generation(ports.now())
+        val session = current.session
+        val opener = current.opener
+        val screen = keeper.screen
+        val switch = keeper.chat.switch
+        // The plain stack and grid notify the host synchronously, without owning Compose state.
+        @Suppress("UNUSED_VARIABLE")
+        val observedRevision = revision.intValue
+        val top = keeper.top
+        // The Android input view exists only with its terminal destination.
+        val terminalInput = remember(keeper) { arrayOf<TerminalInputHandle>(TerminalInputHandle.None) }
+        fun <T> navigate(change: () -> T): T = keeper.navigate(
+            clearInput = {
+                focus.clearFocus(force = true)
+                keyboard?.hide()
+                terminalInput[0].hide()
+            },
+            change = change,
         )
-    }
-    keeper.chat = chat
-    val reopen = keeper.reopen
-    val generation = reopen.generation
-    val current = keeper.generation(ports.now())
-    val session = current.session
-    val opener = current.opener
-    val screen = keeper.screen
-    val switch = keeper.chat.switch
-    // The plain stack and grid notify the host synchronously, without owning Compose state.
-    @Suppress("UNUSED_VARIABLE")
-    val observedRevision = revision.intValue
-    val cover = keeper.stack.cover
-    val changesOpen = cover == AgentScreen.Changes
-    val overview = cover as? AgentScreen.Overview
-    // Held until the cover closes; removed with the destination host in 5.3.
-    var heldGrid by remember(key) { mutableStateOf<GridSize?>(null) }
-    // Input during the wait opens the terminal first, then goes to it (design D5).
-    DisposableEffect(opener) {
-        onDispose { keeper.disposeOpener(current) }
-    }
-    LaunchedEffect(opener) {
-        val wait = opener.dueAtMs - ports.now()
-        if (wait > 0) delay(wait)
-        opener.tick(ports.now())
-    }
-    val phone = keeper.phone
-    // A reopened generation opens again at the last phone size.
-    LaunchedEffect(phone, generation) {
-        val size = phone ?: return@LaunchedEffect
-        opener.onPhoneGrid(size, ports.now())
-        delay(TerminalMetrics.SETTLE_MS)
-        opener.tick(ports.now())
-    }
+        val back: () -> Unit = { navigate { keeper.back(home::close) } }
+        // Input during the wait opens the terminal first, then goes to it (design D5).
+        DisposableEffect(opener) {
+            onDispose { keeper.disposeOpener(current) }
+        }
+        LaunchedEffect(opener) {
+            val wait = opener.dueAtMs - ports.now()
+            if (wait > 0) delay(wait)
+            keeper.tick(ports.now())
+        }
+        val phone = keeper.phone
+        // The keeper owns settle offers. Covers cancel them; a return measures afresh.
+        LaunchedEffect(phone, generation, top) {
+            if (top != AgentScreen.Terminal) return@LaunchedEffect
+            delay(TerminalMetrics.SETTLE_MS)
+            keeper.tick(ports.now())
+        }
+        LaunchedEffect(keeper, generation, top) {
+            if (top == AgentScreen.Chat) keeper.terminalShown(ports.now())
+        }
 
-    // Instant open: the last screen, until the live first paint replaces it; after a
-    // background detach, the frame kept in memory, with no disk load or Keystore call.
-    DisposableEffect(key, generation) {
-        var cancelled = false
-        val seed = reopen.takeSeed()
-        if (seed != null) {
-            session.showCached(seed)
-        } else {
-            app.terminalCacheExecutor.execute {
-                val frame = app.terminalCache.load(key) ?: return@execute
-                context.mainExecutor.execute { if (!cancelled) session.showCached(frame) }
+        // Instant open: the last screen, until the live first paint replaces it; after a
+        // background detach, the frame kept in memory, with no disk load or Keystore call.
+        DisposableEffect(key, generation) {
+            var cancelled = false
+            val seed = reopen.takeSeed()
+            if (seed != null) {
+                session.showCached(seed)
+            } else {
+                app.terminalCacheExecutor.execute {
+                    val frame = app.terminalCache.load(key) ?: return@execute
+                    context.mainExecutor.execute { if (!cancelled) session.showCached(frame) }
+                }
+            }
+            onDispose {
+                cancelled = true
+                val last = keeper.closeGeneration(current)
+                if (last != null) app.terminalCacheExecutor.execute { app.terminalCache.store(key, last) }
             }
         }
-        onDispose {
-            cancelled = true
-            val last = keeper.closeGeneration(current)
-            if (last != null) app.terminalCacheExecutor.execute { app.terminalCache.store(key, last) }
-        }
-    }
-    DisposableEffect(keeper) {
-        onDispose {
-            keeper.release()?.let { last ->
-                app.terminalCacheExecutor.execute { app.terminalCache.store(key, last) }
-            }
-        }
-    }
-    // Background idle (Stay connected): detach while stopped and keep the last frame;
-    // collected as a coroutine, as nothing composes while the activity is stopped.
-    val lifecycle = LocalLifecycleOwner.current.lifecycle
-    LaunchedEffect(key, generation) {
-        app.terminalIdle.drop(1).collect {
-            if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) return@collect
-            reopen.onIdle {
-                keeper.closeGeneration(current)?.also { last ->
+        DisposableEffect(keeper) {
+            onDispose {
+                keeper.release()?.let { last ->
                     app.terminalCacheExecutor.execute { app.terminalCache.store(key, last) }
                 }
             }
         }
-    }
-    LifecycleEventEffect(Lifecycle.Event.ON_START) { reopen.onStart() }
-
-    // Leaving the app may be the last chance to keep the screen.
-    LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
-        reopen.onStop()
-        if (session.painted) {
-            session.grid.toFullFrameOrNull()?.let { frame ->
-                app.terminalCacheExecutor.execute { app.terminalCache.store(key, frame) }
-            }
-        }
-    }
-
-    // The grid follows the keyboard: the window resizes for it (the manifest's
-    // adjustResize; set here at runtime, it was lost in the background, issue 5).
-
-    val sink = remember(session) {
-        object : KeyboardSink {
-            override fun type(text: String) = session.type(text)
-            override fun backspace() = session.backspace()
-        }
-    }
-    val imeVisible = WindowInsets.isImeVisible
-    LaunchedEffect(imeVisible) {
-        if (!imeVisible && !screen.typing) screen.inputOpen = false
-    }
-
-    val report = session.report
-    LaunchedEffect(report) {
-        if (report != null) {
-            Toast.makeText(context, report, Toast.LENGTH_LONG).show()
-            session.reportShown()
-        }
-    }
-
-    BackHandler {
-        when {
-            screen.composeOpen -> {
-                screen.composeOpen = false
-                screen.composeText = ""
-            }
-            screen.selecting -> screen.selecting = false
-            else -> home.close()
-        }
-    }
-
-    val ui = remember(snapshot, key, res) { terminalUi(snapshot, key, res) }
-    val actions = keeper.actions(home) {
-        terminalActions(
-            screen,
-            onBack = home::close,
-            onOpen = home::open,
-            onSwipe = home::step,
-            onTab = home::tab,
-            onPhoneGrid = { if (keeper.stack.cover != null) heldGrid = it else keeper.rememberGrid(it) },
-            onWatchView = { app.terminalZoom[key] = it.zoom },
-            // Read after a step: the terminal it opened, as its title bar will show it.
-            openHeader = { home.openKey?.let { terminalUi(app.hubHost.snapshot.value, it, res).header } },
-        )
-    }
-    // Under the chat the desk keeps its size; the terminal shown takes the phone's.
-    LaunchedEffect(session, switch.chat) { session.follow(switch.chat) }
-    ChatPolling(
-        chat, app,
-        screen = { (0 until session.grid.rows).map(session.grid::rowText) },
-    )
-    Box {
-        val input = TerminalKeyboard(key, sink)
-        val openChanges = {
-            // The phone's keyboard would cover the screen; the terminal itself is left as it is.
-            input.hide()
-            if (!screen.typing) screen.inputOpen = false
-            keeper.stack.push(AgentScreen.Changes)
-        }
-        val openOverview = {
-            ui.map?.let { map ->
-                input.hide()
-                if (!screen.typing) screen.inputOpen = false
-                keeper.stack.push(AgentScreen.Overview(map.spaceId, map.tabId))
-            }
-            Unit
-        }
-        val over = changesOpen || overview != null
-        // Under the chat the terminal is left out of accessibility: its keys are covered.
-        // Nor is it drawn there: the chat is opaque, and each of its frames would redraw it.
-        Box((if (switch.chat || over) Modifier.clearAndSetSemantics {} else Modifier).undrawnWhen(switch.chat)) {
-            TerminalScreen(
-                ui, session, screen, actions, input,
-                onChat = if (switch.offered) ({
-                    // The keyboard was the terminal's: it must not type there under the chat.
-                    input.hide()
-                    screen.inputOpen = false
-                    app.chatView.choose(chat = true)
-                    switch.toChat()
-                }) else null,
-                onChanges = openChanges,
-                onMap = openOverview,
-                covered = switch.chat,
-            )
-        }
-        if (switch.chat) {
-            Box(if (over) Modifier.clearAndSetSemantics {} else Modifier) {
-                ChatRoute(chat, app, ui.header, actions, onChanges = openChanges, map = ui.map, onMap = openOverview) {
-                    app.chatView.choose(chat = false)
-                    switch.toTerminal()
+        // Background idle (Stay connected): detach while stopped and keep the last frame;
+        // collected as a coroutine, as nothing composes while the activity is stopped.
+        val lifecycle = LocalLifecycleOwner.current.lifecycle
+        LaunchedEffect(key, generation) {
+            app.terminalIdle.drop(1).collect {
+                if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) return@collect
+                reopen.onIdle {
+                    keeper.closeGeneration(current)?.also { last ->
+                        app.terminalCacheExecutor.execute { app.terminalCache.store(key, last) }
+                    }
                 }
             }
         }
-        if (changesOpen) {
-            val changes = remember(key) { ports.openChanges(key) }
-            ChangesRoute(changes, ui.header.name, ui.header.lineTwo.substringBefore(" · ")) {
-                keeper.stack.pop()
-                heldGrid?.let(keeper::rememberGrid)
-                heldGrid = null
+        LifecycleEventEffect(Lifecycle.Event.ON_START) { reopen.onStart() }
+
+        // Leaving the app may be the last chance to keep the screen.
+        LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
+            reopen.onStop()
+            if (session.painted) {
+                session.grid.toFullFrameOrNull()?.let { frame ->
+                    app.terminalCacheExecutor.execute { app.terminalCache.store(key, frame) }
+                }
             }
         }
-        overview?.let { (spaceId, tabId) ->
-            val back = {
-                keeper.stack.pop()
-                heldGrid?.let(keeper::rememberGrid)
-                heldGrid = null
+
+        // The grid follows the keyboard: the window resizes for it (the manifest's
+        // adjustResize; set here at runtime, it was lost in the background, issue 5).
+
+        val sink = remember(session) {
+            object : KeyboardSink {
+                override fun type(text: String) = session.type(text)
+                override fun backspace() = session.backspace()
             }
-            // A tile opens its terminal at once (a tap, not a step); this one's own tile goes back to it.
-            TabOverviewRoute(app, key.machine, spaceId, tabId, onBack = back) { tile -> if (tile == key) back() else home.open(tile) }
+        }
+        val imeVisible = WindowInsets.isImeVisible
+        LaunchedEffect(imeVisible) {
+            if (!imeVisible && !screen.typing) screen.inputOpen = false
+        }
+
+        val report = session.report
+        LaunchedEffect(report) {
+            if (report != null) {
+                Toast.makeText(context, report, Toast.LENGTH_LONG).show()
+                session.reportShown()
+            }
+        }
+
+        val ui = remember(snapshot, key, res) { terminalUi(snapshot, key, res) }
+        val actions = keeper.actions(home) {
+            terminalActions(
+                screen,
+                onBack = back,
+                onOpen = { target -> navigate { home.open(target) } },
+                onSwipe = { forward -> navigate { home.step(forward) } },
+                onTab = { next -> navigate { home.tab(next) } },
+                onPhoneGrid = {
+                    // A transitioning-out destination may finish layout, but cannot measure.
+                    if (keeper.top == AgentScreen.Terminal) keeper.onTerminalGrid(it, ports.now())
+                },
+                onWatchView = { app.terminalZoom[key] = it.zoom },
+                // Read after a step: the terminal it opened, as its title bar will show it.
+                openHeader = { home.openKey?.let { terminalUi(app.hubHost.snapshot.value, it, res).header } },
+            )
+        }
+        ChatPolling(
+            chat, app,
+            screen = { keeper.session.grid.let { grid -> (0 until grid.rows).map(grid::rowText) } },
+        )
+        val openChanges: () -> Unit = { navigate { keeper.stack.push(AgentScreen.Changes) } }
+        val openOverview: () -> Unit = {
+            ui.map?.let { map -> navigate { keeper.stack.push(AgentScreen.Overview(map.spaceId, map.tabId)) } }
+        }
+        val renderer = keeper.renderer {
+            TerminalRenderer(res.getFont(R.font.jetbrains_mono_regular), res.getFont(R.font.jetbrains_mono_bold))
+        }
+        ScreenStackHost(
+            top,
+            backTarget = {
+                if (keeper.stack.cover == null) null
+                else if (keeper.chat.switch.chat) AgentScreen.Chat else AgentScreen.Terminal
+            },
+            onBack = back,
+        ) { destination ->
+            when (destination) {
+                AgentScreen.Terminal -> {
+                    val input = TerminalKeyboard(key, sink)
+                    DisposableEffect(keeper, input) {
+                        terminalInput[0] = input
+                        onDispose {
+                            keeper.terminalLeft()
+                            terminalInput[0] = TerminalInputHandle.None
+                        }
+                    }
+                    BackHandler(enabled = screen.composeOpen || screen.selecting) {
+                        when {
+                            screen.composeOpen -> {
+                                screen.composeOpen = false
+                                screen.composeText = ""
+                                screen.composeFocusAsked = false
+                            }
+                            screen.selecting -> screen.selecting = false
+                        }
+                    }
+                    TerminalScreen(
+                        ui, session, screen, actions, input,
+                        onChat = if (switch.offered) ({
+                            navigate {
+                                app.chatView.choose(chat = true)
+                                switch.toChat()
+                            }
+                        }) else null,
+                        onChanges = openChanges,
+                        onMap = openOverview,
+                        renderer = renderer,
+                    )
+                }
+                AgentScreen.Chat -> ChatRoute(
+                    chat, app, ui.header, actions,
+                    onChanges = openChanges, map = ui.map, onMap = openOverview,
+                ) {
+                    navigate {
+                        app.chatView.choose(chat = false)
+                        switch.toTerminal()
+                    }
+                }
+                AgentScreen.Changes -> {
+                    val changes = remember(key) { ports.openChanges(key) }
+                    ChangesRoute(changes, ui.header.name, ui.header.lineTwo.substringBefore(" · "), back)
+                }
+                is AgentScreen.Overview -> TabOverviewRoute(
+                    app, key.machine, destination.spaceId, destination.tabId, onBack = back,
+                ) { tile ->
+                    if (tile == key) back() else navigate { home.open(tile) }
+                }
+            }
         }
     }
 }

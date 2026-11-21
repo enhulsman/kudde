@@ -164,9 +164,22 @@ class TerminalScreenState(zoom: Float? = null) {
     /** The keyboard was asked for: the keys row shows even before the first key. */
     var inputOpen by mutableStateOf(false)
     var composeOpen by mutableStateOf(false)
+    var composeFocusAsked by mutableStateOf(false)
     var composeText by mutableStateOf("")
     var selecting by mutableStateOf(false)
     var watch by mutableStateOf(WatchView(zoom ?: 1f, 0f, 0f))
+
+    // The native offset is in the keeper's session/grid; retain fractional drags too.
+    private var scrollKey: Triple<Boolean, Int?, Float>? = null
+    private var scroller: RowScroller? = null
+    fun rowScroller(typing: Boolean, rows: Int?, cellHeight: Float): RowScroller {
+        val key = Triple(typing, rows, cellHeight)
+        if (scrollKey != key) {
+            scrollKey = key
+            scroller = RowScroller(cellHeight)
+        }
+        return checkNotNull(scroller)
+    }
 
     /** The phone leads at its own size; kept through a reattach until the core says it watches again. */
     var typing by mutableStateOf(false)
@@ -220,6 +233,7 @@ fun TerminalScreen(
      * agent's output costs no frames there; the rows it missed draw on return.
      */
     covered: Boolean = false,
+    renderer: TerminalRenderer? = null,
 ) {
     val c = KuddeTheme.colors
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -238,7 +252,7 @@ fun TerminalScreen(
             )
             ui.queue?.let { QueueStripRow(it) { actions.onOpen(it.next) } }
             Box(Modifier.fillMaxWidth().weight(1f)) {
-                TerminalArea(session, screen, actions, input, keysShown, ui.key.machine, covered)
+                TerminalArea(session, screen, actions, input, keysShown, ui.key.machine, covered, renderer)
             }
             if (keysShown) {
                 KeysRow(
@@ -247,6 +261,7 @@ fun TerminalScreen(
                     onInterrupt = session::interrupt,
                     onCompose = {
                         input.hide()
+                        screen.composeFocusAsked = true
                         screen.composeOpen = true
                     },
                     onKeyboard = {
@@ -274,7 +289,7 @@ fun TerminalScreen(
                         Toast.makeText(context, it, Toast.LENGTH_LONG).show()
                     }
                 },
-                focus = composeFocus,
+                focus = composeFocus && screen.composeFocusAsked,
             )
         }
     }
@@ -584,10 +599,11 @@ private fun TerminalArea(
     keysShown: Boolean,
     machine: String,
     covered: Boolean,
+    heldRenderer: TerminalRenderer?,
 ) {
     val c = KuddeTheme.colors
     val density = LocalDensity.current
-    val renderer = rememberTerminalRenderer()
+    val renderer = heldRenderer ?: rememberTerminalRenderer()
     val label = stringResource(R.string.terminal_label)
     // A screen reader hears the visible text (accessibility spec), gathered at most once a second and only while one is on.
     val readerOn = rememberScreenReaderOn()
@@ -625,9 +641,7 @@ private fun TerminalArea(
             WatchLayout(widthPx, heightPx, padX, padTop, shape.cols, shape.rows, phoneFont)
         }
         val view = watch?.clamp(screen.watch) ?: WatchView.Fit
-        val scroller = remember(screen.typing, shape?.rows) {
-            RowScroller(phoneFont * TerminalMetrics.LINE_EM)
-        }
+        val scroller = screen.rowScroller(screen.typing, shape?.rows, phoneFont * TerminalMetrics.LINE_EM)
         Canvas(
             Modifier
                 .fillMaxSize()

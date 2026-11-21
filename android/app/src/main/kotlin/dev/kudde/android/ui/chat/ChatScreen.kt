@@ -64,7 +64,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
@@ -81,7 +80,6 @@ import dev.kudde.android.ui.terminal.TitleMap
 import dev.kudde.android.ui.terminal.ViewSwitchIcon
 import dev.kudde.android.ui.components.Chevron
 import dev.kudde.android.ui.components.ChevronIcon
-import dev.kudde.android.ui.components.rememberScreenReaderOn
 import dev.kudde.android.ui.terminal.LineIcon
 import dev.kudde.android.ui.terminal.LineIconImage
 import dev.kudde.android.ui.terminal.TerminalActions
@@ -146,14 +144,6 @@ fun ChatScreen(
     // An exited agent's conversation stays, read-only (its lookup reads None).
     val found = !chatLooking(poll) && poll != null && (poll.found == ChatFound.FOUND || poll.found == ChatFound.EMPTY || poll.exited)
     val broken = poll?.health is ChatHealth.Broken
-    // Answers that arrive live are read out once while a screen reader is on (accessibility spec);
-    // they are counted either way, so turning one on later does not read old answers.
-    val readerOn by rememberUpdatedState(rememberScreenReaderOn())
-    val view = LocalView.current
-    LaunchedEffect(poll?.rows) {
-        val heard = poll?.rows?.let { state.announced.next(it, state.live) }.orEmpty()
-        if (readerOn) heard.forEach(view::announceForAccessibility)
-    }
     Box(modifier.fillMaxSize().background(c.bg).coversBelow()) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).imePadding()) {
             // The gauge keeps its place (spaces spec): as today, text; it gives way first where the bar is narrow.

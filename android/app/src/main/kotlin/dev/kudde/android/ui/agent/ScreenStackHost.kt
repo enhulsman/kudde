@@ -154,6 +154,13 @@ fun <D : Any> ScreenStackHost(
         }
     }
 
+    // Ask for a layout when the top changes. On a phone the next frame lays out a newly
+    // composed destination anyway, so this costs one extra pass per change; the route
+    // tests pause the frame clock, and without it a destination composed after the last
+    // traversal is never measured (no terminal grid, no Live chip). Keep it unless those
+    // tests learn to draw.
+    val hostView = androidx.compose.ui.platform.LocalView.current
+    LaunchedEffect(top) { hostView.requestLayout() }
     LaunchedEffect(top) {
         if ((!state.running && top == state.settled) || (state.running && top == state.target)) return@LaunchedEffect
         ++state.revision

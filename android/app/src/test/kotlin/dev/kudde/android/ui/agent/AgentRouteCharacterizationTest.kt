@@ -161,6 +161,9 @@ class AgentRouteCharacterizationTest {
         val node = semanticsNodes().single { n -> n.descriptions().any { it.startsWith("Tab overview,") } }
         assertTrue(node.click())
         rig.frames()
+        // The overview's tiles are a lazy layout, measured only on a draw (as the step tests' overview()).
+        drawn()
+        rig.frames()
         assertNotNull("the overview's own tile", nodeSaying("Pricing page copy"))
         assertNull("the title bar is covered", nodeSaying("More options"))
     }
@@ -491,9 +494,14 @@ class AgentRouteCharacterizationTest {
         controller!!.start().resume().visible()
         rig.await("foreground reopens under Changes") { rig.ports.opens.size == 2 }
         assertNotNull(nodeSaying("Changes"))
-        assertTrue("today's behavior: reopening under the terminal's cover leads immediately", rig.ports.opens.last().lead)
+        // Spec (agent-screens, "Returning from the background under Changes"): the terminal
+        // reopens watching under the cover, and going back to it takes the desk once.
+        assertFalse("reopening under Changes watches", rig.ports.opens.last().lead)
         back()
         assertBase(chat = false)
+        rig.await("going back to the terminal takes the desk") { rig.ports.opens.last().view.calls.count { it == "lead" } == 1 }
+        rig.advanceBoth(500)
+        assertEquals("the desk is taken once", 1, rig.ports.opens.last().view.calls.count { it == "lead" })
         assertEquals(2, rig.ports.opens.size)
         assertEquals(1, old.calls.count { it == "detach" })
     }
