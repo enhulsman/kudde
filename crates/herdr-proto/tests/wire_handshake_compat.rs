@@ -249,6 +249,25 @@ fn older_core() {
     ));
 }
 
+// The tab overview's plain-text screen read (spaces-navigation D11): a core
+// without it is too old for this app.
+#[test]
+fn a_core_without_terminal_read_is_missing_it() {
+    assert!(compat::USES.contains(&"terminal.read"));
+    let without: Vec<&str> = compat::USES
+        .iter()
+        .copied()
+        .filter(|m| *m != "terminal.read")
+        .collect();
+    assert_eq!(
+        compat::check(&hello(1, "0.1.16", &without)),
+        Compat::Missing {
+            have: "0.1.16".into(),
+            methods: vec!["terminal.read".to_owned()]
+        }
+    );
+}
+
 #[test]
 fn newer_core() {
     // A newer core connects with no notice (phone check round 2: CI tests the

@@ -7,6 +7,7 @@ import dev.kudde.android.ui.agents.ProgramIcon
 import dev.kudde.android.ui.spaces.SpacesFixtures.NOW
 import dev.kudde.android.ui.spaces.SpacesFixtures.overviewRender
 import dev.kudde.android.ui.spaces.SpacesFixtures.term
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -149,5 +150,50 @@ class TabOverviewModelTest {
         assertNull(ui(gone, tab = "tb-main"))
         assertNull("another machine's space is not this one", ui(space = "s-api"))
         assertNull("nor without a desk", ui(overviewRender.copy(machines = overviewRender.machines.map { it.copy(desk = null) })))
+    }
+
+    // --- Tile pictures (spaces spec, "Tiles show their screens", "No picture from the desk") ---
+
+    @Test
+    fun aTerminalTileCarriesItsPictureAndTheOthersCarryNone() {
+        val pictures = mapOf("t1" to "$ cargo build\n   Compiling", "t3" to "~/src $")
+        val tiles = tabOverviewUi(overviewRender, agentsUi(overviewRender, NOW, res, SpacesFixtures::utc), "workstation", "s-website", null, spacesTexts(res), pictures)!!.tiles
+        val byAddress = tiles.filterIsInstance<OverviewTile.Terminal>().associateBy { it.key.address }
+        assertEquals("$ cargo build\n   Compiling", byAddress.getValue("t1").picture)
+        assertNull("no picture from the desk: the tile as before", byAddress.getValue("t2").picture)
+        assertEquals("~/src $", byAddress.getValue("t3").picture)
+        assertTrue("a placeholder is still Desk only", tiles.last() is OverviewTile.DeskOnly)
+    }
+
+    @Test
+    fun tilesWithoutPicturesAreAsTheyWereBefore() {
+        val plain = ui()!!.tiles
+        val none = tabOverviewUi(overviewRender, agentsUi(overviewRender, NOW, res, SpacesFixtures::utc), "workstation", "s-website", null, spacesTexts(res), emptyMap())!!.tiles
+        assertEquals(plain, none)
+    }
+
+    @Test
+    fun failedAndEmptyReadsLeaveOnlyThoseTilesWithoutAPicture() = runBlocking {
+        val asked = java.util.concurrent.CopyOnWriteArrayList<String>()
+        val got = readTabPictures(listOf("t1", "t2", "t3", "t4")) { address ->
+            asked += address
+            when (address) {
+                "t1" -> "build log"
+                "t2" -> null
+                "t3" -> "  \n "
+                else -> error("the desk is gone")
+            }
+        }
+        assertEquals(mapOf("t1" to "build log"), got)
+        assertEquals("every terminal was asked once", listOf("t1", "t2", "t3", "t4"), asked.sorted())
+    }
+
+    @Test
+    fun theReadsRunOffTheCallersThread() = runBlocking {
+        val caller = Thread.currentThread()
+        val threads = java.util.concurrent.CopyOnWriteArrayList<Thread>()
+        readTabPictures(listOf("t1", "t2")) { threads += Thread.currentThread(); "x" }
+        assertEquals(2, threads.size)
+        assertTrue(threads.none { it === caller })
     }
 }

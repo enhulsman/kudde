@@ -262,6 +262,17 @@ impl Hub {
         self.core.mark_seen(&machine, &address);
     }
 
+    /// The terminal's visible screen as plain text, for a tab overview tile
+    /// (spaces-navigation D11), or None when the desk gives none. Reads only:
+    /// it does not open the terminal and does not mark it seen. Blocks: call
+    /// it off the main thread.
+    pub fn read_screen(&self, machine: String, address: String) -> Option<String> {
+        let core = self.core.clone();
+        self.core
+            .runtime()
+            .block_on(async move { core.read_screen_async(&machine, &address).await })
+    }
+
     /// The machine list as JSON, without host keys, for the system file picker.
     pub fn export_machines(&self) -> String {
         self.core.export_machines()

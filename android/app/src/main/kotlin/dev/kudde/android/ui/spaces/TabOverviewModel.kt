@@ -3,6 +3,11 @@ package dev.kudde.android.ui.spaces
 import dev.kudde.android.ui.agents.AgentKey
 import dev.kudde.android.ui.agents.AgentsUi
 import dev.kudde.android.ui.agents.ProgramIcon
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.withContext
 import uniffi.kudde_mobile.AgentAttention
 import uniffi.kudde_mobile.DeskCellView
 import uniffi.kudde_mobile.DeskPaneView
@@ -53,6 +58,8 @@ sealed interface OverviewTile {
         override val y: Float,
         override val w: Float,
         override val h: Float,
+        /** The terminal's screen as plain text, a still picture (D11); null when the desk gave none. */
+        val picture: String? = null,
     ) : OverviewTile
 
     /** A placeholder, a vacant pane or a terminal the phone does not list: "Desk only", nothing on a tap. */
@@ -87,6 +94,8 @@ fun tabOverviewUi(
     spaceId: String,
     tabId: String?,
     texts: SpacesTexts,
+    /** The pictures read for the shown tab, by terminal address (see [readTabPictures]). */
+    pictures: Map<String, String> = emptyMap(),
 ): TabOverviewUi? {
     val desk = snapshot.machines.firstOrNull { it.name == machine }?.desk ?: return null
     val space = desk.spaces.firstOrNull { it.id == spaceId } ?: return null
@@ -105,8 +114,8 @@ fun tabOverviewUi(
         val agent = address?.let { rows[key(it)] }
         val other = address?.let { others[key(it)] }
         when {
-            agent != null -> OverviewTile.Terminal(agent.key, agent.name, agent.icon, agent.attention, cell.x, cell.y, cell.w, cell.h)
-            other != null -> OverviewTile.Terminal(other.key, other.name, other.icon, null, cell.x, cell.y, cell.w, cell.h)
+            agent != null -> OverviewTile.Terminal(agent.key, agent.name, agent.icon, agent.attention, cell.x, cell.y, cell.w, cell.h, pictures[address])
+            other != null -> OverviewTile.Terminal(other.key, other.name, other.icon, null, cell.x, cell.y, cell.w, cell.h, pictures[address])
             else -> OverviewTile.DeskOnly(cell.x, cell.y, cell.w, cell.h)
         }
     }
@@ -114,4 +123,27 @@ fun tabOverviewUi(
         rows[k]?.let { SpacesItem.Agent("row:${k.address}", it) } ?: others[k]?.let { SpacesItem.Other("row:${k.address}", it) }
     }
     return TabOverviewUi(machine, space.id, space.name, tabs, tab.id, mapCells(tab, ::attention), tab.cells, tiles, listed)
+}
+
+/**
+ * The still pictures of one tab (design D11): each of [addresses] read once
+ * through [read] (the desk's plain-text screen, or null), off the caller's
+ * thread. A read that fails, throws or comes back blank leaves its terminal
+ * out of the result; the others keep theirs.
+ */
+suspend fun readTabPictures(
+    addresses: List<String>,
+    dispatcher: CoroutineDispatcher = Dispatchers.IO,
+    read: (address: String) -> String?,
+): Map<String, String> = withContext(dispatcher) {
+    addresses.map { address ->
+        async {
+            val text = try {
+                read(address)
+            } catch (e: Exception) {
+                null
+            }
+            text?.takeIf { it.isNotBlank() }?.let { address to it }
+        }
+    }.awaitAll().filterNotNull().toMap()
 }
