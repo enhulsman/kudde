@@ -29,7 +29,8 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.layout.positionOnScreen
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
@@ -50,6 +51,9 @@ fun ModalPopup(
     content: @Composable () -> Unit,
 ) {
     var anchor by remember { mutableStateOf(IntRect.Zero) }
+    // The anchor is in the activity's window; the popup's window may start lower (below
+    // the status bar on a phone), so the layer converts through screen positions.
+    val parentView = LocalView.current
     // Compose supplies the real anchor in window coordinates. Keep the window at
     // the origin so even the space far from the panel belongs to this popup.
     val windowPosition = remember {
@@ -68,7 +72,8 @@ fun ModalPopup(
         onDismissRequest = onDismissRequest,
         properties = PopupProperties(focusable = true, usePlatformDefaultWidth = false),
     ) {
-        ModalPopupLayer(anchor, popupPositionProvider, onDismissRequest, shadowRoom, content)
+        ModalPopupLayer(anchor, popupPositionProvider, onDismissRequest, shadowRoom,
+            parentWindowOnScreen = { parentView.rootView.screenOrigin() }, content = content)
     }
 }
 
@@ -89,9 +94,12 @@ fun ModalPopupLayer(
     popupPositionProvider: PopupPositionProvider,
     onDismissRequest: () -> Unit,
     shadowRoom: Dp = 0.dp,
+    /** Where the window [anchorBounds] is measured in starts on screen; default: this layer's own window. */
+    parentWindowOnScreen: (() -> Offset)? = null,
     content: @Composable () -> Unit,
 ) {
     val dismiss by rememberUpdatedState(onDismissRequest)
+    val ownView = LocalView.current
     val panel = remember { PanelBounds() }
     val focus = remember { FocusRequester() }
     var origin by remember { mutableStateOf(Offset.Zero) }
@@ -103,7 +111,10 @@ fun ModalPopupLayer(
         content = { Box(Modifier.clipToBounds().padding(shadowRoom)) { content() } },
         modifier = Modifier
             .fillMaxSize()
-            .onGloballyPositioned { origin = it.positionInWindow() }
+            .onGloballyPositioned {
+                val parent = parentWindowOnScreen?.invoke() ?: ownView.rootView.screenOrigin()
+                origin = it.positionOnScreen() - parent
+            }
             .focusRequester(focus)
             .onPreviewKeyEvent {
                 if (it.key == Key.Back) {
@@ -148,4 +159,10 @@ fun ModalPopupLayer(
         panel.rect = Rect(x.toFloat(), y.toFloat(), (x + placeable.width - room * 2).toFloat(), (y + placeable.height - room * 2).toFloat())
         layout(width, height) { placeable.place(position.x, position.y) }
     }
+}
+
+private fun android.view.View.screenOrigin(): Offset {
+    val at = IntArray(2)
+    getLocationOnScreen(at)
+    return Offset(at[0].toFloat(), at[1].toFloat())
 }
