@@ -113,10 +113,9 @@ close it and nothing else.
 
 ### Requirement: Leaving a screen of the agent keeps the agent's state
 Moving between the screens of one open agent SHALL keep the terminal
-attached, and SHALL keep the compose text, the terminal's zoom and pan, the
-chat's draft, photos and scroll place. A terminal text selection and an
-expanded chat card SHALL end when their screen is left, and the terminal's
-scroll-back SHALL return to the live end. Coming back to the terminal or the
+attached, and SHALL keep the compose text, the terminal's zoom and pan, its
+scroll-back place, and the chat's draft, photos and scroll place. A terminal
+text selection and an expanded chat card SHALL end when their screen is left. Coming back to the terminal or the
 chat SHALL not attach again and SHALL not wait. The desk SHALL be taken over
 at the phone's size only while the terminal is on screen and has measured a
 real grid; no size, and no takeover, SHALL be sent while it is not on top.
@@ -152,6 +151,11 @@ back, and the last screen is cached.
 - **GIVEN** Ezra typed text in the compose sheet and opened the overview from the map
 - **WHEN** he goes back to the terminal
 - **THEN** the compose text is still there
+
+#### Scenario: The terminal's scroll-back place survives Changes and the overview
+- **GIVEN** Ezra scrolled up in a terminal's scroll-back, away from the live end
+- **WHEN** he opens Changes or the overview and goes back to that terminal
+- **THEN** the terminal shows the same scroll-back place, not the live end, and new output that arrived meanwhile did not move it
 
 #### Scenario: The chat's place survives Changes
 - **GIVEN** Ezra scrolled up in a chat, with an unsent bubble pending and new messages arriving
