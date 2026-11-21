@@ -7,32 +7,24 @@ full-screen welcome on first start before anything else, followed by full-screen
 setup steps (owner, 2026-11-22); 12, no way out until a real machine
 is connected (owner follow-up, 2026-11-22); 9, a one-time title bar hint rather than a
 setup screen; 10, confirm the fingerprint on the phone before any password.
+On 2026-11-22 also: 1, the order is where the machine is, the phone's key,
+connected; 3, no demo for now; 5, Name optional, derived from the Address;
+6, one "Setup guide" link; 7, QR pairing and the target-SDK network
+permission stay out, alerts become a fourth step after connected (design
+D13); 11, the hint shows with any map, the one-cell map included, and says
+that sideways moves only when the tab has more panes.
 Step 2 offers two choices together, "kudde adds it for you" first and
 "Add it yourself" second. The same steps serve Machines > Add machine,
 without the welcome, and key rejection on a listed machine.
 
-**Open decisions, picks first** (drafts for the owner, no approval implied):
+**Open decision, pick first** (draft for the owner, no approval implied):
 
-1. **Order:** where the machine is, the phone's key, connected (pick);
-   or key before address, or today's order with better words.
-3. **Demo:** out of this change (pick); or a separate follow-up, or in here.
-   There is no demo button in this proposal; this decision stays open. Any
-   future demo entered from welcome must return to setup, not bypass it.
-5. **Form:** Address, User, Port, optional Name derived from Address (pick);
-   or keep Name required.
-6. **Help:** one "Setup guide" link to the README, later the site's Setup
-   page (pick); or no link.
-7. **Scope exclusions:** QR pairing, alerts as a setup step and the future
-   target-SDK network permission stay out (pick); each needs its own change.
-8. **Words and look:** approve the complete Texts table and the render plan
-   in design.md (pick); revise them before building screens. The command's
-   exact text also awaits approval.
-11. **Hint timing, revised pick:** show when a map is present, including a
-   one-pane tab; explain that sideways only bounces there (pick). Or retain
-   the multi-pane-only delay. The 2026-11-20 map-visible answer is retained
-   in intent, but spaces-navigation 8.2 changed what it includes on 2026-11-21.
+8. **Words and look:** approve the complete Texts table, the render plan
+   and D13's six picks for the alerts step in design.md (pick); revise them
+   before building screens. The command's exact text also awaits approval.
+
 **What the person sees:** first start opens a full-screen welcome with kudde's
-mark, a headline, one line, three numbered steps and one main "Set up a
+mark, a headline, one line, four numbered steps and one main "Set up a
 machine" button. "Forced" means that home, Machines and incoming navigation
 wait until a real machine is connected. There is no skip or way into the
 app before that. Back on the welcome closes the app; leaving and returning
@@ -42,8 +34,9 @@ reach failures in place. Step 2 is "This phone's key", with the two choices
 side by side (stacked at large text if needed). The first confirms the host
 fingerprint on the phone, then uses the password once and never stores it;
 the second shows the one command with Copy and Share and then confirmation.
-Both install the same restricted key. Step 3 shows the connected machine and
-leads to agents or starting one. Later additions from Machines use those same
+Both install the same restricted key. Step 3 shows the connected machine;
+step 4 offers alerts (permission, the UnifiedPush app, a test alert) and,
+whatever is chosen there, leads to agents or starting one. Later additions from Machines use those same
 screens directly. "Phone key not accepted" offers both choices again, also
 for a machine that used to work. The hint can now appear on a one-pane tab,
 where its map opens the overview and sideways swipes only bounce.
@@ -71,8 +64,8 @@ theirs.
   skip. Import stays in Machines after the first real connection.
 - A phone without a screen lock: "Set a screen lock first" and a button,
   in place of "Could not start the connections".
-- "Add machine" becomes a three-step setup, the same for every machine:
-  "Where is it?", "This phone's key", "Connected".
+- "Add machine" becomes a four-step setup, the same for every machine:
+  "Where is it?", "This phone's key", "Connected", "Alerts".
 - Step 1: field hints, an optional name, and a reason in words when the
   machine cannot be reached (no answer, port refused, name not found, no
   route), with the address editable in place.
@@ -86,8 +79,11 @@ theirs.
 - After trust: "did not accept the phone key" and "herdr-core was not
   found" on the step, each with what to do and "Try again"; the step moves
   on by itself when the machine connects.
-- Step 3: the machine is connected, how many agents run there, "Show my
-  agents" or "Start a terminal or agent".
+- Step 3: the machine is connected, how many agents run there, "Continue".
+- Step 4: alerts, which never block: "Turn on alerts" asks the
+  notification permission, registers with the UnifiedPush app and sends one
+  test alert; each stop says what to do; "Show my agents" or "Start a
+  terminal or agent" always show.
 - The home shows a machine whose setup is unfinished, with a way back in;
   "No agents yet" gets a "New terminal" button.
 - The hub reports which kind of failure it met, so the screens need not
