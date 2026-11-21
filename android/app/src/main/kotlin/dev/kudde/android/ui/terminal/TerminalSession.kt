@@ -7,6 +7,7 @@ import androidx.compose.runtime.setValue
 import dev.kudde.android.ui.agents.AgentKey
 import java.util.concurrent.Executor
 import uniffi.kudde_mobile.Armed
+import uniffi.kudde_mobile.PasteOutcome
 import uniffi.kudde_mobile.RowKeyTap
 import uniffi.kudde_mobile.TermState
 import uniffi.kudde_mobile.TerminalListener
@@ -109,14 +110,20 @@ class TerminalSession(val key: AgentKey, private val main: Executor) {
     fun tap(key: RowKeyTap) = send { armed = tap(key) }
     /**
      * [Paste.REFUSED] when the core refused it (a line break the program would
-     * take as Enter); [Paste.NOT_ATTACHED] when no terminal took it, so nothing
-     * reports text as sent that was not handed to an attached terminal.
+     * take as Enter); [Paste.NOT_ATTACHED] when no terminal took it: no view,
+     * or a view the core cannot deliver to yet (its machine not connected, a
+     * failed attach waiting to retry). So nothing reports text as sent that was
+     * not handed to an attached terminal.
      */
     fun paste(text: String): Paste {
         if (closed) return Paste.NOT_ATTACHED
         if (view == null) onInputWithoutView?.invoke()
         val attached = view ?: return Paste.NOT_ATTACHED
-        return if (attached.paste(text)) Paste.SENT else Paste.REFUSED
+        return when (attached.paste(text)) {
+            PasteOutcome.SENT -> Paste.SENT
+            PasteOutcome.REFUSED -> Paste.REFUSED
+            PasteOutcome.NOT_ATTACHED -> Paste.NOT_ATTACHED
+        }
     }
 
     /** The person asked to type (the chip above the keys): ends a step's wait. */

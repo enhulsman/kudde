@@ -3,6 +3,7 @@
 //! terminal-input specs; design.md "The size rule").
 
 use super::*;
+use crate::PasteOutcome;
 use crate::keys_row::{Key, Mods};
 use crate::term::{self, Cmd, TermPhase, TermSink, TermState};
 
@@ -151,6 +152,16 @@ impl Core {
         }
     }
 
+    /// The next input on `channel`, past the hub's own requests.
+    async fn typed(&mut self, channel: u32) -> Vec<u8> {
+        loop {
+            let f = self.frame().await;
+            if f.channel == channel && f.kind == wire::DATA {
+                return f.payload;
+            }
+        }
+    }
+
     async fn reply_to(&mut self, req: &Value, result: Value) {
         let msg = json!({"jsonrpc": "2.0", "id": req["id"], "result": result});
         self.send(0, wire::DATA, msg.to_string().as_bytes()).await;
@@ -178,7 +189,7 @@ impl Core {
 
 struct Open {
     screen: Screen,
-    cmds: mpsc::UnboundedSender<Cmd>,
+    cmds: term::Term,
 }
 
 fn open(rig: &Rig) -> Open {
@@ -767,4 +778,105 @@ async fn opening_at_the_phones_size_attaches_actively_and_the_desk_can_take_it_b
     o.screen
         .until_state(|s| s.phase == TermPhase::Watching)
         .await;
+}
+
+// Spaces spec, "Input during the wait is never lost": with the hub running but
+// the machine not connected, the open terminal is only a handle; compose text
+// is not taken (the sheet keeps it), and it never turns up after a reconnect.
+#[tokio::test(start_paused = true)]
+async fn compose_text_is_not_taken_while_the_machine_is_not_connected() {
+    let mut rig = rig("term-paste-offline");
+    rig.add_trusted(WS, WS_KEY);
+    rig.hub.resume();
+    let mut o = open_with(&rig, true);
+    assert_eq!(
+        o.cmds.paste("run the tests".into()),
+        PasteOutcome::NotAttached
+    );
+    o.screen
+        .until_state(|s| s.phase == TermPhase::Waiting)
+        .await;
+    assert_eq!(
+        o.cmds.paste("run the tests".into()),
+        PasteOutcome::NotAttached
+    );
+
+    let mut core = rig.core().await;
+    core.connect("0.1.15", vec![sized("t3", 80, 24)]).await;
+    core.attach(5, PHONE).await;
+    o.screen.until_state(|s| s.phase == TermPhase::Typing).await;
+    assert_eq!(o.cmds.paste("git status".into()), PasteOutcome::Sent);
+    assert_eq!(
+        core.typed(5).await,
+        b"git status",
+        "only the text sent while attached arrives"
+    );
+}
+
+// The same once the connection goes: the open terminal waits for the next one.
+#[tokio::test(start_paused = true)]
+async fn compose_text_is_not_taken_after_the_connection_is_lost() {
+    let (_rig, core, mut o) = watching("term-paste-lost").await;
+    core.exit(0, "");
+    o.screen
+        .until_state(|s| s.phase == TermPhase::Waiting)
+        .await;
+    assert_eq!(
+        o.cmds.paste("run the tests".into()),
+        PasteOutcome::NotAttached
+    );
+}
+
+// A failed attach is tried again after a while; text sent meanwhile would be
+// dropped, so it is not taken until the retry attaches.
+#[tokio::test(start_paused = true)]
+async fn compose_text_is_not_taken_while_a_failed_attach_waits_to_retry() {
+    let mut rig = rig("term-paste-retry");
+    rig.add_trusted(WS, WS_KEY);
+    rig.hub.resume();
+    let mut core = rig.core().await;
+    core.connect("0.1.15", vec![sized("t3", 80, 24)]).await;
+    rig.until_state(WS, connected).await;
+    let mut o = open_with(&rig, true);
+    let req = core.request().await;
+    assert_eq!(req["method"], "terminal.attach", "{req}");
+    core.refuse(&req, "busy", "not now").await;
+    o.screen
+        .until_state(|s| matches!(s.phase, TermPhase::Failed { .. }))
+        .await;
+    assert_eq!(
+        o.cmds.paste("run the tests".into()),
+        PasteOutcome::NotAttached
+    );
+
+    core.attach(6, PHONE).await;
+    o.screen.until_state(|s| s.phase == TermPhase::Typing).await;
+    assert_eq!(o.cmds.paste("git status".into()), PasteOutcome::Sent);
+    assert_eq!(core.typed(6).await, b"git status");
+}
+
+// "Sending the compose text during the wait": opened by the send itself, the
+// terminal takes the text while it attaches and delivers it once attached.
+#[tokio::test(start_paused = true)]
+async fn compose_text_sent_as_the_terminal_opens_arrives_once_attached() {
+    let mut rig = rig("term-paste-opening");
+    rig.add_trusted(WS, WS_KEY);
+    rig.hub.resume();
+    let mut core = rig.core().await;
+    core.connect("0.1.15", vec![sized("t3", 80, 24)]).await;
+    rig.until_state(WS, connected).await;
+    let o = open_with(&rig, true);
+    assert_eq!(o.cmds.paste("run the tests".into()), PasteOutcome::Sent);
+    core.attach(5, PHONE).await;
+    assert_eq!(core.typed(5).await, b"run the tests");
+}
+
+// Issue #22 through the handle: a line break without bracketed paste is refused.
+#[tokio::test(start_paused = true)]
+async fn the_handle_refuses_a_line_break_without_bracketed_paste() {
+    let (_rig, _core, o) = watching("term-paste-refused").await;
+    assert_eq!(
+        o.cmds.paste("make clean\nrm -rf build".into()),
+        PasteOutcome::Refused
+    );
 }

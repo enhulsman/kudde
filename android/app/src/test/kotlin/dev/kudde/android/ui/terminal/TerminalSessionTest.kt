@@ -9,6 +9,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import uniffi.kudde_mobile.Armed
+import uniffi.kudde_mobile.PasteOutcome
 import uniffi.kudde_mobile.RowKeyTap
 import uniffi.kudde_mobile.TermPhase
 import uniffi.kudde_mobile.TermState
@@ -268,6 +269,19 @@ class TerminalSessionTest {
         assertEquals("keys and taps do nothing", emptyList<String>(), opened.calls)
     }
 
+    // Codex review: an opened view is a handle, not an attached terminal; when
+    // the core says it is not attached, the text is not reported sent.
+    @Test
+    fun anOpenedViewWhoseMachineIsNotConnectedDoesNotTakeTheText() {
+        opened.connected = false
+        val screen = TerminalScreenState().apply { composeOpen = true; composeText = "run the tests" }
+        val result = screen.sendCompose(waiting::paste)
+        assertEquals(1, asked)
+        assertEquals(Paste.NOT_ATTACHED, result)
+        assertTrue(screen.composeOpen)
+        assertEquals("run the tests", screen.composeText)
+    }
+
     @Test
     fun inputThenLeavingDeliversOnceAndNothingAfter() {
         waiting.type("y")
@@ -306,9 +320,15 @@ class FakeTerminalView : TerminalViewInterface, AutoCloseable {
     }
     /** What the core answers a paste: false refuses it (a line break without bracketed paste). */
     var pasteTaken = true
-    override fun paste(text: String): Boolean {
+    /** False: the machine is not connected (or an attach waits to retry), so the core takes no text. */
+    var connected = true
+    override fun paste(text: String): PasteOutcome {
         calls += "paste $text"
-        return pasteTaken
+        return when {
+            !connected -> PasteOutcome.NOT_ATTACHED
+            pasteTaken -> PasteOutcome.SENT
+            else -> PasteOutcome.REFUSED
+        }
     }
     override fun phoneSize(cols: UShort, rows: UShort) {
         calls += "size ${cols}x$rows"

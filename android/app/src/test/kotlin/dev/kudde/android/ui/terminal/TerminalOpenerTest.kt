@@ -222,6 +222,28 @@ class TerminalOpenerTest {
         assertEquals(emptyList<String>(), log)
     }
 
+    // Codex review: the hub runs, so the step's terminal opens as a handle, but
+    // B's machine is not connected; the core does not take the text, and the
+    // sheet keeps it with the not-connected message.
+    @Test
+    fun withTheHubRunningButBsMachineNotConnectedTheSheetAndTextStay() {
+        val b = stepTo("B", 0)
+        b.view.connected = false
+        val screen = TerminalScreenState().apply { composeOpen = true; composeText = "run the tests" }
+        clock = 250
+        val result = screen.sendCompose(b.session::paste)
+        assertEquals(listOf("B@250"), log)
+        assertEquals(Paste.NOT_ATTACHED, result)
+        assertTrue(screen.composeOpen)
+        assertEquals("run the tests", screen.composeText)
+        assertEquals(R.string.compose_not_attached, composeNotSent(result))
+
+        b.view.connected = true
+        assertEquals("sent once it is connected", Paste.SENT, screen.sendCompose(b.session::paste))
+        assertFalse(screen.composeOpen)
+        assertEquals("", screen.composeText)
+    }
+
     @Test
     fun inputThenLeavingDeliversOnceAndNothingAfter() {
         val b = stepTo("B", 0)

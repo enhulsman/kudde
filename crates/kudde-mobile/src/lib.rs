@@ -353,8 +353,7 @@ impl Hub {
                         }
                     }
                 });
-            let bracketed = Arc::<std::sync::atomic::AtomicBool>::default();
-            let cmds = spawned.ok().map(|_| {
+            let term = spawned.ok().map(|_| {
                 term::spawn(
                     &self.core,
                     &machine,
@@ -362,12 +361,11 @@ impl Hub {
                     (phone_cols, phone_rows),
                     at_phone_size,
                     Arc::new(ListenerSink(tx)),
-                    bracketed.clone(),
+                    Arc::default(),
                 )
             });
             Arc::new(TerminalView {
-                cmds: Mutex::new(cmds),
-                bracketed,
+                term: Mutex::new(term),
                 keys: Mutex::new(keys_row::KeysRow::default()),
             })
         }
@@ -397,6 +395,20 @@ impl Drop for Hub {
             runtime.shutdown_background();
         }
     }
+}
+
+/// What became of compose text handed to [`TerminalView::paste`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
+pub enum PasteOutcome {
+    /// Handed to the terminal: attached, or attaching on a live connection
+    /// (delivered once attached).
+    Sent,
+    /// Nothing sent: a line break, and the program did not ask for bracketed
+    /// paste, so each line would run as if Enter were pressed (issue #22).
+    Refused,
+    /// Nothing sent: the machine is not connected, the attach failed and waits
+    /// to be tried again, or the terminal ended or was closed.
+    NotAttached,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, uniffi::Enum)]
@@ -465,10 +477,7 @@ pub struct Armed {
 #[derive(uniffi::Object)]
 pub struct TerminalView {
     #[cfg(feature = "vt")]
-    cmds: Mutex<Option<tokio::sync::mpsc::UnboundedSender<term::Cmd>>>,
-    /// The program asked for bracketed paste, as of its last output.
-    #[cfg(feature = "vt")]
-    bracketed: Arc<std::sync::atomic::AtomicBool>,
+    term: Mutex<Option<term::Term>>,
     keys: Mutex<keys_row::KeysRow>,
 }
 
@@ -497,13 +506,16 @@ impl term::TermSink for ListenerSink {
 
 impl TerminalView {
     #[cfg(feature = "vt")]
-    fn send(&self, cmd: term::Cmd) {
-        let cmds = self
-            .cmds
+    fn term(&self) -> std::sync::MutexGuard<'_, Option<term::Term>> {
+        self.term
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if let Some(tx) = cmds.as_ref() {
-            let _ = tx.send(cmd);
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    #[cfg(feature = "vt")]
+    fn send(&self, cmd: term::Cmd) {
+        if let Some(term) = self.term().as_ref() {
+            let _ = term.send(cmd);
         }
     }
 
@@ -590,21 +602,24 @@ impl TerminalView {
         self.armed_now()
     }
 
-    /// Compose text, as a bracketed paste without Enter; false, with nothing
-    /// sent, when it has a line break and the program did not ask for
-    /// bracketed paste: each line would run as if Enter were pressed (issue #22).
-    pub fn paste(&self, text: String) -> bool {
+    /// Compose text, as a bracketed paste without Enter. Sent only when the
+    /// terminal can take it: refused, with nothing sent, when it has a line
+    /// break and the program did not ask for bracketed paste (issue #22); not
+    /// attached while the machine is not connected or a failed attach waits
+    /// to be retried, so the sheet keeps the text (spaces spec, "Input during
+    /// the wait is never lost").
+    pub fn paste(&self, text: String) -> PasteOutcome {
         #[cfg(feature = "vt")]
         {
-            let bracketed = self.bracketed.load(std::sync::atomic::Ordering::Relaxed);
-            if !bracketed && text.contains(['\n', '\r']) {
-                return false;
-            }
-            self.send(term::Cmd::Paste(text));
+            self.term()
+                .as_ref()
+                .map_or(PasteOutcome::NotAttached, |term| term.paste(text))
         }
         #[cfg(not(feature = "vt"))]
-        let _ = text;
-        true
+        {
+            let _ = text;
+            PasteOutcome::NotAttached
+        }
     }
 
     /// Scrolls the view by rows; up is negative.
@@ -658,10 +673,7 @@ impl TerminalView {
     /// Detaches; the view sends nothing after this.
     pub fn close(&self) {
         #[cfg(feature = "vt")]
-        self.cmds
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .take();
+        self.term().take();
     }
 }
 
