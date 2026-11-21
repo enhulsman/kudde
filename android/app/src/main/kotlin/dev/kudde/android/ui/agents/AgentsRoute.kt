@@ -33,7 +33,7 @@ import java.util.Locale
  * [home] (the open terminal, "Other terminals"): the Agents view or the
  * Spaces view, the one chosen last (app.homeView), and the tab overview
  * opened from a tab line. An open agent shows its terminal screen
- * (AgentHost) in place of the list. One clock ticks each second while the
+ * (AgentHost), with the home composed underneath only while leaving. One clock ticks each second while the
  * screen is started; only the ages read it every tick, and the rows are
  * rebuilt once a minute for "last connected".
  */
@@ -90,27 +90,30 @@ fun AgentsRoute(app: KuddeApp, flows: MachineFlows, home: AgentsHome, ports: Age
     // Since M2 an agent opens its live terminal; the M1 read-only sheet is no longer shown.
     val open = home.openKey
     val at = overview
-    when {
-        open != null -> AgentHost(app, home, open, ports)
-        at != null -> TabOverviewRoute(app, at.machine, at.spaceId, at.tabId, onBack = { overview = null }, onOpen = home::open)
-        homeView.spaces -> {
-            BackHandler(enabled = new.sheet != null, onBack = new::close)
-            val spaces = remember(snapshot, ui, res) { spacesUi(snapshot, ui, spacesTexts(res)) }
-            SpacesScreen(
-                spaces, clock, spin, actions,
-                onTab = { machine, spaceId, tabId -> overview = OverviewAt(machine, spaceId, tabId) },
-                state = spacesState,
-                needsYou = ui.needsYou.size,
-                onHomeView = homeView::choose,
-                new = newUi,
-                newActions = newActions,
-            )
-        }
-        else -> {
-            BackHandler(enabled = new.sheet != null, onBack = new::close)
-            AgentsScreen(ui, home.othersExpanded, null, clock, spin, actions, new = newUi, newActions = newActions, onHomeView = homeView::choose)
+    val list: @Composable () -> Unit = {
+        when {
+            at != null -> TabOverviewRoute(app, at.machine, at.spaceId, at.tabId, onBack = { overview = null }, onOpen = home::open)
+            homeView.spaces -> {
+                BackHandler(enabled = new.sheet != null, onBack = new::close)
+                val spaces = remember(snapshot, ui, res) { spacesUi(snapshot, ui, spacesTexts(res)) }
+                SpacesScreen(
+                    spaces, clock, spin, actions,
+                    onTab = { machine, spaceId, tabId -> overview = OverviewAt(machine, spaceId, tabId) },
+                    state = spacesState,
+                    needsYou = ui.needsYou.size,
+                    onHomeView = homeView::choose,
+                    new = newUi,
+                    newActions = newActions,
+                )
+            }
+            else -> {
+                BackHandler(enabled = new.sheet != null, onBack = new::close)
+                AgentsScreen(ui, home.othersExpanded, null, clock, spin, actions, new = newUi, newActions = newActions, onHomeView = homeView::choose)
+            }
         }
     }
+    if (open != null) AgentHost(app, home, open, ports, leaveContent = list)
+    else list()
 }
 
 /** Where the tab overview opened from the Spaces view shows: a machine's space, at a tab. */

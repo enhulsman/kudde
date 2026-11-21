@@ -30,7 +30,7 @@ class AgentMotionTest {
         val numbers = Regex("(?<![A-Za-z])[-+]?\\d+(?:\\.\\d+)?").findAll(perChange)
             .map { it.value.toFloat() }.toSet()
         assertEquals(numbers, AgentMotion.sourceNumbers)
-        assertTrue(AgentMotion.leave.progressSpec is SnapSpec<*>)
+        assertEquals(AgentMotion.springs.getValue("screen"), AgentMotion.leave.progressSpec)
     }
 
     @Test fun everyChangeHasFramesAtStartHalfwayAndEnd() {
@@ -62,6 +62,15 @@ class AgentMotionTest {
         }
         assertEquals(.42f, AgentMotion.scrim(true).alpha, .001f)
         assertEquals(.16f, AgentMotion.scrim(false).alpha, .001f)
+    }
+
+    @Test fun leaveUsesTheChangesReleaseWithTheListAsItsBase() {
+        for (p in steps) {
+            assertEquals(AgentMotion.popChanges.frame(p, false, 400f, 800f, null),
+                AgentMotion.leave.frame(p, false, 400f, 800f, null))
+            assertEquals(AgentMotion.popChanges.frame(p, true, 400f, 800f, null),
+                AgentMotion.leave.frame(p, true, 400f, 800f, null))
+        }
     }
 
     @Test fun theOverviewShrinksToItsTileAndTheTileGrowsBack() {

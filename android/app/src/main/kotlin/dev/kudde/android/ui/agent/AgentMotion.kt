@@ -38,7 +38,7 @@ data class AgentMotionSpec(
                     scale = AgentMotion.fadeScale + (1 - AgentMotion.fadeScale) * AgentMotion.fadeSize.getValueFromNanos(enterTime),
                 ) else AgentFrame(alpha = (1 - AgentMotion.fadeOut.getValueFromNanos(time)).coerceIn(0f, 1f))
             }
-            "pushChanges", "popChanges" -> {
+            "pushChanges", "popChanges", "leave" -> {
                 val t = if (name == "pushChanges") p else 1 - p
                 val cover = if (name == "pushChanges") incoming else !incoming
                 if (cover) AgentFrame(x = width * (1 - t))
@@ -121,7 +121,7 @@ object AgentMotion {
     val pushOverview = AgentMotionSpec("pushOverview", springs.getValue("spatial"))
     val popOverview = AgentMotionSpec("popOverview", springs.getValue("spatial"))
     val menu = AgentMotionSpec("menu", springs.getValue("fastSpatial"))
-    val leave = AgentMotionSpec("leave")
+    val leave = AgentMotionSpec("leave", springs.getValue("screen"))
     val entries = listOf(toChat, toTerminal, pushChanges, popChanges, pushOverview, popOverview, menu, leave)
 
     fun scrim(dark: Boolean) = if (dark) Color.Black.copy(alpha = graphiteAlpha)

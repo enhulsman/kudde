@@ -1,6 +1,7 @@
 package dev.kudde.android.ui.agent
 
 import androidx.activity.BackEventCompat
+import androidx.compose.ui.semantics.getOrNull
 import dev.kudde.android.testing.*
 import org.junit.Assert.*
 import org.junit.Test
@@ -100,4 +101,19 @@ class AgentRouteBackTest {
         assertEquals("a second Back at home detaches nothing more", 1, view.calls.count { c -> c == "detach" })
         assertEquals("nothing reopens", 1, it.rig.ports.opens.size)
     }
+    @Test fun reducedMotionBaseBackCutsWithoutComposingAPreview() = AgentRouteScenario().use {
+        it.show()
+        val view = it.opened.view
+        it.start()
+        it.rig.frames()
+        assertTrue(unmergedSemanticsNodes().none { n ->
+            n.config.getOrNull(ScreenStackLeaveBaseKey) == true
+        })
+        assertEquals(it.rig.key, it.rig.home.openKey)
+        it.activity.onBackPressedDispatcher.onBackPressed()
+        it.rig.frames(1)
+        assertNull(it.rig.home.openKey)
+        assertEquals(1, view.calls.count { c -> c == "detach" })
+    }
+
 }

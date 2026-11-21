@@ -120,6 +120,158 @@ class AgentRouteLeakTest {
         rig.frames()
     }
 
+    @Test fun predictiveLeaveSeeksCancelsAndKeepsChatFocus() = AgentRouteScenario().use {
+        it.show(chat = true)
+        it.edit("draft survives leave cancellation")
+        it.focusChat()
+        val before = it.opened.view.calls.toList()
+        assertTrue(unmergedSemanticsNodes().none { n -> n.config.getOrNull(ScreenStackLeaveBaseKey) == true })
+        val host = it.motion()
+        val clock = PausedMotionClock()
+        realMotion()
+        host.animationClock = clock
+        it.activity.onBackPressedDispatcher.dispatchOnBackStarted(
+            androidx.activity.BackEventCompat(0f, 100f, 0f, androidx.activity.BackEventCompat.EDGE_LEFT))
+        it.rig.frames()
+        it.progressBack(.5f)
+        assertEquals(AgentMotion.leave, host.motion)
+        assertTrue(host.predictive)
+        assertEquals(.5f, host.progress, .001f)
+        assertNull(host.target)
+        assertTrue("the list is composed behind the agent during leave",
+            unmergedSemanticsNodes().any { n -> n.config.getOrNull(ScreenStackLeaveBaseKey) == true })
+        assertNull("the home must be absent from the reader tree", nodeSaying("Machines"))
+        assertEquals(it.rig.key, it.rig.home.openKey)
+        assertTrue(unmergedSemanticsNodes().any { n -> n.focused() })
+        it.activity.onBackPressedDispatcher.dispatchOnBackCancelled()
+        it.rig.frames()
+        it.frame(clock, 0); it.frame(clock, 1000)
+        assertFalse(host.running)
+        assertEquals(0f, host.progress, .001f)
+        assertEquals(it.rig.key, it.rig.home.openKey)
+        assertEquals(before, it.opened.view.calls)
+        assertTrue("cancel disposes the list again",
+            unmergedSemanticsNodes().none { n -> n.config.getOrNull(ScreenStackLeaveBaseKey) == true })
+        assertEquals("draft survives leave cancellation", it.fieldText())
+        assertTrue(unmergedSemanticsNodes().any { n -> n.focused() })
+    }
+
+    @Test fun predictiveLeaveReleasesOnceAndOnlyThenTheListTakesTouch() = AgentRouteScenario().use {
+        it.show()
+        val view = it.opened.view
+        val host = it.motion()
+        val clock = PausedMotionClock()
+        realMotion()
+        host.animationClock = clock
+        it.activity.onBackPressedDispatcher.dispatchOnBackStarted(
+            androidx.activity.BackEventCompat(0f, 100f, 0f, androidx.activity.BackEventCompat.EDGE_LEFT))
+        it.rig.frames()
+        it.progressBack(.5f)
+        assertTrue(host.predictive)
+        assertEquals(.5f, host.progress, .001f)
+        it.draw()
+        // Physical taps must be caught even in the exposed area to the left of the card.
+        val down = android.os.SystemClock.uptimeMillis()
+        it.touch(android.view.MotionEvent.ACTION_DOWN, 8f, 250f, down)
+        it.touch(android.view.MotionEvent.ACTION_UP, 8f, 250f, down)
+        assertEquals(it.rig.key, it.rig.home.openKey)
+        assertEquals(1, it.rig.ports.opens.size)
+        assertFalse(view.calls.contains("detach"))
+        it.activity.onBackPressedDispatcher.onBackPressed()
+        it.rig.frames()
+        assertEquals("release must retain the agent until the motion finishes", it.rig.key, it.rig.home.openKey)
+        it.frame(clock, 0); it.frame(clock, 1000)
+        it.rig.frames()
+        it.draw()
+        assertNull(it.rig.home.openKey)
+        assertEquals(1, view.calls.count { c -> c == "detach" })
+        assertEquals(1, view.calls.count { c -> c == "destroy" })
+        val nextRow = semanticsNodes().single { n -> n.clickable() && "og tags" in n.texts() }.boundsInWindow
+        val row = semanticsNodes().single { n -> n.clickable() && "Pricing page copy" in n.texts() }
+        val bounds = row.boundsInWindow
+        val tap = android.os.SystemClock.uptimeMillis()
+        it.touch(android.view.MotionEvent.ACTION_DOWN, bounds.center.x, bounds.center.y, tap)
+        it.touch(android.view.MotionEvent.ACTION_UP, bounds.center.x, bounds.center.y, tap)
+        it.rig.await("the list accepts touch after leaving") { it.rig.ports.opens.size == 2 }
+        // Repeat against a known clickable row: hitting the other agent would expose a leak.
+        val secondHost = it.motion()
+        val secondClock = PausedMotionClock()
+        secondHost.animationClock = secondClock
+        it.activity.onBackPressedDispatcher.dispatchOnBackStarted(
+            androidx.activity.BackEventCompat(0f, 100f, 0f, androidx.activity.BackEventCompat.EDGE_LEFT))
+        it.rig.frames()
+        it.progressBack(.5f)
+        val width = it.measuredHost.width.toFloat()
+        val shiftedX = nextRow.center.x - .12f * width * (1 - .45f * .5f)
+        val blockedTap = android.os.SystemClock.uptimeMillis()
+        it.touch(android.view.MotionEvent.ACTION_DOWN, shiftedX, nextRow.center.y, blockedTap)
+        it.touch(android.view.MotionEvent.ACTION_UP, shiftedX, nextRow.center.y, blockedTap)
+        assertEquals(it.rig.key, it.rig.home.openKey)
+        assertEquals(2, it.rig.ports.opens.size)
+        it.activity.onBackPressedDispatcher.onBackPressed()
+        it.rig.frames()
+        it.frame(secondClock, 0); it.frame(secondClock, 1000)
+        it.draw()
+        val acceptedTap = android.os.SystemClock.uptimeMillis()
+        it.touch(android.view.MotionEvent.ACTION_DOWN, nextRow.center.x, nextRow.center.y, acceptedTap)
+        it.touch(android.view.MotionEvent.ACTION_UP, nextRow.center.x, nextRow.center.y, acceptedTap)
+        it.rig.await("the same row accepts touch when home is on top") { it.rig.ports.opens.size == 3 }
+        assertEquals(dev.kudde.android.ui.agents.AgentKey("workstation", "t2"), it.rig.home.openKey)
+    }
+
+    @Test fun releaseBelowTheLeaveThresholdCancelsWithoutClearingFocus() = AgentRouteScenario().use {
+        it.show(chat = true)
+        it.focusChat()
+        val before = it.opened.view.calls.toList()
+        val host = it.motion()
+        val clock = PausedMotionClock()
+        realMotion()
+        host.animationClock = clock
+        it.activity.onBackPressedDispatcher.dispatchOnBackStarted(
+            androidx.activity.BackEventCompat(0f, 100f, 0f, androidx.activity.BackEventCompat.EDGE_LEFT))
+        it.rig.frames()
+        it.progressBack(.2f)
+        it.activity.onBackPressedDispatcher.onBackPressed()
+        it.rig.frames()
+        it.frame(clock, 0); it.frame(clock, 1000)
+        assertFalse(host.running)
+        assertEquals(it.rig.key, it.rig.home.openKey)
+        assertEquals(before, it.opened.view.calls)
+        assertTrue(unmergedSemanticsNodes().any { n -> n.focused() })
+    }
+
+    @Test fun twoAnimatedBacksWithNoFramePopThenLeaveOnce() = AgentRouteScenario().use {
+        it.show()
+        it.changes()
+        val host = it.motion()
+        val clock = PausedMotionClock()
+        realMotion()
+        host.animationClock = clock
+        it.activity.onBackPressedDispatcher.onBackPressed()
+        it.activity.onBackPressedDispatcher.onBackPressed()
+        it.rig.frames()
+        it.frame(clock, 0); it.frame(clock, 1000)
+        it.rig.frames()
+        assertNull(it.rig.home.openKey)
+        assertEquals(1, it.opened.view.calls.count { c -> c == "detach" })
+        assertEquals(1, it.opened.view.calls.count { c -> c == "destroy" })
+    }
+
+    @Test fun buttonBackFromTheBaseRunsLeaveBeforeClosing() = AgentRouteScenario().use {
+        it.show()
+        val host = it.motion()
+        val clock = PausedMotionClock()
+        realMotion()
+        host.animationClock = clock
+        it.tap("Back")
+        assertTrue(host.running)
+        assertEquals(AgentMotion.leave, host.motion)
+        assertEquals(it.rig.key, it.rig.home.openKey)
+        it.frame(clock, 0); it.frame(clock, 1000)
+        assertNull(it.rig.home.openKey)
+        assertEquals(1, it.opened.view.calls.count { c -> c == "detach" })
+    }
+
     @Test fun predictiveBackOnTheChangesListSeeksAndReleaseClosesItOnce() = AgentRouteScenario().use {
         val calls = it.installChangesFile()
         it.show(chat = true)

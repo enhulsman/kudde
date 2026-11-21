@@ -90,6 +90,7 @@ class ScreenStackHostState<D : Any> internal constructor(
     internal var widthDp = 0f
     internal var animationScope: CoroutineScope? = null
     internal var durationScale = 1f
+    internal var requestBack: (() -> Unit)? = null
     internal var disposed = false
     internal var overviewTile by mutableStateOf<Rect?>(null)
 
@@ -139,7 +140,7 @@ class ScreenStackHostState<D : Any> internal constructor(
  * Only the resting destination is composed. During motion both lifetimes exist,
  * but an inert sibling catches all touches and the outgoing subtree has no semantics
  * or active Back handlers. The callback must read live navigation state (keeper.back).
- * A null [backTarget] represents leaving the agent; its parent supplies the home screen.
+ * A null [backTarget] represents leaving the agent; [leaveContent] draws its inert home.
  */
 @Composable
 fun <D : Any> ScreenStackHost(
@@ -148,6 +149,9 @@ fun <D : Any> ScreenStackHost(
     state: ScreenStackHostState<D> = remember { ScreenStackHostState(top) },
     overviewKey: dev.kudde.android.ui.agents.AgentKey? = null,
     backTarget: () -> D? = { null },
+    // A rapid second Back must see the navigation mutation before recomposition.
+    backSource: () -> D = { top },
+    leaveContent: @Composable () -> Unit = {},
     onBack: () -> Unit = {},
     transitionFor: (D, D?, AgentChangeReason) -> AgentMotionSpec = { from, to, reason ->
         AgentMotion.transitionFor(from, to, reason)
@@ -160,8 +164,8 @@ fun <D : Any> ScreenStackHost(
     fun scale() = Settings.Global.getFloat(resolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f)
     val focus = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
-    val latestTop by rememberUpdatedState(top)
     val latestBackTarget by rememberUpdatedState(backTarget)
+    val latestBackSource by rememberUpdatedState(backSource)
     val latestBack by rememberUpdatedState(onBack)
     val latestMotion by rememberUpdatedState(transitionFor)
     val scope = rememberCoroutineScope()
@@ -192,7 +196,7 @@ fun <D : Any> ScreenStackHost(
         state.job = currentCoroutineContext().job
         state.gesture = true
         state.durationScale = scale()
-        val from = latestTop
+        val from = latestBackSource()
         val to = latestBackTarget()
         state.predictive = false
         var lastProgress = 0f
@@ -218,7 +222,7 @@ fun <D : Any> ScreenStackHost(
                             if (state.rightEdge) -1 else 1
                     }
                     hadEvents = true
-                    state.predictive = from == AgentScreen.Changes
+                    state.predictive = to == null || from == AgentScreen.Changes
                     lastProgress = event.progress.coerceIn(0f, 1f)
                     lastX = event.touchX
                     lastTime = now
@@ -299,6 +303,7 @@ fun <D : Any> ScreenStackHost(
             override fun handleOnBackCancelled() { instance?.job?.cancel(); instance = null }
         }
     }
+    state.requestBack = backCallback::handleOnBackPressed
     DisposableEffect(backDispatcher, backOwner) {
         backDispatcher.addCallback(backOwner, backCallback)
         onDispose { backCallback.remove() }
@@ -312,7 +317,9 @@ fun <D : Any> ScreenStackHost(
     val hostView = androidx.compose.ui.platform.LocalView.current
     LaunchedEffect(top) { hostView.requestLayout() }
     LaunchedEffect(top) {
-        if ((!state.running && top == state.settled) || (state.running && top == state.target)) return@LaunchedEffect
+        val gestureFromTop = state.running && state.gesture && top == state.outgoing
+        if ((!state.running && top == state.settled) ||
+            (state.running && top == state.target) || gestureFromTop) return@LaunchedEffect
         ++state.revision
         state.gesture = false
         state.predictive = false
@@ -344,6 +351,7 @@ fun <D : Any> ScreenStackHost(
     }
     DisposableEffect(state) {
         onDispose {
+            state.requestBack = null
             state.disposed = true
             ++state.revision
             state.job?.cancel()
@@ -354,7 +362,7 @@ fun <D : Any> ScreenStackHost(
     val destinations = when {
         instantChange -> listOf(top)
         state.running && state.gesture && state.durationScale == 0f -> listOf(state.outgoing)
-        state.running -> listOfNotNull(state.outgoing, state.target).distinct()
+        state.running -> listOf(state.outgoing, state.target).distinct()
         else -> listOf(state.settled)
     }
     val incoming = if (state.running) state.target else top
@@ -363,7 +371,7 @@ fun <D : Any> ScreenStackHost(
         .semantics { this[ScreenStackHostStateKey] = state }
         .onPreviewKeyEvent { changing }) {
         // Popped covers draw above the returning base; lifetime order does not determine z order.
-        val drawing = if (state.running && state.motion.name in listOf("popChanges", "pushOverview")) destinations.reversed() else destinations
+        val drawing = if (state.running && state.motion.name in listOf("popChanges", "pushOverview", "leave")) destinations.reversed() else destinations
         for (destination in drawing) key(destination) {
             val ownsInput = destination == top
             val outgoing = !ownsInput
@@ -419,10 +427,12 @@ fun <D : Any> ScreenStackHost(
                             }
                         }
                         .focusProperties { canFocus = acceptsFocus }
-                        .then(if (outgoing) Modifier.clearAndSetSemantics {} else Modifier),
+                        .then(if (outgoing) Modifier.clearAndSetSemantics {
+                            if (destination == null) this[ScreenStackLeaveBaseKey] = true
+                        } else Modifier),
                 ) {
                     CompositionLocalProvider(LocalAgentMotion provides AgentMotionContext(state, destination == incoming, overviewKey)) {
-                        content(destination)
+                        if (destination == null) leaveContent() else content(destination)
                     }
                 }
             }
@@ -470,3 +480,5 @@ internal val LocalAgentMotion = staticCompositionLocalOf<AgentMotionContext?> { 
 // Internal, unspoken metadata lets route tests drive the real host, without a global
 // registry or substituting fake destinations. It adds no accessibility description.
 internal val ScreenStackHostStateKey = SemanticsPropertyKey<ScreenStackHostState<*>>("ScreenStackHostState")
+
+internal val ScreenStackLeaveBaseKey = SemanticsPropertyKey<Boolean>("ScreenStackLeaveBase")
