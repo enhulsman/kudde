@@ -13,6 +13,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.platform.LocalContext
+import dev.kudde.android.ui.agent.AgentPorts
+import dev.kudde.android.ui.agent.HubPorts
 import dev.kudde.android.KuddeApp
 import dev.kudde.android.ui.components.rememberWallClock
 import dev.kudde.android.ui.flows.MachineFlows
@@ -36,7 +38,7 @@ import java.util.Locale
  * rebuilt once a minute for "last connected".
  */
 @Composable
-fun AgentsRoute(app: KuddeApp, flows: MachineFlows, home: AgentsHome) {
+fun AgentsRoute(app: KuddeApp, flows: MachineFlows, home: AgentsHome, ports: AgentPorts = HubPorts(app)) {
     val snapshot by app.hubHost.snapshot.collectAsState()
     val startError by app.hubHost.startError.collectAsState()
     val clock = rememberWallClock()
@@ -89,7 +91,7 @@ fun AgentsRoute(app: KuddeApp, flows: MachineFlows, home: AgentsHome) {
     val open = home.openKey
     val at = overview
     when {
-        open != null -> TerminalRoute(app, home, open)
+        open != null -> TerminalRoute(app, home, open, ports)
         at != null -> TabOverviewRoute(app, at.machine, at.spaceId, at.tabId, onBack = { overview = null }, onOpen = home::open)
         homeView.spaces -> {
             BackHandler(enabled = new.sheet != null, onBack = new::close)

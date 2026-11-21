@@ -30,7 +30,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import uniffi.kudde_mobile.ChatSent
 import kotlinx.coroutines.withContext
-import uniffi.kudde_mobile.Chat
+import uniffi.kudde_mobile.ChatInterface
 import uniffi.kudde_mobile.ChatPoll
 import uniffi.kudde_mobile.ChatRefusal
 import uniffi.kudde_mobile.ChatUpload
@@ -44,16 +44,20 @@ import uniffi.kudde_mobile.ChatUpload
 private const val WATCH_MS = 10_000L
 
 /** One visit to a terminal: its chat in the hub, the state held for it, the switch and the poll lock. */
-class ChatVisit(val key: AgentKey, val chat: Chat?, val state: ChatState, val switch: ChatSwitch) {
+class ChatVisit(val key: AgentKey, val chat: ChatInterface?, val state: ChatState, val switch: ChatSwitch) {
     /** poll, watch and older all change what the hub holds: one at a time. */
     val lock = Mutex()
 }
 
 @Composable
-fun rememberChatVisit(app: KuddeApp, key: AgentKey): ChatVisit {
+fun rememberChatVisit(
+    app: KuddeApp,
+    key: AgentKey,
+    openChat: (AgentKey) -> ChatInterface?,
+): ChatVisit {
     val hub = app.hubHost.hub
     return remember(key, hub) {
-        val chat = hub?.openChat(key.machine, key.address)
+        val chat = openChat(key)
         val state = app.chatStates.open(key)
         // What the hub holds is drawn at once; rows read back were dropped on leaving.
         val held = chat?.held()
