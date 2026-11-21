@@ -230,6 +230,16 @@ class FakeAgentPorts : AgentPorts {
         }
     }
 
+    /** One plain-text screen read of the tab overview, and the thread it ran on. */
+    data class ScreenRead(val key: AgentKey, val thread: Thread)
+
+    val screenReads = CopyOnWriteArrayList<ScreenRead>()
+    @Volatile var screens: (AgentKey) -> String? = { null }
+    override fun readScreen(key: AgentKey): String? = io.call {
+        screenReads += ScreenRead(key, Thread.currentThread())
+        screens(key)
+    }
+
     val opens = mutableListOf<Open>()
     val chats = mutableMapOf<AgentKey, FakeAgentChat>()
     val changes = mutableListOf<AgentKey>()

@@ -944,6 +944,22 @@ impl HubCore {
         st.push.is_some() || st.list.get(name).is_some_and(|m| m.push_endpoint.is_some())
     }
 
+    /// The terminal's visible screen as plain text, for a tab overview tile
+    /// (spaces-navigation D11). One `terminal.read` with `lines: 0` and no
+    /// `caller`: it attaches nothing, scrolls nothing and marks nothing seen.
+    /// None when the machine is not connected, the desk refuses, or the
+    /// screen is blank.
+    pub(crate) async fn read_screen_async(&self, machine: &str, address: &str) -> Option<String> {
+        let conn = self.live_conn(machine)?;
+        let got = conn
+            .client
+            .call("terminal.read", json!({"terminal": address, "lines": 0}))
+            .await
+            .ok()?;
+        let text = got.get("text")?.as_str()?;
+        (!text.trim().is_empty()).then(|| text.to_owned())
+    }
+
     pub(crate) fn mark_seen(self: &Arc<Self>, machine: &str, address: &str) {
         self.with(|hub, st| {
             st.tracker.mark_seen(machine, address);

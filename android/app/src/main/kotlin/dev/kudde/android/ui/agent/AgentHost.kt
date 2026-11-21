@@ -305,7 +305,7 @@ fun AgentHost(
                     ChangesRoute(changes, ui.header.name, ui.header.lineTwo.substringBefore(" · "), back)
                 }
                 is AgentScreen.Overview -> TabOverviewRoute(
-                    app, key.machine, destination.spaceId, destination.tabId, onBack = back,
+                    app, key.machine, destination.spaceId, destination.tabId, onBack = back, ports = ports,
                 ) { tile ->
                     if (tile == key) back() else navigate { home.open(tile) }
                 }

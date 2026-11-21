@@ -14,6 +14,12 @@ interface AgentPorts {
     fun openChat(key: AgentKey): ChatInterface?
     fun openChanges(key: AgentKey): ChangesInterface?
     fun now(): Long
+
+    /**
+     * The terminal's screen as plain text for a tab overview tile, or null when the desk
+     * gives none. Reads only (no attach, no seen mark). Blocks: call it off the main thread.
+     */
+    fun readScreen(key: AgentKey): String? = null
 }
 
 /** Reads the current hub on each open, including after a failed start or a reconnect. */
@@ -26,6 +32,9 @@ class HubPorts(private val app: KuddeApp) : AgentPorts {
 
     override fun openChanges(key: AgentKey): ChangesInterface? =
         app.hubHost.hub?.openChanges(key.machine, key.address)
+
+    override fun readScreen(key: AgentKey): String? =
+        app.hubHost.hub?.readScreen(key.machine, key.address)
 
     override fun now(): Long = SystemClock.uptimeMillis()
 }

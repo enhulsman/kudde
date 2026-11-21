@@ -19,6 +19,7 @@ use tokio::time::Instant;
 
 mod changes;
 mod desk;
+mod screen;
 mod starting;
 #[cfg(feature = "vt")]
 mod term;

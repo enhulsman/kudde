@@ -92,7 +92,7 @@ fun AgentsRoute(app: KuddeApp, flows: MachineFlows, home: AgentsHome, ports: Age
     val at = overview
     val list: @Composable () -> Unit = {
         when {
-            at != null -> TabOverviewRoute(app, at.machine, at.spaceId, at.tabId, onBack = { overview = null }, onOpen = home::open)
+            at != null -> TabOverviewRoute(app, at.machine, at.spaceId, at.tabId, onBack = { overview = null }, onOpen = home::open, ports = ports)
             homeView.spaces -> {
                 BackHandler(enabled = new.sheet != null, onBack = new::close)
                 val spaces = remember(snapshot, ui, res) { spacesUi(snapshot, ui, spacesTexts(res)) }

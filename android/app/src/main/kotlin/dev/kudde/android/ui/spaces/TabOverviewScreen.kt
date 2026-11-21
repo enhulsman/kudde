@@ -54,6 +54,12 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.semantics.SemanticsPropertyKey
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -246,7 +252,9 @@ private fun TerminalTile(tile: OverviewTile.Terminal, spin: Boolean, modifier: M
             .clickable(role = Role.Button, onClick = onClick)
             .semantics(mergeDescendants = true) {}
             .padding(KuddeSpacing.s12),
-        verticalArrangement = Arrangement.SpaceBetween,
+        // A tile with a picture stacks mark and state, then the name, then the picture; one
+        // without keeps the name at the bottom, as before.
+        verticalArrangement = if (tile.picture == null) Arrangement.SpaceBetween else Arrangement.Top,
     ) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             ProgramMark(tile.icon, size = 20.dp)
@@ -267,7 +275,48 @@ private fun TerminalTile(tile: OverviewTile.Terminal, spin: Boolean, modifier: M
                 alpha = motion.host.progress.coerceIn(0f, 1f)
             }
         }, style = KuddeType.rowName.copy(color = c.fg), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (tile.picture != null) {
+            Spacer(Modifier.height(KuddeSpacing.s8))
+            TilePicture(tile.picture, Modifier.fillMaxWidth().weight(1f))
+        }
     }
+}
+
+/** The tile picture's text, for tests: the picture is decoration and is never spoken. */
+internal val TilePictureKey = SemanticsPropertyKey<String>("TilePicture")
+
+/** Narrowest and widest the picture's text is drawn, in dp, however wide the screen was. */
+private const val PICTURE_MIN_DP = 2.5f
+private const val PICTURE_MAX_DP = 7f
+
+/** JetBrains Mono's advance as a share of its size. */
+private const val MONO_ADVANCE = 0.6f
+
+/**
+ * A still picture of a terminal's screen (design D11): [text] in the terminal font and the
+ * muted text colour, from the top left, never wrapped or centred, small enough that its widest
+ * line fits the width (within [PICTURE_MIN_DP] and [PICTURE_MAX_DP]) and cropped by the box.
+ * The size follows the tile, not the system font size: it is a picture. Not spoken.
+ */
+@Composable
+private fun TilePicture(text: String, modifier: Modifier) {
+    val color = KuddeTheme.colors.muted
+    val measurer = rememberTextMeasurer()
+    val lines = remember(text) { text.trimEnd().lines().map { it.trimEnd() } }
+    Box(
+        modifier
+            .clipToBounds()
+            .semantics { this[TilePictureKey] = text }
+            .drawWithCache {
+                val widest = lines.maxOf { it.length }.coerceAtLeast(1)
+                val px = (size.width / widest / MONO_ADVANCE).coerceIn(PICTURE_MIN_DP.dp.toPx(), PICTURE_MAX_DP.dp.toPx())
+                val style = KuddeType.terminalWatch.copy(fontSize = px.toSp(), color = color)
+                // Only the lines that can show are laid out.
+                val fits = (size.height / (px * 1.25f)).toInt() + 1
+                val layout = measurer.measure(AnnotatedString(lines.take(fits).joinToString("\n")), style, softWrap = false)
+                onDrawBehind { drawText(layout) }
+            },
+    )
 }
 
 /** `.otile.ph`: transparent, a 1 dp dashed border in the input colour, "Desk only" centred; no tap. */

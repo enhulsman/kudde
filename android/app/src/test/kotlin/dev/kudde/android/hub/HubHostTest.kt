@@ -253,6 +253,7 @@ class FakeHub : HubInterface {
         return importAdds
     }
     override fun markSeen(machine: String, address: String) { calls += "seen $machine $address" }
+    override fun readScreen(machine: String, address: String): String? = null
     override fun openChat(machine: String, address: String): uniffi.kudde_mobile.Chat = error("no chat in these tests")
     override fun openChanges(machine: String, address: String): uniffi.kudde_mobile.Changes = error("no changes in these tests")
     override fun trimChats(shownMachine: String?, shownAddress: String?) { calls += "trim $shownMachine $shownAddress" }

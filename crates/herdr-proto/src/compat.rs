@@ -25,6 +25,7 @@ pub const USES: &[&str] = &[
     "terminal.get",
     "terminal.interrupt",
     "terminal.keys",
+    "terminal.read",
     "terminal.run",
     "terminal.send",
 ];
