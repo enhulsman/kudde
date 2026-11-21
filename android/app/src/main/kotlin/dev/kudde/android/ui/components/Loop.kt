@@ -6,8 +6,6 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.withFrameMillis
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawWithContent
 import kotlinx.coroutines.delay
 
 // The looping animations (the working line's shimmer, the agents list's
@@ -85,11 +83,3 @@ internal suspend fun stepLoop(
         wait(stepWait(last))
     }
 }
-
-/**
- * Leaves out this content's drawing while something opaque covers it (the
- * terminal under an open chat): the window redraws all of it on every frame,
- * hidden or not.
- */
-fun Modifier.undrawnWhen(covered: Boolean): Modifier =
-    drawWithContent { if (!covered) drawContent() }

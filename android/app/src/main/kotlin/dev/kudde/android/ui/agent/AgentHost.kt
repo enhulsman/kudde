@@ -1,5 +1,15 @@
-package dev.kudde.android.ui.terminal
+package dev.kudde.android.ui.agent
 
+import dev.kudde.android.ui.terminal.KeyboardSink
+import dev.kudde.android.ui.terminal.TerminalInputHandle
+import dev.kudde.android.ui.terminal.TerminalKeyboard
+import dev.kudde.android.ui.terminal.TerminalMetrics
+import dev.kudde.android.ui.terminal.TerminalRenderer
+import dev.kudde.android.ui.terminal.TerminalScreen
+import dev.kudde.android.ui.terminal.phoneGrid
+import dev.kudde.android.ui.terminal.terminalActions
+import dev.kudde.android.ui.terminal.terminalUi
+import dev.kudde.android.ui.terminal.TerminalReopen
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -22,20 +32,12 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import dev.kudde.android.ui.agent.AgentKeeper
-import dev.kudde.android.ui.agent.AgentScreen
-import dev.kudde.android.ui.agent.AgentPorts
-import dev.kudde.android.ui.agent.HubPorts
 import dev.kudde.android.KuddeApp
 import dev.kudde.android.R
-import dev.kudde.android.ui.agent.ScreenStackHost
 import dev.kudde.android.ui.theme.KuddeLayout
 import dev.kudde.android.ui.theme.KuddeType
 import dev.kudde.android.ui.agents.AgentKey
 import dev.kudde.android.ui.agents.AgentsHome
-import dev.kudde.android.ui.agents.ProgramIcon
-import dev.kudde.android.ui.agents.agentSheet
-import dev.kudde.android.ui.agents.agentsUi
 import dev.kudde.android.ui.chat.ChatPolling
 import dev.kudde.android.ui.changes.ChangesRoute
 import dev.kudde.android.ui.chat.ChatRoute
@@ -43,10 +45,6 @@ import dev.kudde.android.ui.chat.rememberChatVisit
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.drop
 import dev.kudde.android.ui.spaces.TabOverviewRoute
-import dev.kudde.android.ui.spaces.mapCells
-import uniffi.kudde_mobile.DeskPaneView
-import uniffi.kudde_mobile.HubSnapshot
-import uniffi.kudde_mobile.TerminalViewInterface
 
 /**
  * The terminal screen fed by the app: opens [key] through the hub once the
@@ -59,7 +57,7 @@ import uniffi.kudde_mobile.TerminalViewInterface
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun TerminalRoute(app: KuddeApp, home: AgentsHome, key: AgentKey, ports: AgentPorts = HubPorts(app)) {
+fun AgentHost(app: KuddeApp, home: AgentsHome, key: AgentKey, ports: AgentPorts = HubPorts(app)) {
     val context = LocalContext.current
     val res = context.resources
     val density = LocalDensity.current
@@ -296,128 +294,3 @@ fun TerminalRoute(app: KuddeApp, home: AgentsHome, key: AgentKey, ports: AgentPo
         }
     }
 }
-
-/** The title bar and queue strip for [key], from the hub's rows; the tab's map from its machine's layout. */
-fun terminalUi(snapshot: HubSnapshot, key: AgentKey, res: android.content.res.Resources): TerminalUi {
-    val sheet = agentSheet(agentsUi(snapshot, 0L, res, { "" }), key, res)
-    val header = sheet?.let { TerminalHeader(it.name, it.icon, it.lineTwo) }
-        ?: TerminalHeader(key.address, ProgramIcon.Terminal, key.machine)
-    return TerminalUi(key, header, queueStrip(snapshot.agents, key), titleMap(snapshot, key))
-}
-
-/**
- * The tab that holds [key]'s pane, as the title bar's map draws it (spaces
- * spec, "The title bar shows where the terminal sits"): null for a terminal in
- * no pane (loose, a sub-agent's vacant pane, no layout) and in a tab of one
- * pane. The last layout read stays while the machine is out of reach, as in
- * the Spaces view. Counted over the stops: the terminal cells the phone lists.
- */
-fun titleMap(snapshot: HubSnapshot, key: AgentKey): TitleMap? {
-    val desk = snapshot.machines.firstOrNull { it.name == key.machine }?.desk ?: return null
-    val attention = snapshot.agents.filter { it.machine == key.machine }.associate { it.address to it.attention }
-    val listed = attention.keys + snapshot.others.filter { it.machine == key.machine }.map { it.address }
-    for (space in desk.spaces) for (tab in space.tabs) {
-        val addresses = tab.cells.mapNotNull { (it.pane as? DeskPaneView.Terminal)?.address }
-        if (key.address !in addresses) continue
-        if (tab.cells.size < 2) return null
-        val stops = addresses.filter { it in listed }
-        return TitleMap(mapCells(tab, { attention[it] }, marked = key.address), stops.indexOf(key.address) + 1, stops.size, space.id, tab.id)
-    }
-    return null
-}
-
-/**
- * Opens the terminal once the screen first knows the phone's grid (the core
- * needs it to type at phone size), then hands later sizes to a [SizeSettler],
- * so the phone size goes out once the keyboard has settled.
- *
- * A terminal reached by a step waits [dwellMs] ([STEP_DWELL_MS]) from
- * [arrivalMs] before it is opened (design D5): it opens on the first
- * [onPhoneGrid] or [tick] at or after [dueAtMs], or at once on [openNow] (the
- * person's input). Passing through never attaches, so the desk keeps its sizes.
- * Once [dispose]d (the terminal was left) it never opens.
- */
-class TerminalOpener(
-    private val session: TerminalSession,
-    arrivalMs: Long = 0,
-    dwellMs: Long = 0,
-    private val open: (GridSize) -> TerminalViewInterface?,
-) {
-    private var settler: SizeSettler? = null
-    private var grid: GridSize? = null
-    private var disposed = false
-
-    /** When the wait ends; the route ticks then. */
-    val dueAtMs: Long = arrivalMs + dwellMs
-
-    fun onPhoneGrid(size: GridSize, nowMs: Long) {
-        val settle = settler
-        if (settle != null) {
-            settle.offer(size, nowMs)
-            return
-        }
-        grid = size
-        if (nowMs >= dueAtMs) openAt(size)
-    }
-
-    fun tick(nowMs: Long) {
-        val settle = settler
-        if (settle != null) {
-            settle.tick(nowMs)
-            return
-        }
-        val size = grid ?: return
-        if (nowMs >= dueAtMs) openAt(size)
-    }
-
-    /** Input during the wait: opens now if the phone's grid is known. */
-    @Suppress("UNUSED_PARAMETER")
-    fun openNow(nowMs: Long) {
-        if (settler != null) return
-        openAt(grid ?: return)
-    }
-
-    fun dispose() {
-        disposed = true
-    }
-
-    private fun openAt(size: GridSize) {
-        if (disposed) return
-        // Without a running hub there is nothing to open yet; the next layout or input tries again.
-        val view = open(size) ?: return
-        session.attach(view)
-        settler = SizeSettler(TerminalMetrics.SETTLE_MS, opened = size, send = session::phoneSize)
-    }
-
-    companion object {
-        /** How long a terminal reached by a step shows its last screen before it is opened. */
-        const val STEP_DWELL_MS = 400L
-    }
-}
-
-/**
- * The route's title-bar actions, shared by the terminal and the chat over it: a
- * step in any direction is refused while [screen]'s compose sheet holds text
- * (design D4), so a draft is never left behind by a swipe.
- */
-internal fun terminalActions(
-    screen: TerminalScreenState,
-    onBack: () -> Unit,
-    onOpen: (AgentKey) -> Unit,
-    onSwipe: (forward: Boolean) -> Boolean,
-    onTab: (next: Boolean) -> Boolean,
-    onPhoneGrid: (GridSize) -> Unit,
-    onWatchView: (WatchView) -> Unit = {},
-    openHeader: () -> TerminalHeader? = { null },
-    announce: ((String) -> Unit)? = null,
-) = TerminalActions(
-    onBack = onBack,
-    onOpen = onOpen,
-    onSwipe = onSwipe,
-    onPhoneGrid = onPhoneGrid,
-    onWatchView = onWatchView,
-    onTab = onTab,
-    stepRefused = { screen.composeText.isNotEmpty() },
-    openHeader = openHeader,
-    announce = announce,
-)

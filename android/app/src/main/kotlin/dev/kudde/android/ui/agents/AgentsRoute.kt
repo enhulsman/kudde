@@ -22,7 +22,7 @@ import dev.kudde.android.ui.spaces.SpacesScreen
 import dev.kudde.android.ui.spaces.TabOverviewRoute
 import dev.kudde.android.ui.spaces.spacesTexts
 import dev.kudde.android.ui.spaces.spacesUi
-import dev.kudde.android.ui.terminal.TerminalRoute
+import dev.kudde.android.ui.agent.AgentHost
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -33,7 +33,7 @@ import java.util.Locale
  * [home] (the open terminal, "Other terminals"): the Agents view or the
  * Spaces view, the one chosen last (app.homeView), and the tab overview
  * opened from a tab line. An open agent shows its terminal screen
- * (TerminalRoute) in place of the list. One clock ticks each second while the
+ * (AgentHost) in place of the list. One clock ticks each second while the
  * screen is started; only the ages read it every tick, and the rows are
  * rebuilt once a minute for "last connected".
  */
@@ -91,7 +91,7 @@ fun AgentsRoute(app: KuddeApp, flows: MachineFlows, home: AgentsHome, ports: Age
     val open = home.openKey
     val at = overview
     when {
-        open != null -> TerminalRoute(app, home, open, ports)
+        open != null -> AgentHost(app, home, open, ports)
         at != null -> TabOverviewRoute(app, at.machine, at.spaceId, at.tabId, onBack = { overview = null }, onOpen = home::open)
         homeView.spaces -> {
             BackHandler(enabled = new.sheet != null, onBack = new::close)
