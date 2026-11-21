@@ -2,104 +2,51 @@
 
 ## Plain summary
 
-**Answered (Ezra, 2026-11-20):** 2, one command at the machine, as picked;
-9, a one-time hint the first time a terminal or its chat opens (option c,
-not the pick), so there is no "Getting around" screen. The command's exact
-text, the other decisions and the words and renders (8) are still open, so
-task 1.1 stays open. Also 2026-11-20, asked by Ezra: step 2 gains a second
-way, where kudde signs in once with the account's password and does what
-the command does (D12); 10, the fingerprint confirmed on the phone (trust
-on first use), as picked. Decision 11, when the hint is due, is open.
+**Answered:** 2, one command at the machine (2026-11-20); 4, a
+full-screen welcome on first start before anything else, followed by full-screen
+setup steps (owner, 2026-11-22); 12, no way out until a real machine
+is connected (owner follow-up, 2026-11-22); 9, a one-time title bar hint rather than a
+setup screen; 10, confirm the fingerprint on the phone before any password.
+Step 2 offers two choices together, "kudde adds it for you" first and
+"Add it yourself" second. The same steps serve Machines > Add machine,
+without the welcome, and key rejection on a listed machine.
 
-**Decisions that are yours** (my pick first in each; nothing is built into
-the app's screens before 1, 2 and 8 are answered, and the hint not
-before 11):
+**Open decisions, picks first** (drafts for the owner, no approval implied):
 
-1. **The order of setup.** *Where the machine is, then one visit to the
-   machine, then connected* (pick). The phone reaches the machine first,
-   which signs nothing and trusts nothing, so a wrong address or a VPN that
-   is off shows before you walk to the desk. Or: the key first, then the
-   address. Or: today's order, with better words only.
-2. **One command at the machine.** *One command you paste there adds the
-   phone's key, limited as today, and prints the machine's host key, so
-   the fingerprint to compare is on the desk's screen* (pick). The command
-   is in `design.md` D3, word for word, for your approval. Or: two
-   commands, one per step. Or: the bare line as today, with the commands
-   staying in the README.
-3. **A demo mode: not in this change** (pick). Herdr's app has one: two
-   made-up machines whose terminals answer. You did not ask for it, it is
-   a feature of its own size (a pretend hub and pretend terminals), and it
-   skips exactly the part that is unclear in kudde, which is setup. Or: in,
-   as its own issue after this one. Or: in, here.
-4. **The welcome is the empty home.** *It shows whenever no machine is
-   listed, and never again once one is* (pick). Or: a full-screen intro
-   shown once.
-5. **The form.** *Address, User, Port, and an optional Name that defaults
-   to the address* (pick); "Host" becomes "Address". Or: Name stays
-   required, as today.
-6. **One link out of the app.** *"Setup guide", to the README's "Setting
-   up" now and to kudde.dev's Setup page once the site has one* (pick).
-   The app has no link today. Or: no link, and the texts name the README.
-7. **Left out on purpose; say so if you want one in:**
-   - Pairing by QR code with a helper on the machine (other herdr clients
-     do this; it needs a program on the machine, the camera and a
-     scanner): its own change.
-   - Alert setup as a fourth step: no, one line points to it.
-   - Android 17's local network permission: it applies only to apps that
-     target SDK 37. kudde targets 36 and is not affected. It comes with
-     the move to 37, as its own issue; `design.md` D9 has what is known.
-8. **The words and the look.** Every text on the new screens is in
-   `design.md` under "Texts", and needs your approval. Seven new renders
-   (13 to 19) and two changed ones (1 and 8) need your sign-off.
-9. **Answered: a hint, not a screen** (Ezra, 2026-11-20, option c). The
-   first time a terminal or its chat opens, a short hint under the title
-   bar names its gestures (sideways through the tab's panes with the
-   bounce, up and down through the agents that need you, a tap on the
-   tab's map for the tab overview). One tap closes it, and it never shows
-   again: one stored "seen" flag (D11). Its texts are drafts. It explains
-   the gestures of `spaces-navigation`, so it is built after them.
-10. **Answered: the fingerprint is confirmed on the phone** (Ezra,
-   2026-11-20, as picked: trust on first use). With the command, the
-   fingerprint to compare is on the desk's own screen and nothing secret
-   crosses the network. When kudde runs the setup itself (D12), the
-   password goes to whatever answers at the address, so the host key is
-   confirmed before anything is sent, and kudde sends the password only to
-   that key. The app shows the fingerprint, with the one line that prints
-   it at the desk for whoever wants to compare, and the person confirms it
-   before the password field shows. What this accepts, plainly: **a wrong
-   host key fails silently.** Someone who answers at the address and
-   relays to the real desk gets the password, can use it there to install
-   the phone key themselves, and setup still ends on step 3 as if all was
-   well; nothing in the app shows it. Only comparing the fingerprint at
-   the desk catches it, and the dialog (R3) says so. The other option, a
-   comparison the app enforces, needed the desk visit this way saves.
-11. **When the hint is due** (answered by Ezra, 2026-11-20: as picked,
-   due only while the map shows; from the review of 2026-11-20). The
-   first terminal someone opens usually sits in a tab of one pane: the
-   title bar shows no map there and a sideways swipe only bounces, so the
-   hint would name gestures that do nothing. *Due only while the title bar
-   shows the tab's map, that is in a tab of more than one pane* (pick):
-   the hint shows where all it names works, maybe days after setup. Or:
-   due on the first terminal, whatever its tab. Either way it never covers
-   the terminal's cursor row (D11).
-
-**What changes for the person using the app:** the first screen says what
-kudde is and the three things setup needs, with one button to start.
-Setup is three steps. Step 1 asks where the machine is and says in plain
-words why it cannot be reached, if so. Step 2 shows one command to paste
-at the machine, with Copy and Share; it checks ownership, corrects the SSH
-directory and file modes, adds the phone's key and only then prints
-the fingerprint, which you compare on the phone before you trust the
-machine. Step 2 also offers to do it from the phone: kudde signs in once
-with the account's password, adds the same limited key and signs out; the
-password is never stored, and the command stays for machines that take no
-password. Step 3 says the machine is connected and shows your agents, or
-how to start the first one. The first time a terminal opens, a short hint
-under its title bar says how to move around from there. If you leave
-half way, the app brings you back to the same step. A phone without a
-screen lock is told to set one,
-instead of seeing an error. What is trusted, and when, stays exactly as
-strict as it is.
+1. **Order:** where the machine is, the phone's key, connected (pick);
+   or key before address, or today's order with better words.
+3. **Demo:** out of this change (pick); or a separate follow-up, or in here.
+   There is no demo button in this proposal; this decision stays open. Any
+   future demo entered from welcome must return to setup, not bypass it.
+5. **Form:** Address, User, Port, optional Name derived from Address (pick);
+   or keep Name required.
+6. **Help:** one "Setup guide" link to the README, later the site's Setup
+   page (pick); or no link.
+7. **Scope exclusions:** QR pairing, alerts as a setup step and the future
+   target-SDK network permission stay out (pick); each needs its own change.
+8. **Words and look:** approve the complete Texts table and the render plan
+   in design.md (pick); revise them before building screens. The command's
+   exact text also awaits approval.
+11. **Hint timing, revised pick:** show when a map is present, including a
+   one-pane tab; explain that sideways only bounces there (pick). Or retain
+   the multi-pane-only delay. The 2026-11-20 map-visible answer is retained
+   in intent, but spaces-navigation 8.2 changed what it includes on 2026-11-21.
+**What the person sees:** first start opens a full-screen welcome with kudde's
+mark, a headline, one line, three numbered steps and one main "Set up a
+machine" button. "Forced" means that home, Machines and incoming navigation
+wait until a real machine is connected. There is no skip or way into the
+app before that. Back on the welcome closes the app; leaving and returning
+resumes the same screen and step on every start until connection succeeds. A missing screen lock is explained after the welcome,
+before setup can use the key. Step 1 asks where the machine is and explains
+reach failures in place. Step 2 is "This phone's key", with the two choices
+side by side (stacked at large text if needed). The first confirms the host
+fingerprint on the phone, then uses the password once and never stores it;
+the second shows the one command with Copy and Share and then confirmation.
+Both install the same restricted key. Step 3 shows the connected machine and
+leads to agents or starting one. Later additions from Machines use those same
+screens directly. "Phone key not accepted" offers both choices again, also
+for a machine that used to work. The hint can now appear on a one-pane tab,
+where its map opens the overview and sideways swipes only bounce.
 
 ## Why
 
@@ -113,23 +60,23 @@ two desk actions are explained only in the README. Version 1.0 means
 "someone else can set the app up without help" (decisions.md, 2026-11-13);
 the README still does part of that work.
 
-Herdr's app is quicker because it does less: it trusts the host key on
-first sight and its suggested command installs an unrestricted key. Those
-are not to copy. The job is to make the strict path read as plainly as
+The older reference trusted the host key on first sight; the newer
+2026-11-22 reference confirms it before the password. Its unrestricted key
+installation is still not to copy. The job is to make the strict path read as plainly as
 theirs.
 
 ## What Changes
 
-- The Agents home, empty: a welcome with what kudde does, what setup
-  needs in three points, "Set up a machine" and "Import a machine list".
+- A first-start full-screen welcome, then separate setup screens, with no
+  skip. Import stays in Machines after the first real connection.
 - A phone without a screen lock: "Set a screen lock first" and a button,
   in place of "Could not start the connections".
 - "Add machine" becomes a three-step setup, the same for every machine:
-  "Where is it?", "At the machine", "Connected".
+  "Where is it?", "This phone's key", "Connected".
 - Step 1: field hints, an optional name, and a reason in words when the
   machine cannot be reached (no answer, port refused, name not found, no
   route), with the address editable in place.
-- Step 2: one command that appends the restricted key line, sets the file
+- Step 2, "Add it yourself": one command that appends the restricted key line, sets the file
   modes and prints the host key's fingerprint; Copy and Share; then the
   signed-off trust dialog, which now says where the other fingerprint is
   and what a different one means.
@@ -145,12 +92,14 @@ theirs.
   "No agents yet" gets a "New terminal" button.
 - The hub reports which kind of failure it met, so the screens need not
   read error texts.
-- Step 2, a second way: "Run it from this phone". After the host key is
+- Step 2, first choice: "kudde adds it for you", beside "Add it yourself". After the host key is
   confirmed (decision 10), kudde asks for the account's password, signs in
   once over SSH (password or keyboard-interactive), runs the same
   installation as the command, signs out and forgets the password. A
   machine that takes no password says so and points to the command.
-- The first time a terminal or its chat opens: a hint under the title bar
+- Machines: Add machine uses the same steps without welcome; key rejection
+  offers both key-install choices, password-once first.
+- The first time a terminal or its chat opens with a map, including one cell: a hint under the title bar
   with its gestures as `spaces-navigation` defines them, closed by a tap
   for good; built after that change.
 - README: "Setting up" follows the app's steps; the broken herdr-core
@@ -186,13 +135,14 @@ theirs.
   and `PhoneKey`), the form, the home's empty states and notices, the
   machine card's texts and links, `strings.xml`. No new permission, no
   new dependency.
-- Design: renders 13 to 19, changed renders 1 and 8, `design-tokens.json`
-  entries for the new components, goldens in both themes.
+- Design: the new, changed and retired render plan is in design.md;
+  `design-tokens.json` entries and goldens in both themes follow sign-off.
 - Docs: README "Setting up" and "What you need"; release notes.
-- Stored data: one new flag, the hint's "seen" (D11), in its own
-  app-private preferences file like the other small settings; nothing
-  else changes, and no password is ever stored. People who already have
-  machines never see the welcome, but do see the hint once.
+- Stored data: the hint's "seen" (D11), and first-setup completion status and non-secret
+  resume checkpoint (D1/D6), in app-private preferences excluded from backup.
+  Machine storage and pins are unchanged; no password is ever stored. People who already have
+  machines with a recorded successful connection do not repeat the welcome,
+  but do see the hint once. Merely listing a machine does not finish setup.
 - Phone checks: a full first setup on the test phone, the password way
   against a desk with password login on and one with it off, and one look
   at Android 17 for the local network question. The screen-lock notice is
@@ -201,9 +151,8 @@ theirs.
 - Depends on `spaces-navigation` for the hint only: its tab
   walk with the bounce, the map in the title bar and the tab overview must
   be on main first. Everything else ships without it.
-- Estimate: 10 to 14 builder sessions, plus the renders and three phone
-  checks (the password way needs a desk with password login on).
-  Confidence: moderate.
+- The earlier session estimate is withdrawn: full-screen first-start state
+  and Machines repair need a fresh implementation estimate after sign-off.
 
 ## Sources
 

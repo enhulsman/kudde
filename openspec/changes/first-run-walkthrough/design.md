@@ -39,7 +39,8 @@ What a new person meets today, in order (all read 2026-11-20):
 So the strict path works, but it is told as a failure to repair, and two of
 its three desk actions are explained outside the app. Herdr's own app says
 what is needed on one screen before asking for anything; that is the part
-to learn from. Its key and host-key handling are not (see
+to learn from. Its unrestricted key installation is not. The newer reference confirms the
+host key before the password, matching the chosen order (see
 `research/first-run-walkthrough-2026-11.md`).
 
 Settled and unchanged here: the host key is confirmed before first trust
@@ -67,21 +68,52 @@ one sign-in of D12, which the person chooses.
 
 ## Decisions
 
-### D1. The welcome is the empty home, not a gate
+### D1. First-start welcome, then full-screen setup
 
-The welcome shows while the machine list is empty and at no other time.
-There is no "seen" flag: nothing to store, nothing to reset, and a person
-who removes their last machine gets it back. It replaces the "No machines
-yet" block inside the Agents home; the top bar with the Machines button
-stays, so importing a list and the phone's settings remain one tap away.
-Android's guidance asks for exactly this: land in the real screen with one
-clear action, show what the app is for before any permission, no slides.
-*Over* a full-screen intro shown once: that needs state, hides the app's
-own screen, and is the pattern the guidance warns about.
+Owner's answers of 2026-11-22 supersede the empty-home proposal and settle
+decision 12: there is no way out before a real machine is connected. First
+start shows a separate full screen before home, Machines or incoming
+navigation: kudde's existing ear-tag mark, WL1 headline, WL2 one-line description,
+WL4 to WL6 as three numbered steps, WL7 as the one main button and WL9 as a help
+link if approved. No skip action. No demo button: decision 3 remains open;
+any future demo entered from welcome must lead back into setup.
 
-### D2. Address first, then one visit to the machine
+**Forced:** on every start before a real machine connects, show the welcome
+if setup has not started, otherwise resume the saved full-screen setup step.
+Android Back on the welcome closes the app, not setup. Back on a first-setup
+step closes a dialog or key-install detail first; from the step's root it
+closes the app, preserving that step, fields and any listed machine. The lock
+notice follows the same rule. Returning resumes where the person left it.
+A tapped alert cannot bypass setup. Only a real machine reaching Connected
+at step 3 completes first setup; listing, importing, confirming trust or
+installing a key alone does not. Normal navigation applies after completion.
 
-Order: where the machine is, then the desk, then connected. Reaching the
+Persist app-private first-setup progress (welcome, setup, completed) and a
+non-secret checkpoint: machine identifier if listed, furthest step, selected
+key-install choice, entry point and unsent form fields. Never persist a
+password, refusal counters or an in-flight password session. Reopening a
+password choice returns to confirmation/probe with an empty field (D12).
+Clear the unfinished checkpoint on successful completion or explicit machine
+removal. An update with no progress record may initialize completed only
+from a machine's recorded successful connection; a merely listed machine
+still needs setup. Removing the last machine after completion does not repeat
+the once-only welcome: home uses WL11/WL12 and WL7. Clearing app data starts over.
+Preferences are excluded from backup/transfer, like the hint setting.
+The machine store, trusted keys and exported list remain unchanged.
+
+The welcome requests no permission and starts no connection. A phone without
+a lock sees it first; its main action opens the screen-lock notice before
+step 1. Neither a lock failure nor a connection failure offers a bypass.
+
+### D2. Address first, then the phone key
+
+Order: where the machine is, then the phone's key, then connected. Each
+step is its own full screen. Step 2 shows two choices together: "kudde adds
+it for you" first, "Add it yourself" second. Equal-width adjacent choices
+on a normal phone; stack in that order when large text cannot fit. Both
+remain available from either choice, clearing any password on switching.
+The manual choice opens the command detail within step 2; the password
+choice opens host confirmation then the password detail within step 2. Reaching the
 machine first costs nothing in strictness: the first connection stops
 after the host key and signs nothing (`ssh.rs:286-288`). It buys three
 things. Wrong addresses, a VPN that is off and a closed port show up
@@ -214,7 +246,19 @@ its two lines of text; the setup step and the machine card both call it.
 The home's notice line keeps today's "unreachable" (render 1). `CoreStartupClosed` uses Other's reason wording when the grace flag is false. A failure after the connection was up (`hub/mod.rs`
 1284-1299) is `Other`.
 
-### D6. Setup is a view of the machine's state
+### D6. Shared setup, with a resumable screen for each step
+
+Machines > Add machine opens step 1 directly, without welcome. A card with
+"Phone key not accepted" offers "kudde adds it for you" then "Add it yourself",
+each opening the corresponding detail in the same full-screen step 2 for
+that listed machine. This includes previously connected and imported
+machines. Do not add a duplicate or discard a confirmed pin. Both choices
+are visible together on the card and on step 2 (the password choice is
+unavailable for the rest of a visit after R16), with the same large-text
+stacking rule as D2. Switching choice clears the password. A changed host
+key goes through the existing mismatch/forget flow before any password.
+The success and no-password fallback are the same as in first setup.
+
 
 `Screen.AddMachine` and `Screen.PhoneKey` become `Screen.Setup`. The step
 is worked out from the machine, and only ever moves forward by itself:
@@ -227,13 +271,16 @@ is worked out from the machine, and only ever moves forward by itself:
   that drops while it shows does not bounce them back;
 - anything else: step 2.
 
+A saved furthest step takes precedence over these initial-state defaults.
 The flow keeps the furthest step it has shown for the machine, so the
 "connecting" moments after a return from the background stay on step 2.
-With that, a process death, 60 seconds in the background and a tapped
-alert all land right with what `MachineFlows.saver` already keeps (screen
-and machine), plus the step, whether this visit added the machine (back
-from step 1 then removes one that was never reached), and the typed
-fields (`rememberSaveable`, as now).
+Keep screen, machine, step, entry point, selected choice and typed fields
+in the D1 checkpoint as well as saved-instance state, so cold launches and
+process death resume too. Keep whether this visit added the machine for the
+existing Back cleanup for later additions only. First setup preserves its
+checkpoint on Back and closes the app from a step root. An alert cannot
+bypass first setup; after completion it may open its agent without losing
+a later machine's setup.
 
 Only the first *eligible startup close* after explicit host confirmation
 is held back. It is a candidate startup race, not proof that the core was
@@ -277,7 +324,8 @@ against the same rules and reported on the Name field.
 
 ### D7. The screen lock check
 
-`isDeviceSecure` is read when the home is composed and on every return.
+`isDeviceSecure` is read before step 1 and on every return. D1 welcome
+precedes the notice on first launch; home after first setup completes keeps the notice too.
 False wins over the hub's start error (which, with no lock, is the key
 store's "Secure lock screen must be enabled…"). The action sends
 `ACTION_BIOMETRIC_ENROLL` with device credential allowed (API 30, which
@@ -332,11 +380,14 @@ the agents that need the person (agent-list); a tap on the tab's map opens
 the tab overview. The hint explains those three and nothing else, is built
 only after they are on main, and changes its words if they change.
 
-- **When.** Proposal decision 11 (answered as picked). Due only while the title
-  bar shows the tab's map, that is for a terminal or chat in a tab of more
-  than one pane, so everything it names works where it shows; a terminal
-  in a tab of one pane leaves it due. Other: due on the first terminal or
-  chat, whatever its tab.
+- **When.** Keep the map-visible rule of the 2026-11-20 answer. On
+  refactor/screen-stack, spaces-navigation 8.2 (2026-11-21) now gives a
+  terminal alone in its tab a one-cell map whose tap opens the overview.
+  Therefore show on the first mapped terminal or chat, including one pane;
+  no pane means no map and leaves it due. This is the revised pick for
+  decision 11; the multi-pane delay is no longer justified by map absence.
+  G2 explicitly says a one-pane tab only bounces sideways; up/down still
+  follows the needs-you list and G4 still opens that tab's overview.
 - **Where.** A block directly under the title bar, the screen's width less
   its margins. It covers the terminal's or the chat's top rows only, never
   the bottom where the keys, the compose sheet and the chat's message box
@@ -381,11 +432,11 @@ hint sits where the gestures are used, at the cost of one stored flag.
 ### D12. kudde can run the setup itself, with the password once
 
 Added on 2026-11-20 at the owner's request (Herdr's own app offers this):
-step 2 gets a second way beside the command. kudde signs in once with the
+step 2 has two choices together, password-once first. kudde signs in once with the
 account's password, does exactly what the command does, signs out and
 forgets the password; from then on the phone key connects as for everyone
-else. The command stays on the step, first, for whoever prefers it and as
-the fallback when the machine takes no password.
+else. The command lives in "Add it yourself", always one choice away, including
+from the password detail and when a machine takes no password.
 
 **The trade-off.** With the command nothing secret crosses the network,
 and the fingerprint to compare is on the desk's own screen. With this way
@@ -406,7 +457,7 @@ reassures, and the README says the same (5.1).
 
 **The steps.**
 
-1. "Run it from this phone" (R1) opens the confirm (R3 to R5) for a
+1. "kudde adds it for you" (R1) opens the confirm (R3 to R5) for a
    machine whose host key is not confirmed yet, or goes straight to 2
    when it is. Confirming is the same `confirm_host_key` as "Trust and
    connect", so the hub starts its phone-key attempt; its expected first
@@ -418,8 +469,7 @@ reassures, and the README says the same (5.1).
    `none` method and reads the methods the machine offers from its
    refusal (russh 0.65.2 `Handle::authenticate_none`, `AuthResult::Failure
    { remaining_methods, .. }`). No `password` and no `keyboard-interactive`
-   (or a `none` that succeeds): "takes no password" (R10) with the command
-   still above, and no field. With `keyboard-interactive` only, the probe
+   (or a `none` that succeeds): "takes no password" (R10) with "Add it yourself" available, and no field. With `keyboard-interactive` only, the probe
    starts it and reads the first prompt's text, which becomes the field's
    label after R6 (a machine whose first prompt asks for a code shows
    that). A probe that meets another host key ends during key exchange
@@ -460,7 +510,7 @@ reassures, and the README says the same (5.1).
    sshd reads that file (another `AuthorizedKeysFile`, StrictModes
    refusing the home directory's modes, a `ForceCommand`): when the phone
    key is still refused after a done run, step 2 shows R16, with "Try
-   again" and the command, and never offers the password again in that
+   again" and "Add it yourself", and never offers the password again in that
    visit.
 
 | Outcome | Step 2 shows |
@@ -470,7 +520,7 @@ reassures, and the README says the same (5.1).
 | Wrong password | R9, R15 from the second refusal; field empty, "Add the key" again |
 | No password method | R10, no field |
 | More than a password | R11 |
-| Dropped or out of time after signing in | R12: whether the key went in is not known; repeating is harmless (D3) |
+| Dropped or out of time after signing in | R12: whether the key went in is not known; repeating preserves other keys (D3) |
 | The script refused | R13 with M11 or M12 |
 | Done | "Connecting to …", then step 3 |
 | Done, but the phone key is still refused | R16, never the password again |
@@ -513,49 +563,53 @@ plus the probe, exported over uniffi. The phone key signs nothing here.
 
 ## New and changed screens (each needs the owner's sign-off)
 
-All within the existing language: chrome background, Geist, muted and dim
-text, the outlined and solid buttons, `MonoBox`, `SubScreenTopBar`. No new
-colour, no icon, no illustration, no logo on the welcome.
+All use existing tokens, Geist, chrome background, buttons, MonoBox and
+SubScreenTopBar. The welcome uses the existing ear-tag mark; no new mark or
+illustration. These are planned renders, not images drawn by this spec task.
+Numeric labels below are legacy references only: 13 to 23 are taken by Changes;
+use the stable ids below when drawing, leaving existing renders untouched.
 
-| Render | Screen | Built from |
+| Status / legacy reference | Stable id | Screen and composition |
 |---|---|---|
-| 13 | Welcome on the home | the home's top bar; title at `machineName`; body `body` muted; "What you need" as the "This phone" caption; three points as two-line rows (`rowName`, then `secondary` dim) with the numeral in mono, muted, in the place a row's mark has; solid then outlined button |
-| 14 | No screen lock | the same block: title, body, one outlined button |
-| 15 | Step 1 | render 8's form: label over field; "Step 1 of 3" as a caption under the top bar, the heading at `machineName`; hints in dim inside the field; help lines in `secondary` dim; the failure as two lines, the first in the error colour, with outlined "Try again" |
-| 16 | Step 2 | caption and heading as step 1; the sentence in `DialogText`; the command in `MonoBox`, scrolling inside a height of at most 8 lines so the buttons stay near; "Copy" and "Share" side by side, outlined; notes in `DialogNote`; solid "Compare the fingerprint" |
-| 17 | Step 2 after trust, key not accepted | render 16 with the failure block in place of the solid button |
-| 18 | Step 3 | caption and heading; a machine card's head (dot, name, status line); the agent line; solid and outlined button; the alerts line in `secondary` dim |
-| 8 (changed) | Trust dialog | the same dialog, new first paragraph, one more `DialogNote` |
-| 1 (changed) | Home with an unfinished machine | the machine notice line of render 1, reading "workstation · finish setup" |
-| 19 | Title bar hint (draft; needs `spaces-navigation`'s signed-off title bar render) | a block under the title bar on the chrome background with a thin border; G1 in `rowName`, G2 to G4 one line each in `secondary`, G5 at its end in `secondary` dim, and the G6 variant for TalkBack; shown over a terminal and over a chat, clear of the cursor row, with the keys and the message box in view and uncovered |
-| 20 | Step 2 with the second way | render 16, then outlined "Run it from this phone" (R1) with R2 under it in `DialogNote` |
-| 21 | Trust before the password | render 8's dialog with R3, R4 and its line in `MonoBox`, D2's note and "Trust and continue" |
-| 22 | The password panel | render 20 with, in place of R1 and R2, render 15's field with R6 as its label; solid "Add the key", outlined "Cancel"; R8 while it runs; R9 to R16 as render 17's failure block |
+| Changed plan 13 | first-run-welcome | Full screen, existing mark, headline, one line, three numbered steps, one main WL7 button; WL9 help link, no skip action |
+| Changed plan 14 | first-run-lock | Full-screen lock notice after welcome, without a bypass; home notice variant after completion |
+| Changed plan 15 | first-run-address | Full-screen step 1, ordered fields, waiting and reach failures |
+| New (replaces old 20) | first-run-key-choices | Full-screen step 2 with heading, machine/user, two adjacent choices R1/R17, R2/R18 descriptions, R19 restriction note; stacked large-text variant |
+| Changed plan 16 | first-run-manual | Manual detail within full-screen step 2, command, Copy/Share, restriction notes, compare button, both choices |
+| Changed plan 17 | first-run-key-refused | Shared step 2 after rejection, both choices password-once first, retry; R16 variant after installation |
+| Changed plan 18 | first-run-connected | Full-screen step 3, machine/version, count, agents/start/Done and alerts line |
+| Changed existing 8 | first-run-trust | Existing trust dialog with manual wording D1/D2 |
+| Changed existing 1 | first-run-home | Home with unfinished setup notice; empty-home after first connection WL11/WL12 variant |
+| Changed plan 19 | first-run-hint | Terminal and chat, one-cell and multi-cell maps, G2 explaining one-pane bounce; TalkBack G6, cursor and input uncovered |
+| Changed plan 21 | first-run-password-trust | Trust dialog with R3/R4 and fingerprint command, R5 before any password field |
+| Changed plan 22 | first-run-password | Full-screen step 2 password detail, R6/R7/Cancel, R8 and R9 to R16 outcomes, manual choice available |
+| New | machines-key-choices | Listed rejected-key card with both choices in order, Add machine entry; previously connected and imported variants |
+| Gone | old welcome-on-home / old 20 | No welcome block repeated on empty home; no command-first screen with password action beneath it; no Getting around setup screen |
 
-Goldens for each in graphite and paper, and steps 1 to 3, the password
-panel and the hint at font size 2x. The numbers 13 to 23 are already taken by the
-Changes renders on main, and `spaces-navigation` also plans renders from
-13: use the next free numbers when drawing and correct the references
-here.
+Goldens in graphite and paper; welcome, both choice layouts, all three steps,
+password detail and hint at 2x text. Each changed or new render needs owner
+sign-off before production screens. No signed-off checkpoint changes here.
 
 ## Texts (every line needs the owner's approval)
 
 `%1$s` and the like are filled in by the app. "Was" names the string it
 replaces in `strings.xml`.
 
-**Home**
+**Welcome and home**
 
 | Id | Text | Was |
 |---|---|---|
-| W1 | Set up your first machine | No machines yet |
-| W2 | kudde lists the coding agents on your own machines and lets you answer them. It connects to each machine directly, over SSH. | Add a machine that runs herdr-core to see its agents here. |
-| W3 | What you need | new |
-| W4 | 1 · A machine that runs herdr-core / Linux or WSL, with an OpenSSH server. | new |
-| W5 | 2 · A way for the phone to reach it / The same Wi-Fi, or a VPN such as Tailscale. | new |
-| W6 | 3 · A few minutes at that machine / You run one command there and compare one fingerprint. | new |
-| W7 | Set up a machine | Add machine |
-| W8 | Import a machine list | new on this screen |
-| W9 | Setup guide | new (decision 6) |
+| WL1 | Set up your first machine | No machines yet |
+| WL2 | See which agents need you, read their work and reply on your own machines. | Add a machine that runs herdr-core to see its agents here. |
+| WL3 | Set up in three steps | new |
+| WL4 | 1 · Find your machine / Linux or WSL running herdr-core and OpenSSH, on the same Wi-Fi or VPN as your phone. | new |
+| WL5 | 2 · Add this phone's key / kudde uses your password once, or you run one command yourself. | new |
+| WL6 | 3 · Open your agents / Connect and start using your machine from your phone. | new |
+| WL7 | Set up a machine | Add machine |
+| WL8 | Import a machine list | existing Machines action, not on welcome |
+| WL11 | No machines yet | retained on empty home after first connection |
+| WL12 | Add a machine that runs herdr-core to see its agents here. | retained on empty home after first connection |
+| WL9 | Setup guide | new (decision 6) |
 | L1 | Set a screen lock first | Could not start the connections |
 | L2 | kudde keeps its SSH key in the phone's secure hardware. Android allows that only on a phone with a PIN, pattern or password. | the key store's message |
 | L3 | Set a screen lock | Try again |
@@ -596,7 +650,7 @@ replaces in `strings.xml`.
 
 | Id | Text | Was |
 |---|---|---|
-| M1 | At the machine | new |
+| M1 | This phone's key | new |
 | M2 | On %1$s, signed in as %2$s, paste this into a terminal and press Enter: | Add this line to ~/.ssh/authorized_keys of the user you sign in as on %1$s. |
 | M3 | the command of D3, including its refusals below | the line |
 | M11 | Setup stopped: ~/.ssh and authorized_keys must be owned by you and must not be links or other file types. | new terminal stderr; needs owner approval |
@@ -610,7 +664,7 @@ replaces in `strings.xml`.
 | M10 | Setup command (screen reader name) · kudde setup command (share title) | new |
 | D1 | First connection to %1$s. The command you ran there printed its host key. Trust it only if the fingerprint is the same: | First connection to %1$s. Check that this fingerprint matches the machine's host key. |
 | D2 | Not the same? Do not trust it. Something else answered at that address: Tailscale SSH, or another SSH server on that port. | new |
-| K1 | %1$s did not accept the phone key. / Run the command above there, signed in as %2$s, then try again. If it went through a chat or notes app, check that its quotes arrived unchanged. | Phone key not accepted |
+| K1 | %1$s did not accept the phone key. / Choose how to add it, signed in as %2$s. If you already ran the command, check that its quotes arrived unchanged, then try again. | Phone key not accepted |
 | K2 | herdr-core was not found on %1$s. / Install it there as %2$s, then try again. The setup guide has the command. | herdr-core not found on this machine |
 
 Unchanged in the dialog: "Trust this machine?", "After this, a different
@@ -629,7 +683,7 @@ trust: "Phone key locked", "Unlock", and the too-old texts.
 | C6 | Start a terminal or agent | new |
 | C7 | Done | new |
 | C8 | Alerts while the app is closed are turned on per machine, under Machines. | new |
-| P1 | One command to run on this machine (card row "Add the phone key") | One line for this machine's authorized_keys |
+| P1 | Add it yourself (machine card choice) | One line for this machine's authorized_keys |
 | P2 | To let this phone into a machine, run this there, signed in as the user your agents run under: | Add this line to ~/.ssh/authorized_keys of the user you sign in as on each machine. |
 | P3 | Copy only the key line | Copy |
 
@@ -640,18 +694,21 @@ the "Getting around" screen's G1 to G6)
 | Id | Text | Was |
 |---|---|---|
 | G1 | Move around from this bar | new |
-| G2 | Swipe sideways: the other panes of this tab. At either end the bar bounces. | new |
+| G2 | Swipe sideways for other panes in this tab. At either end it bounces; with one pane it only bounces. | new |
 | G3 | Swipe up: the next agent that needs you. Down: back. | new |
 | G4 | Tap the map: every pane of the tab. | new |
 | G5 | Got it (also the TalkBack action's name) | new |
 | G6 | With TalkBack, the title bar's actions move around: Next terminal, Previous terminal, Next agent that needs you. Double tap the map for every pane of the tab. (in place of G2 to G4 while touch exploration is on) | new |
 
-**Run it from this phone** (D12; drafts awaiting approval; decision 10
+**The two key-install choices and password detail** (D12; drafts awaiting approval; decision 10
 answered (a))
 
 | Id | Text | Was |
 |---|---|---|
-| R1 | Run it from this phone | new |
+| R1 | kudde adds it for you | new, first choice on step 2 and rejected-key cards |
+| R17 | Add it yourself | new, second choice on step 2 and rejected-key cards |
+| R18 | Run one command at the machine. kudde never sees a password. | new manual-choice description |
+| R19 | Both ways add only this phone's public key, limited to herdr-core. Existing keys stay in place. | new shared choice note |
 | R2 | kudde signs in once as %2$s with that account's password, adds the same key and signs out. The password is not stored. | new |
 | R3 | First connection to %1$s. If this key is not your machine's, whoever answered gets the password, and setup can still look as if it worked. Trust it only if you are sure. | new (dialog's first paragraph) |
 | R4 | To compare, run this at %1$s: (then the line, e.g. `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`) | new |
@@ -660,12 +717,12 @@ answered (a))
 | R7 | Add the key | new |
 | R8 | Adding the key on %1$s… | new |
 | R9 | %1$s did not accept the password for %2$s. / Check it and try again. Nothing was changed there. | new |
-| R10 | %1$s does not take a password over SSH. / Use the command above at the machine: it needs none. | new |
-| R11 | %1$s asks for more than a password, such as a code. / Use the command above at the machine. | new |
+| R10 | %1$s does not take a password over SSH. / Choose "Add it yourself" to run the command at the machine: it needs none. | new |
+| R11 | %1$s asks for more than a password, such as a code. / Choose "Add it yourself" to run the command at the machine. | new |
 | R12 | The connection to %1$s dropped while the key was being added. / kudde cannot tell whether it went in. Try again: adding it twice does no harm. | new |
 | R13 | The setup on %1$s stopped: / (M11 or M12, as the machine printed it) | new |
-| R14 | The setup on %1$s ended with code %2$d. / Run the command above at the machine to see why. | new |
-| R15 | %1$s refused the password again. / Some machines lock an account after a few wrong tries. To be safe, use the command above at the machine. | new |
+| R14 | The setup on %1$s ended with code %2$d. / Choose "Add it yourself" to run the command at the machine to see why. | new |
+| R15 | %1$s refused the password again. / Some machines lock an account after a few wrong tries. To be safe, choose "Add it yourself" to run the command at the machine. | new |
 | R16 | kudde added the key, but %1$s still refuses it. / The SSH server may read keys from another file, or refuse the home directory's permissions (StrictModes). The setup guide's check script finds out which. | new |
 
 ## Risks / Trade-offs
@@ -699,8 +756,9 @@ answered (a))
 
 ## Migration
 
-None for stored data: the machine list, host keys and the phone key are
-untouched. An installed app with machines never sees the welcome. The
+The machine list, host keys and phone key are untouched. D1 adds first-run
+status and a non-secret resume checkpoint; D11 adds the hint seen flag.
+These preferences are excluded from backup and transfer. An installed app with machines never sees the welcome. The
 README's "Setting up" is rewritten to the app's steps, and its herdr-core
 link (`README.md:75`, which points at a repository that does not exist)
 is corrected.
