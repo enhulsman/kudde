@@ -544,8 +544,10 @@ of one pane included (then the map is one marked cell), and the title bar
 has room for it ("The title bar fits its controls"). A tap on the map SHALL
 open the tab overview, so the space's other tabs are always reachable from
 an open terminal. For a terminal in no pane the title bar SHALL show no map.
-The marked cell SHALL stand out from the unmarked cells and from the title
-bar at a contrast ratio of at least 3:1 in both themes. The title bar SHALL
+Every cell of a map, a plain shell's included, SHALL stand out from the
+title bar and from the Spaces view at a contrast ratio of at least 3:1 in
+both themes, and the open terminal's cell SHALL be the only cell filled in
+the text colour. The title bar SHALL
 NOT show pane dots, beside the map or in its place.
 The line under the name SHALL stay as capability agent-names sets it.
 
@@ -570,10 +572,11 @@ The line under the name SHALL stay as capability agent-names sets it.
 - **THEN** it shows a map of one marked cell, spoken as "Tab overview, terminal 1 of 1"
 - **AND** a tap on it opens the tab overview, from which the other tab's terminals open
 
-#### Scenario: The marked cell is easy to see
-- **GIVEN** the open terminal is the second of three panes, in the Graphite and in the Paper theme
+#### Scenario: A plain shell's cell is easy to see
+- **GIVEN** the open terminal is the second of three panes and the other two run plain shells, in the Graphite and in the Paper theme
 - **WHEN** the title bar shows
-- **THEN** the marked cell's colour has a contrast ratio of at least 3:1 against the unmarked cells and against the title bar
+- **THEN** the plain shells' cells stand out from the title bar at a contrast ratio of at least 3:1
+- **AND** the open terminal's cell is the only one filled in the text colour
 
 ### Requirement: A tab overview shows the splits as tiles
 The tab overview SHALL show one tab at a time: the space's name, the
