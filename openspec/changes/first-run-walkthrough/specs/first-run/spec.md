@@ -270,20 +270,18 @@ that cannot be reached SHALL offer "Change the address", which opens step
 The "Add it yourself" detail of step 2 SHALL show one command to run on the machine, as the user of step 1,
 and SHALL say so with the machine's name and the user. The command SHALL:
 create `~/.ssh` when missing and correct its mode to 700 even when it
-already exists; verify that this directory and any existing `authorized_keys`
-are owned by the current user and are ordinary directory/file paths, not
-symlinks, or refuse with the plain message in D3; establish mode 600 on
-`authorized_keys` before appending (including an owner-owned 0400 file); append to
+already exists; establish mode 600 on `authorized_keys` before appending
+(including an owner-owned 0400 file); append to
 `~/.ssh/authorized_keys` exactly the line the app generates today (`restrict`
 plus the forced herdr-core command, machine-connection spec, "The key is
 restricted to herdr-core on each machine"), on a line of its own also when
 the file did not end in a line break; set that file's mode to 600; and
 print the fingerprint of the machine's host key of the type the machine
-presented in step 1, only after every ownership/type check, creation,
-permission correction and append succeeded. Any installation failure SHALL
-exit nonzero, print a plain refusal on stderr and print no fingerprint.
-Ownership is refused, never silently left or changed through privilege escalation.
-The command SHALL contain no secret and no other
+presented in step 1, only after every creation, permission correction and
+append succeeded. Any installation failure SHALL exit nonzero and print no
+fingerprint. The command SHALL print no messages of its own, SHALL NOT
+change ownership or use privilege escalation, and SHALL stay short enough
+to read (design D3). The command SHALL contain no secret and no other
 action, SHALL work pasted as it is into sh, bash and zsh, and SHALL be
 built next to the line (one source for both). Under the command the step
 SHALL say what it does and what the key is limited to, in the words the
@@ -326,9 +324,9 @@ the host key part, and "Copy only the key line" for people who manage
 - **THEN** its mode becomes 600 before appending, existing contents survive and the fingerprint prints only after the append succeeds
 
 #### Scenario: Installation cannot finish
-- **GIVEN** directory creation, chmod or append fails, or either path is a symlink, a wrong type or owned by another user
+- **GIVEN** directory creation, chmod or append fails, for instance because the home directory cannot be written or `~/.ssh` belongs to another user
 - **WHEN** the command runs
-- **THEN** it exits nonzero with the applicable D3 refusal on stderr and no fingerprint; ownership is not changed
+- **THEN** it exits nonzero, the shell's own error shows, no fingerprint prints and ownership is not changed
 
 #### Scenario: The line and the command cannot drift
 - **WHEN** the forced command changes in the code
@@ -501,9 +499,8 @@ in, the app SHALL run, once, exactly the Phone key variant of the setup
 command (the command of "One command at the machine" without the host key
 part, byte for byte) through `sh -s`, and request nothing else on the
 session (no pty, environment, agent, X11 or port forwarding), then
-disconnect; it SHALL NOT retry by itself. Of the machine's standard error
-it SHALL show only a line exactly equal to one of the command's own two
-refusals. Running out of time after signing in SHALL read as a dropped
+disconnect; it SHALL NOT retry by itself. It SHALL NOT show the machine's
+standard error; a nonzero exit SHALL show its code. Running out of time after signing in SHALL read as a dropped
 connection whose result is unknown. The line it installs SHALL be the same
 restricted line. When the phone key is still refused after a run that
 ended well, the step SHALL say that kudde added the key but the machine
@@ -592,10 +589,10 @@ nothing on this path.
 - **WHEN** the connection ends before the setup's exit status arrives
 - **THEN** step 2 reads "The connection to workstation dropped while the key was being added." with "Try again", and a script cut off in transfer ran no part of itself; running out of time after signing in reads the same
 
-#### Scenario: The setup refuses at the machine
-- **GIVEN** dev's `~/.ssh` is a link
+#### Scenario: The setup fails at the machine
+- **GIVEN** dev's home directory cannot be written
 - **WHEN** the app runs the setup
-- **THEN** step 2 reads "The setup on workstation stopped:" followed by the command's own refusal, and the connection has ended
+- **THEN** step 2 reads "The setup on workstation ended with code 1." with its advice, no output from the machine is shown, and the connection has ended
 
 #### Scenario: One run, then gone
 - **WHEN** the setup finishes, whatever its outcome

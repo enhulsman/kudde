@@ -133,40 +133,31 @@ middle line is the app's line as `authorized_keys_line` builds it today):
 ```sh
 (
   umask 077
-  if [ -L "$HOME/.ssh" ] ||
-     { [ -e "$HOME/.ssh" ] && { [ ! -d "$HOME/.ssh" ] ||
-       [ -z "$(find "$HOME/.ssh" -prune -user "$(id -u)" -print)" ]; }; } ||
-     [ -L "$HOME/.ssh/authorized_keys" ] ||
-     { [ -e "$HOME/.ssh/authorized_keys" ] && { [ ! -f "$HOME/.ssh/authorized_keys" ] ||
-       [ -z "$(find "$HOME/.ssh/authorized_keys" -prune -user "$(id -u)" -print)" ]; }; }
-  then
-    printf '%s\n' 'Setup stopped: ~/.ssh and authorized_keys must be owned by you and must not be links or other file types.' >&2
-    exit 1
-  fi
-  if ! { mkdir -p "$HOME/.ssh" && chmod 700 "$HOME/.ssh" &&
-         touch "$HOME/.ssh/authorized_keys" && chmod 600 "$HOME/.ssh/authorized_keys" &&
-         cat >> "$HOME/.ssh/authorized_keys" <<'KUDDE_KEY'
+  mkdir -p ~/.ssh && chmod 700 ~/.ssh &&
+  touch ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys &&
+  cat >> ~/.ssh/authorized_keys <<'KUDDE_KEY' &&
 
 restrict,command="sh -c '…'" ecdsa-sha2-nistp256 AAAA… kudde
 KUDDE_KEY
-  }; then
-    printf '%s\n' 'Setup failed: could not create, secure or write ~/.ssh/authorized_keys. Check your account permissions and disk space, then try again.' >&2
-    exit 1
-  fi
   ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
 )
 ```
 
 - One POSIX sh subshell command; also pasteable in bash and zsh on Linux
-  and macOS. Uses their common `test -e` and `-L`, POSIX `find -user`,
-  `id`, `mkdir`, `chmod`, `touch`, `cat` and `printf`; no GNU-only flags.
-- Preflight refuses wrong ownership, links and non-directory/non-regular
-  paths before modifying them. No `sudo` or `chown`. The account's home
-  and ancestors must already satisfy sshd's StrictModes ownership/mode
-  checks; this command does not change the home directory.
-- Existing directories are explicitly secured with `chmod 700`. An
-  owner-owned read-only file is made 600 before appending. All operations
-  are chained: any failure exits before fingerprint printing.
+  and macOS. Uses only `umask`, `mkdir -p`, `chmod`, `touch`, `cat` and
+  `ssh-keygen`; no GNU-only flags.
+- Short on purpose (owner's answer, review part 3: the earlier version,
+  about 25 lines with ownership and file-type checks and two messages of
+  its own, felt daunting to paste). The checks bought clearer errors in
+  rare setups (a `~/.ssh` owned by someone else or not a directory), not
+  safety: sshd's StrictModes refuses those anyway, the shell's own error
+  ("Permission denied") shows, and the setup guide's check script explains
+  it. No `sudo` or `chown`; ownership is never changed. A `~/.ssh` that is
+  a link to a directory the user owns works.
+- `~/.ssh` is set to 700 and `authorized_keys` to 600 before appending, so
+  an existing 0775 directory and an owner-owned 0400 file both work. All
+  steps are chained with `&&`: any failure exits nonzero before the
+  fingerprint prints.
 - The quoted here-document passes the generated restricted line through
   unchanged. The leading blank line separates an existing unterminated
   key. Repeating the command may append another identical phone line;
@@ -502,10 +493,9 @@ reassures, and the README says the same (5.1).
    the same restricted line. Through `sh -s`, the account's login shell
    (fish too) only starts sh. The script is one parenthesised command, so
    sh reads all of it before running any of it: a cut-off transfer is a
-   syntax error and changes nothing. Exit 0 is done; exit 1 with a line
-   of standard error exactly equal to M11 or M12 shows that line (R13);
-   anything else shows its code (R14), and no other standard error is
-   ever shown (shell start-up files may print anything). Then the session
+   syntax error and changes nothing. Exit 0 is done; any other exit shows
+   its code (R14). Standard error is never shown: the command prints no
+   messages of its own, and shell start-up files may print anything. Then the session
    disconnects. It runs once per tap, with no automatic retry, within 20
    seconds to dial (as `link.rs:21`) and 60 in all; running out of time
    after signing in reads as R12. The session asks for nothing but that
@@ -527,7 +517,7 @@ reassures, and the README says the same (5.1).
 | No password method | R10, no field |
 | More than a password | R11 |
 | Dropped or out of time after signing in | R12: whether the key went in is not known; repeating preserves other keys (D3) |
-| The script refused | R13 with M11 or M12 |
+| The script ended with another code | R14 |
 | Done | "Connecting to …", then step 3 |
 | Done, but the phone key is still refused | R16, never the password again |
 
@@ -697,9 +687,7 @@ replaces in `strings.xml`.
 |---|---|---|
 | M1 | This phone's key | new |
 | M2 | On %1$s, signed in as %2$s, paste this into a terminal and press Enter: | Add this line to ~/.ssh/authorized_keys of the user you sign in as on %1$s. |
-| M3 | the command of D3, including its refusals below | the line |
-| M11 | Setup stopped: ~/.ssh and authorized_keys must be owned by you and must not be links or other file types. | new terminal stderr; needs owner approval |
-| M12 | Setup failed: could not create, secure or write ~/.ssh/authorized_keys. Check your account permissions and disk space, then try again. | new terminal stderr; needs owner approval |
+| M3 | the command of D3 (approved 2026-11-22 in its short form; it prints no messages of its own) | the line |
 | M4 | Copy / Copied | unchanged |
 | M5 | Share | new |
 | M6 | Sending it to yourself in a note or a message is fine: nothing in it is secret. | new |
@@ -783,7 +771,6 @@ answered (a))
 | R10 | %1$s does not take a password over SSH. / Choose "Add it yourself" to run the command at the machine: it needs none. | new |
 | R11 | %1$s asks for more than a password, such as a code. / Choose "Add it yourself" to run the command at the machine. | new |
 | R12 | The connection to %1$s dropped while the key was being added. / kudde cannot tell whether it went in. Try again: adding it twice does no harm. | new |
-| R13 | The setup on %1$s stopped: / (M11 or M12, as the machine printed it) | new |
 | R14 | The setup on %1$s ended with code %2$d. / Choose "Add it yourself" to run the command at the machine to see why. | new |
 | R15 | %1$s refused the password again. / Some machines lock an account after a few wrong tries. To be safe, choose "Add it yourself" to run the command at the machine. | new |
 | R16 | kudde added the key, but %1$s still refuses it. / The SSH server may read keys from another file, or refuse the home directory's permissions (StrictModes). The setup guide's check script finds out which. | new |
