@@ -71,7 +71,8 @@ private val ShadowRoom = 24.dp
  * `.qbtn` and `.qmenu`: a 48 dp three-dot button, last in the bar, spoken
  * "More options"; a tap opens the menu under it at the right, in its own
  * window (a Compose Popup, focusable, so a tap outside and Back close it and
- * reach nothing else). Choosing an item closes the menu, then runs it.
+ * reach nothing else). Choosing an item closes the menu at once (no exit motion), then runs it; a tap
+ * outside or Back closes it with the exit motion.
  */
 @Composable
 fun TitleBarMenu(items: List<TitleBarMenuItem>, state: TitleBarMenuState = remember { TitleBarMenuState() }) {
@@ -86,7 +87,8 @@ fun TitleBarMenu(items: List<TitleBarMenuItem>, state: TitleBarMenuState = remem
             present = true
             if (reduced) motion.snapTo(1f) else motion.animateTo(1f, AgentMotion.springs.getValue("fastSpatial"))
         } else {
-            if (reduced) motion.snapTo(0f) else motion.animateTo(0f, AgentMotion.springs.getValue("fastEffects"))
+            // A chosen item has already dropped the popup: nothing to animate.
+            if (reduced || !present) motion.snapTo(0f) else motion.animateTo(0f, AgentMotion.springs.getValue("fastEffects"))
             present = false
         }
     }
@@ -111,6 +113,8 @@ fun TitleBarMenu(items: List<TitleBarMenuItem>, state: TitleBarMenuState = remem
                 motionProgress = if (open) motion.value else 1 - motion.value, opening = open) {
                 TitleBarMenuPanel(items, progress = if (open) motion.value else 1f) { item ->
                     if (open) {
+                        // Drop the focusable popup with the choice: its exit would eat a Back at once.
+                        present = false
                         open = false
                         item.onClick()
                     }

@@ -32,6 +32,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -394,9 +395,21 @@ fun <D : Any> ScreenStackHost(
             // Capture one coherent composition snapshot. Reading gesture live inside
             // focusProperties races the captured `changing` flag at rollback completion.
             val acceptsFocus = ownsInput && (!changing || state.gesture)
+            val leaving by rememberUpdatedState(outgoing)
             DestinationLifecycle(active = ownsInput) {
                 Box(
                     Modifier.fillMaxSize()
+                        // Always in the chain, so a pointer already down keeps no path to a descendant:
+                        // while this destination leaves, every change is consumed before it arrives
+                        // and the descendant's clickable sees a consumed up and cancels.
+                        .pointerInput(Unit) {
+                            awaitPointerEventScope {
+                                while (true) {
+                                    val event = awaitPointerEvent(PointerEventPass.Initial)
+                                    if (leaving) event.changes.forEach { it.consume() }
+                                }
+                            }
+                        }
                         .graphicsLayer {
                             if (changing && state.durationScale != 0f) {
                                 val p = state.progress
