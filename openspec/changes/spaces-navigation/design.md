@@ -183,7 +183,8 @@ stays because the title bar's map and the moved-pane test read it.
   up and down walk keeps its end haptic without a bounce, and so does a
   step refused because the compose sheet holds text (D4): the bounce means
   "end of the tab" only.
-- A step gives the light haptic (`CLOCK_TICK`). There is no stronger haptic
+- A step gives the key-tap haptic (`KEYBOARD_TAP`; `CLOCK_TICK` until the
+  owner found it almost unnoticeable on a Pixel 10, 2026-11-22). There is no stronger haptic
   any more: a step never enters another tab. The `entersAnotherTab` flag
   and `HapticFeedbackConstants.CONTEXT_CLICK` of the first version go.
 - `AgentsHome.tab` (`:153`) changes to this walk; `step` (`:129`), `walk`,
@@ -222,7 +223,7 @@ not touched.
   nothing. The change adds one guard there: refuse while the compose sheet
   holds text.
 - **Three outcomes, one result type.** Today `onTab` and `onSwipe` return a
-  Boolean (moved or not), and the handler plays `CLOCK_TICK` or `REJECT`. A
+  Boolean (moved or not), and the handler plays `KEYBOARD_TAP` or `REJECT`. A
   refusal must give `REJECT` without the bounce, and an end sideways
   `REJECT` with it, so a Boolean is not enough. The decision moves out of
   the composable into a pure function in `ui/terminal/TitleBarStep.kt`:
@@ -231,7 +232,7 @@ not touched.
   enum class Bounce { LEFT, RIGHT }
 
   sealed interface TitleBarStep {
-      data object Moved : TitleBarStep                    // CLOCK_TICK
+      data object Moved : TitleBarStep                    // KEYBOARD_TAP
       data class End(val bounce: Bounce?) : TitleBarStep  // REJECT; a bounce only sideways, with animations on
       data object Refused : TitleBarStep                  // REJECT, never a bounce
   }

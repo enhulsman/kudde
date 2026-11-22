@@ -1,5 +1,6 @@
 package dev.kudde.android.ui.terminal
 
+import android.view.HapticFeedbackConstants
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -66,5 +67,15 @@ class TitleBarStepTest {
         assertNull(step(dx = 0f, dy = 0f, moves = true))
         assertNull("no haptic for a short drag, refused or not", step(dx = -60f, dy = 0f, moves = true, refused = true))
         assertEquals(emptyList<String>(), calls)
+    }
+
+    // Owner, 2026-11-22: the light tick was almost unnoticeable on a Pixel 10, so a
+    // step taps like a key; an end or a refusal keeps the reject buzz.
+    @Test
+    fun aStepTapsLikeAKeyAndAnEndOrRefusalRejects() {
+        assertEquals(HapticFeedbackConstants.KEYBOARD_TAP, titleBarHaptic(TitleBarStep.Moved))
+        for (step in listOf(TitleBarStep.End(Bounce.LEFT), TitleBarStep.End(null), TitleBarStep.Refused)) {
+            assertEquals("$step", HapticFeedbackConstants.REJECT, titleBarHaptic(step))
+        }
     }
 }
