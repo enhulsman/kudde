@@ -7,6 +7,11 @@ import android.view.KeyEvent
 import android.view.MotionEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.LifecycleRegistry
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.semantics.Role
 import dev.kudde.android.testing.BoundedFrames
@@ -378,4 +383,41 @@ class TitleBarMenuTest {
         assertEquals("menu Back must send nothing and detach nothing", before, host.opened.view.calls)
     }
 
+
+    // Codex review 7.3: a destination that loses ownership mid-transition (the screen
+    // stack lowers its lifecycle to CREATED) must not keep its menu's focusable window,
+    // which the host's touch, focus and semantics gates cannot reach.
+    @Test
+    fun aMenuWhoseScreenLosesOwnershipDropsItsWindowAtOnce() {
+        val owner = object : LifecycleOwner {
+            val registry = LifecycleRegistry.createUnsafe(this).apply { currentState = Lifecycle.State.RESUMED }
+            override val lifecycle: Lifecycle get() = registry
+        }
+        session.attach(view)
+        session.listener.onState(TermState(TermPhase.Watching, 96u, 44u))
+        session.listener.onFrame(SessionFixture.frame(96, 44, wide = true, bottom = false))
+        val ui = terminalUi(TitleBarFixtures.hub, TitleBarFixtures.pricing, activity.resources)
+        activity.setContent {
+            CompositionLocalProvider(LocalLifecycleOwner provides owner) {
+                KuddeTheme(dark = true) {
+                    TerminalScreen(ui, session, screen, actions, TerminalInputHandle.None, composeFocus = false, onChat = {}, onChanges = { changes++ }, onMap = {}, menuState = menu)
+                }
+            }
+        }
+        idle()
+        openMenu()
+        val windows = windowRoots().size
+
+        owner.registry.currentState = Lifecycle.State.CREATED
+        frame()
+
+        assertNull("no Changes item is left to tap or hear", item())
+        assertFalse("the menu counts as closed", menu.open)
+        assertEquals("the popup's window is gone", windows - 1, windowRoots().size)
+        assertEquals("nothing was opened", 0, changes)
+
+        owner.registry.currentState = Lifecycle.State.RESUMED
+        idle()
+        assertNull("it does not come back when the screen is shown again", item())
+    }
 }

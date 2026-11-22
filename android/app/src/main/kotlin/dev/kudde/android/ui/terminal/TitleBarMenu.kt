@@ -42,6 +42,9 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.PopupPositionProvider
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.currentStateAsState
 import dev.kudde.android.R
 import dev.kudde.android.ui.components.ModalPopup
 import dev.kudde.android.ui.theme.KuddeBorder
@@ -81,6 +84,18 @@ fun TitleBarMenu(items: List<TitleBarMenuItem>, state: TitleBarMenuState = remem
     var present by remember { mutableStateOf(open) }
     val motion = remember { Animatable(if (open) 1f else 0f) }
     val resolver = LocalContext.current.contentResolver
+    // The screen stack lowers a leaving destination's lifecycle to CREATED. The popup is its own
+    // focusable window, out of reach of the host's touch, focus and semantics gates, so a menu
+    // whose screen no longer owns input closes at once, without its exit motion (Codex review 7.3).
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val lifecycleState by lifecycle.currentStateAsState()
+    val owned = lifecycleState.isAtLeast(Lifecycle.State.STARTED) && lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+    LaunchedEffect(owned) {
+        if (!owned) {
+            present = false
+            open = false
+        }
+    }
     LaunchedEffect(open) {
         val reduced = Settings.Global.getFloat(resolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
         if (open) {
@@ -106,7 +121,7 @@ fun TitleBarMenu(items: List<TitleBarMenuItem>, state: TitleBarMenuState = remem
         ) {
             LineIconImage(LineIcon.More, if (open) c.fg else c.muted, 22.dp)
         }
-        if (open || present) {
+        if (owned && (open || present)) {
             val density = LocalDensity.current
             val position = remember(density) { MenuPosition(density) }
             ModalPopup(popupPositionProvider = position, onDismissRequest = { open = false }, shadowRoom = ShadowRoom,
