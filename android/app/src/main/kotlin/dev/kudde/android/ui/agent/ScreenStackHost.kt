@@ -212,6 +212,7 @@ fun <D : Any> ScreenStackHost(
         state.job = currentCoroutineContext().job
         state.gesture = true
         state.durationScale = scale()
+        MotionLog.change("back-start", state.durationScale, currentCoroutineContext(), "predictive=${instance.predictive}")
         val from = latestBackSource()
         val to = latestBackTarget()
         // Known at the start, so the frames before the first progress event already
@@ -249,6 +250,7 @@ fun <D : Any> ScreenStackHost(
                 }
                 // The system decides: a commit finishes from where the finger is, a cancel
                 // (handleOnBackCancelled) cancels this job and rolls back below.
+                MotionLog.change("back-release", state.durationScale, currentCoroutineContext(), "hadEvents=$hadEvents")
                 if (!hadEvents) state.predictive = false
                 if (state.predictive && hadEvents) {
                     state.releaseStart = lastProgress
@@ -341,6 +343,7 @@ fun <D : Any> ScreenStackHost(
         state.gesture = false
         state.predictive = false
         state.durationScale = scale()
+        MotionLog.change("change", state.durationScale, coroutineContext)
         state.job?.cancel()
         clearInput()
         val from = requested?.first ?: state.target ?: state.settled
