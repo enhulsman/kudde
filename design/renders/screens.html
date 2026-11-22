@@ -1018,7 +1018,7 @@ function frConnected(theme){
 }
 function frAlerts(theme,state='received'){
   const missed=state==='missed';
-  return frPhone(theme,frBody(4,'Alerts',`<p>kudde can tell you when an agent needs you or has finished, also while the app is closed.</p>
+  return frPhone(theme,frBody(4,'Alerts (optional)',`<p>kudde can tell you when an agent needs you or has finished, also while the app is closed.</p>
     <p>It needs two things: a UnifiedPush app such as ntfy on this phone, and kudde-push running on workstation. The setup guide shows how to install kudde-push.</p>
     ${frGuide()}
     ${state==='before'?'':`<div class="fr-notice">${missed?`<span>No test alert from workstation within 30 seconds.</span><p>Check that kudde-push runs there; the setup guide shows how.</p>`:`<span style="display:flex;align-items:center;gap:10px"><span class="dot" style="background:var(--a2)"></span>Alerts reach this phone.</span>`}</div>`}`),

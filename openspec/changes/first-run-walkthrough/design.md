@@ -624,7 +624,7 @@ Goldens in graphite and paper; welcome, both choice layouts, all four steps,
 password detail and hint at 2x text. Each changed or new render needs owner
 sign-off before production screens. No signed-off checkpoint changes here.
 
-## Texts (every line needs the owner's approval)
+## Texts (approved by the owner, review parts 1 to 5, 2026-11-22)
 
 `%1$s` and the like are filled in by the app. "Was" names the string it
 replaces in `strings.xml`.
@@ -717,13 +717,13 @@ trust: "Phone key locked", "Unlock", and the too-old texts.
 | P2 | To let this phone into a machine, run this there, signed in as the user your agents run under: | Add this line to ~/.ssh/authorized_keys of the user you sign in as on each machine. |
 | P3 | Copy only the key line | Copy |
 
-**Step 4, alerts** (D13; drafts awaiting approval. C4, C6 and C7 moved here
+**Step 4, alerts** (D13; approved 2026-11-22. C4, C6 and C7 moved here
 from step 3; C8 is gone, step 4 replaces it. The existing alert texts in
 `strings.xml` are reused where named.)
 
 | Id | Text | Was |
 |---|---|---|
-| AL1 | Alerts | new (step heading) |
+| AL1 | Alerts (optional) | new (step heading; "(optional)" added in review part 3 so the routes read as the way past it) |
 | AL2 | kudde can tell you when an agent needs you or has finished, also while the app is closed. | new |
 | AL3 | It needs two things: a UnifiedPush app such as ntfy on this phone, and kudde-push running on %1$s. The setup guide shows how to install kudde-push. | new |
 | AL4 | Turn on alerts | `alerts_turn_on` "Turn on" on the card |
@@ -738,7 +738,7 @@ from step 3; C8 is gone, step 4 replaces it. The existing alert texts in
 | C6 | Start a terminal or agent | new (from step 3) |
 | C7 | Done | new (from step 3) |
 
-**The title bar hint** (drafts awaiting approval; they describe the
+**The title bar hint** (approved 2026-11-22; they describe the
 gestures of `spaces-navigation` and change if those change; they replace
 the "Getting around" screen's G1 to G6)
 
@@ -749,9 +749,9 @@ the "Getting around" screen's G1 to G6)
 | G3 | Swipe up: the next agent that needs you. Down: back. | new |
 | G4 | Tap the map: every pane of the tab. | new |
 | G5 | Got it (also the TalkBack action's name) | new |
-| G6 | With TalkBack, the title bar's actions move around: Next terminal, Previous terminal, Next agent that needs you. Double tap the map for every pane of the tab. (in place of G2 to G4 while touch exploration is on) | new |
+| G6 | With TalkBack, the title bar's actions move around: Next terminal, Previous terminal, Next agent that needs you, Previous agent that needs you. Double tap the map for every pane of the tab. (in place of G2 to G4 while touch exploration is on) | new |
 
-**The two key-install choices and password detail** (D12; drafts awaiting approval; decision 10
+**The two key-install choices and password detail** (D12; approved 2026-11-22; decision 10
 answered (a))
 
 | Id | Text | Was |
