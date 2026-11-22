@@ -359,9 +359,7 @@ internal fun TitleBar(
     // Plays a step's result: the haptic, and the bounce at a tab's end (design D3, D4).
     val play: (TitleBarStep?) -> Unit = { step ->
         if (step != null) {
-            view.performHapticFeedback(
-                if (step == TitleBarStep.Moved) HapticFeedbackConstants.CLOCK_TICK else HapticFeedbackConstants.REJECT,
-            )
+            view.performHapticFeedback(titleBarHaptic(step))
         }
         val direction = (step as? TitleBarStep.End)?.bounce
         if (direction != null) {

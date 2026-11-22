@@ -1,5 +1,6 @@
 package dev.kudde.android.ui.terminal
 
+import android.view.HapticFeedbackConstants
 import androidx.compose.ui.unit.dp
 import kotlin.math.abs
 
@@ -8,7 +9,7 @@ enum class Bounce { LEFT, RIGHT }
 
 /** What a drag on the title bar did (design D4); the title bar plays it. */
 sealed interface TitleBarStep {
-    /** Another terminal opened: the light haptic (`CLOCK_TICK`). */
+    /** Another terminal opened: the key-tap haptic (`KEYBOARD_TAP`). */
     data object Moved : TitleBarStep
 
     /** Nothing to open: the end haptic (`REJECT`); a bounce only sideways, with animations on. */
@@ -17,6 +18,13 @@ sealed interface TitleBarStep {
     /** The compose sheet holds text: the end haptic, never a bounce. */
     data object Refused : TitleBarStep
 }
+
+/**
+ * The haptic a step plays: a key tap for a step (the owner found the light
+ * `CLOCK_TICK` almost unnoticeable, 2026-11-22), the reject buzz otherwise.
+ */
+fun titleBarHaptic(step: TitleBarStep): Int =
+    if (step == TitleBarStep.Moved) HapticFeedbackConstants.KEYBOARD_TAP else HapticFeedbackConstants.REJECT
 
 /**
  * Null for a drag shorter than [threshold] in its longer direction. A refusal is
