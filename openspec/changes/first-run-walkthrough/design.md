@@ -79,10 +79,13 @@ any future demo entered from welcome must lead back into setup.
 
 **Forced:** on every start before a real machine connects, show the welcome
 if setup has not started, otherwise resume the saved full-screen setup step.
-Android Back on the welcome closes the app, not setup. Back on a first-setup
-step closes a dialog or key-install detail first; from the step's root it
-closes the app, preserving that step, fields and any listed machine. The lock
-notice follows the same rule. Returning resumes where the person left it.
+The welcome has no back arrow, and Android Back there closes the app, not
+setup. Every step has a back arrow (owner's answer, review part 2: an arrow
+that closes the app would surprise). Back closes a dialog or key-install detail
+first, then goes one step back: lock notice to welcome, step 1 to welcome (to
+the opener for a later machine), step 2 to step 1 with its fields, step 3 to
+the home (connected, so setup is done), step 4 to step 3. Returning resumes
+where the person left it, the welcome included.
 A tapped alert cannot bypass setup. Only a real machine reaching Connected
 at step 3 completes first setup; listing, importing, confirming trust or
 installing a key alone does not. Normal navigation applies after completion.
@@ -277,8 +280,11 @@ The flow keeps the furthest step it has shown for the machine, so the
 Keep screen, machine, step, entry point, selected choice and typed fields
 in the D1 checkpoint as well as saved-instance state, so cold launches and
 process death resume too. Keep whether this visit added the machine for the
-existing Back cleanup for later additions only. First setup preserves its
-checkpoint on Back and closes the app from a step root. An alert cannot
+Back cleanup on step 1, which removes a machine this visit added that was
+never reached and keeps the typed fields, in first setup and later additions
+alike. Back lowers the saved step to the screen it opens (step 2 to step 1,
+step 1 to the welcome), so the furthest-step rule never pushes the person
+forward past a Back. An alert cannot
 bypass first setup; after completion it may open its agent without losing
 a later machine's setup.
 

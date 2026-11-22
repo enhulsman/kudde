@@ -19,9 +19,11 @@ Until a real machine connects at step 3, every start SHALL return to the
 welcome or saved setup step before any app destination. There SHALL be no
 skip action or way out into home or Machines. Closing the app, pressing Back,
 receiving an alert, listing/importing a machine, confirming its key or running
-the installation SHALL NOT count as completion. Back on the welcome SHALL
-close the app rather than skip setup. Leaving and returning SHALL resume
-the same screen and step. Demo scope remains open (decision 3); any future
+the installation SHALL NOT count as completion. The welcome SHALL have no
+back arrow, and Android Back there SHALL close the app rather than skip
+setup; every setup step SHALL have a back arrow that goes one step back (see
+"Setup survives leaving the app"). Leaving and returning SHALL resume the
+same screen and step. Demo scope remains open (decision 3); any future
 demo entered from welcome SHALL lead back into setup.
 
 First-setup progress and the non-secret checkpoint in design D1 SHALL survive
@@ -42,12 +44,13 @@ once-only welcome. Clearing app data SHALL restore first setup.
 #### Scenario: Every start until a real machine connects
 - **GIVEN** no real machine has connected and the person has left the welcome or any unfinished setup step
 - **WHEN** the person starts kudde again, including after a cold launch or process death, any number of times
-- **THEN** the welcome shows if setup has not started, otherwise the same setup step, machine, fields and key-install choice resume; home and Machines remain unavailable until a real connection succeeds
+- **THEN** the screen they left shows again: the welcome, or the same setup step with its machine, fields and key-install choice; home and Machines remain unavailable until a real connection succeeds
 
 #### Scenario: Back on the welcome closes the app
 - **GIVEN** the welcome shows before any real machine has connected
 - **WHEN** the person presses Android Back
 - **THEN** the app closes without showing home or marking setup completed, and the next start shows the welcome again
+- **AND** the welcome shows no back arrow
 
 #### Scenario: Successful first connection
 - **GIVEN** setup is unfinished
@@ -941,17 +944,27 @@ the same machine and, in step 1, the typed fields, after a switch to
 another app, 60 seconds in the background, a rotation, and a process
 death and a cold launch, including the selected key-install detail. (The person has to leave the app during step 2, to get the command
 to the machine.) A step SHALL
-NOT go back to an earlier one by itself; "Change the address" is the only
-way from step 2 to step 1. Back SHALL close a dialog first, then a key-install
-detail to its two-choice screen. Before first setup completes, Back from the
-welcome, a step root or the lock notice SHALL close the app, preserving the
-same screen, checkpoint, fields and listed machine for the next start; it
-SHALL NOT open home or Machines. For later additions after first completion,
-Back from step 1 SHALL return to the opener and remove only a machine added
-by that visit which was never reached; Back from step 2 SHALL open Machines
-with the machine listed. Step 3 follows a successful real connection and
-Back SHALL open Machines; Back from step 4 SHALL return to step 3. No other typed or added data SHALL be dropped,
-except a password, which is never kept (see "The password is never kept").
+NOT go back to an earlier one by itself; only Back and "Change the address"
+lead from step 2 to step 1. Back, by the arrow or by Android Back, SHALL close
+a dialog first, then a key-install detail to its two-choice screen, and
+otherwise go one step back:
+
+| From | Back opens |
+|---|---|
+| the welcome | nothing: the app closes (no arrow is shown) |
+| the screen-lock notice | the welcome |
+| step 1 | the welcome during first setup; the screen setup was opened from for a later machine |
+| step 2 | step 1, with that machine's address, user and port filled in |
+| step 3 | the home with its agents (the machine is connected, so setup is done) |
+| step 4 | step 3 |
+
+Back from step 1 SHALL remove only a machine added by that visit which was
+never reached, and keep the typed fields in the checkpoint, so the main action
+on the welcome, or setup opened again, resumes step 1 with them. The saved
+step SHALL follow Back down, so a restart resumes the screen Back opened. Before
+first setup completes, Back SHALL NOT open home or Machines. No other typed or
+added data SHALL be dropped, except a password, which is never kept (see "The
+password is never kept").
 
 #### Scenario: Sending the command to yourself
 - **GIVEN** the manual detail of step 2 for workstation
@@ -963,13 +976,18 @@ except a password, which is never kept (see "The password is never kept").
 - **WHEN** the person returns
 - **THEN** step 2 for workstation shows
 
-#### Scenario: Back from step 1
+#### Scenario: Back from step 1 during first setup
+- **GIVEN** first setup is unfinished and step 1 shows with fields typed and nothing listed
+- **WHEN** the person taps the back arrow, then taps "Set up a machine"
+- **THEN** the welcome showed first, and step 1 opens again with the same fields
+
+#### Scenario: Back from step 1 of a later machine
 - **GIVEN** step 1 opened from Machines after first setup completed, with fields typed and nothing listed
 - **WHEN** the person presses back
 - **THEN** the screen setup was opened from shows, no machine was added and the unsent fields remain in the checkpoint for resuming
 
 #### Scenario: Back after a failed try
-- **GIVEN** first setup completed earlier and step 1 of a later addition reads "No answer from 192.0.2.99." for a machine this visit added
+- **GIVEN** step 1 reads "No answer from 192.0.2.99." for a machine this visit added, during first setup or a later addition
 - **WHEN** the person presses back
 - **THEN** that machine is no longer listed
 
@@ -979,14 +997,29 @@ except a password, which is never kept (see "The password is never kept").
 - **THEN** step 2 stays, and step 1 does not show
 
 #### Scenario: Back from step 2
-- **GIVEN** setup was opened from Machines after first setup completed and its step 2 choices show
+- **GIVEN** step 2 choices show for workstation, during first setup or a later addition
 - **WHEN** the person presses back
-- **THEN** the Machines screen shows workstation with its link back into setup
+- **THEN** step 1 shows with workstation's address, user and port filled in, and workstation stays listed
 
-#### Scenario: Back within first setup
-- **GIVEN** first setup is unfinished and step 2 choices show
-- **WHEN** the person presses Back, then starts kudde again
-- **THEN** the app closed without showing home or Machines and the same step 2 resumes, with no lost machine or fields
+#### Scenario: Back from a key-install detail
+- **GIVEN** the manual detail of step 2 for workstation
+- **WHEN** the person presses back
+- **THEN** step 2's two choices show, still for workstation
+
+#### Scenario: Back then a restart
+- **GIVEN** first setup is unfinished and step 2 shows for workstation
+- **WHEN** the person presses back, closes kudde and starts it again
+- **THEN** step 1 for workstation shows with its fields, not step 2, home or Machines
+
+#### Scenario: Back from step 3
+- **GIVEN** step 3 shows workstation connected
+- **WHEN** the person presses back
+- **THEN** the home shows with workstation's agents
+
+#### Scenario: Back on the screen-lock notice
+- **GIVEN** a phone without a screen lock and the notice after the welcome
+- **WHEN** the person presses back
+- **THEN** the welcome shows
 
 #### Scenario: A tapped alert during setup
 - **GIVEN** first setup completed earlier, step 2 of a later addition for workstation, and another machine sends an alert
