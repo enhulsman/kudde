@@ -712,4 +712,38 @@ class AgentRouteLeakTest {
             assertEquals(it.rig.key, it.rig.home.openKey)
         }
     }
+
+    // screen-stack 7.3: a pointer already down on a tile keeps its path through a transition.
+    @Test fun aPressBeganBeforeBackOnAnOverviewTileOpensNothingWhenReleasedDuringThePop() = AgentRouteScenario().use {
+        it.show()
+        it.overview()
+        val tile = nodeSaying("og tags")
+        assertNotNull("a tile for another terminal", tile)
+        val b = tile!!.boundsInWindow
+        val down = android.os.SystemClock.uptimeMillis()
+        it.touch(android.view.MotionEvent.ACTION_DOWN, b.center.x, b.center.y, down)
+        it.pauseMotion()
+        it.back()
+        assertTrue("the pop is running", it.motion().running)
+        it.touch(android.view.MotionEvent.ACTION_UP, b.center.x, b.center.y, down)
+        it.rig.frames(20)
+        assertEquals("the tile did not open its terminal", it.rig.key, it.rig.home.openKey)
+        assertEquals("no terminal attached", 1, it.rig.ports.opens.size)
+    }
+
+    // screen-stack 7.3: a chosen menu item drops its popup at once, so Back is not eaten by its exit.
+    @Test fun backRightAfterChoosingChangesClosesChangesAndShowsTheTerminal() = AgentRouteScenario().use {
+        it.show()
+        realMotion()
+        it.tap("More options")
+        it.tap("Changes")
+        // The platform sends Back to the topmost window: a lingering menu popup would take it.
+        val top = windowRoots().last()
+        top.dispatchKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_BACK))
+        top.dispatchKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_BACK))
+        it.rig.advanceBoth(1_500)
+        assertNull("Changes closed", nodeSaying("Changes"))
+        assertNotNull("the terminal is shown", nodeSaying("More options"))
+        assertEquals(it.rig.key, it.rig.home.openKey)
+    }
 }

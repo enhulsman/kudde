@@ -191,6 +191,23 @@ class TitleBarMenuTest {
     }
 
     @Test
+    fun dismissingByAnOutsideTapStillAnimatesOut() {
+        showTerminal()
+        openMenu()
+        val popup = windowRoots().last()
+        val t = SystemClock.uptimeMillis()
+        val outside = MotionEvent.obtain(t, t, MotionEvent.ACTION_DOWN, -20f, -20f, 0)
+        popup.dispatchTouchEvent(outside)
+        outside.recycle()
+        frame()
+        assertFalse("the menu is closing", menu.open)
+        assertNotNull("the menu is still drawn, animating out", item())
+        // The exit spring runs on the wall clock in this Robolectric.
+        repeat(100) { if (item() != null) { Thread.sleep(20); BoundedFrames.step(2) } }
+        assertNull("and then gone", item())
+    }
+
+    @Test
     fun backClosesTheMenuAndSendsNothing() {
         showTerminal()
         val before = view.calls.toList()
