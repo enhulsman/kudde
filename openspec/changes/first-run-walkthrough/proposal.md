@@ -12,35 +12,18 @@ connected; 3, no demo for now; 5, Name optional, derived from the Address;
 6, one "Setup guide" link; 7, QR pairing and the target-SDK network
 permission stay out, alerts become a fourth step after connected (design
 D13); 11, the hint shows with any map, the one-cell map included, and says
-that sideways moves only when the tab has more panes.
+that sideways moves only when the tab has more panes; 8, the words, the
+screens, the command and D13's picks for the alerts step, approved screen by
+screen in review parts 1 to 5 (owner, 2026-11-22), with these changes: the
+command is ten lines without ownership checks, step 4's heading reads
+"Alerts (optional)", Back goes one step back, and the TalkBack hint names
+all four title bar actions.
 Step 2 offers two choices together, "kudde adds it for you" first and
 "Add it yourself" second. The same steps serve Machines > Add machine,
 without the welcome, and key rejection on a listed machine.
 
-**Open decision, pick first** (draft for the owner, no approval implied):
-
-8. **Words and look:** approve the complete Texts table, the render plan
-   and D13's six picks for the alerts step in design.md (pick); revise them
-   before building screens. The command's exact text also awaits approval.
-
-**What the person sees:** first start opens a full-screen welcome with kudde's
-mark, a headline, one line, four numbered steps and one main "Set up a
-machine" button. "Forced" means that home, Machines and incoming navigation
-wait until a real machine is connected. There is no skip or way into the
-app before that. The welcome has no back arrow and Back there closes the
-app; on a setup step, Back goes one step back. Leaving and returning
-resumes the same screen and step on every start until connection succeeds. A missing screen lock is explained after the welcome,
-before setup can use the key. Step 1 asks where the machine is and explains
-reach failures in place. Step 2 is "This phone's key", with the two choices
-side by side (stacked at large text if needed). The first confirms the host
-fingerprint on the phone, then uses the password once and never stores it;
-the second shows the one command with Copy and Share and then confirmation.
-Both install the same restricted key. Step 3 shows the connected machine;
-step 4 offers alerts (permission, the UnifiedPush app, a test alert) and,
-whatever is chosen there, leads to agents or starting one. Later additions from Machines use those same
-screens directly. "Phone key not accepted" offers both choices again, also
-for a machine that used to work. The hint can now appear on a one-pane tab,
-where its map opens the overview and sideways swipes only bounce.
+**Open decisions:** none. Task 6.1a, one setup against a Mac, stays before
+this change merges.
 
 ## Why
 

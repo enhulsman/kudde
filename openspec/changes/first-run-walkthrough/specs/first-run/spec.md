@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
-Texts in quotes are the app's wording. Every one of them needs the owner's
-approval before it ships; the full list, with the strings they replace, is in
+Texts in quotes are the app's wording, approved by the owner on 2026-11-22
+(decision 8); the full list, with the strings they replace, is in
 `design.md` under "Texts". Names in the scenarios are invented: the machine
 "workstation", the user "dev", the address `192.0.2.10`.
 
@@ -139,7 +139,7 @@ SHALL keep today's "Could not start the connections" with its reason and
 Adding a machine SHALL be one flow of four steps in a fixed order, each on
 its own screen under the title "Set up a machine" with "Step n of 4": step 1
 "Where is it?", step 2 "This phone's key", step 3 "Connected", step 4
-"Alerts". The welcome's
+"Alerts (optional)". The welcome's
 "Set up a machine" and the Machines screen's "Add machine" SHALL both open
 step 1. A step SHALL be reached only when the one before it is done: step 2
 only for a machine that is listed, step 3 only for a machine that is
@@ -884,7 +884,7 @@ be built only once those gestures are on main.
 
 #### Scenario: With TalkBack
 - **WHEN** the hint appears with TalkBack on
-- **THEN** TalkBack reads it once, naming the actions "Next terminal", "Previous terminal" and "Next agent that needs you" and the map instead of swipes; it can be reached by swiping through the screen, and a double tap closes it
+- **THEN** TalkBack reads it once, naming the actions "Next terminal", "Previous terminal", "Next agent that needs you" and "Previous agent that needs you" and the map instead of swipes; it can be reached by swiping through the screen, and a double tap closes it
 
 #### Scenario: Animations off
 - **GIVEN** the system's animations are off
