@@ -459,8 +459,12 @@ program, so the hub sends neither.
   when the tab shown changes, off the main thread; a read that fails or
   comes back empty leaves that tile as it is without a picture.
 - The tile draws the lines in the terminal font and the muted text colour,
-  scaled to the tile and cropped from the top left, as the terminal's own
-  view crops a wider screen.
+  re-flowed: each line is wrapped to the tile's width at a readable size
+  (7 dp, about 37 columns in a two-column tile at 412 dp) and the last lines
+  that fit are shown, so the tile fills like a phone-sized terminal. Why
+  (owner, 2026-11-22): scaled to the tile, the desk's wide screen (about 200
+  columns) became a thin strip of tiny text at the top with the rest empty.
+  Long runs of box-drawing or rule characters shrink to one width-long run.
 - Owner's choice (2026-11-22): plain text first, tried on the phone. A
   coloured picture would need a short watch-only attach per pane
   (`terminal.attach` with `observe:true` gives styled bytes and keeps the

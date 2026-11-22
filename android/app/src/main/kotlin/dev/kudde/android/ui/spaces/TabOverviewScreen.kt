@@ -285,36 +285,39 @@ private fun TerminalTile(tile: OverviewTile.Terminal, spin: Boolean, modifier: M
 /** The tile picture's text, for tests: the picture is decoration and is never spoken. */
 internal val TilePictureKey = SemanticsPropertyKey<String>("TilePicture")
 
-/** Narrowest and widest the picture's text is drawn, in dp, however wide the screen was. */
-private const val PICTURE_MIN_DP = 2.5f
-private const val PICTURE_MAX_DP = 7f
+/**
+ * The picture's text size in dp: about 37 columns fit a two-column tile at 412 dp (158 dp wide
+ * inside the padding, 4.2 dp a column), and about 28 a tile on a 360 dp phone.
+ */
+private const val PICTURE_DP = 7f
 
 /** JetBrains Mono's advance as a share of its size. */
 private const val MONO_ADVANCE = 0.6f
 
 /**
- * A still picture of a terminal's screen (design D11): [text] in the terminal font and the
- * muted text colour, from the top left, never wrapped or centred, small enough that its widest
- * line fits the width (within [PICTURE_MIN_DP] and [PICTURE_MAX_DP]) and cropped by the box.
- * The size follows the tile, not the system font size: it is a picture. Not spoken.
+ * A still picture of a terminal's screen (design D11): [text] re-wrapped to the tile's width at
+ * a fixed small size, in the terminal font and the muted text colour, its last lines shown
+ * (bottom-anchored, the top ones dropped) so the tile fills like a phone-sized terminal.
+ * The size does not follow the system font size: it is a picture. Not spoken.
  */
 @Composable
 private fun TilePicture(text: String, modifier: Modifier) {
     val color = KuddeTheme.colors.muted
     val measurer = rememberTextMeasurer()
-    val lines = remember(text) { text.trimEnd().lines().map { it.trimEnd() } }
     Box(
         modifier
             .clipToBounds()
             .semantics { this[TilePictureKey] = text }
             .drawWithCache {
-                val widest = lines.maxOf { it.length }.coerceAtLeast(1)
-                val px = (size.width / widest / MONO_ADVANCE).coerceIn(PICTURE_MIN_DP.dp.toPx(), PICTURE_MAX_DP.dp.toPx())
+                val px = PICTURE_DP.dp.toPx()
+                val lineHeight = px * 1.25f
+                val columns = (size.width / (px * MONO_ADVANCE)).toInt().coerceAtLeast(1)
+                val rows = (size.height / lineHeight).toInt().coerceAtLeast(1)
+                val shown = tilePictureLines(text, columns).takeLast(rows)
                 val style = KuddeType.terminalWatch.copy(fontSize = px.toSp(), color = color)
-                // Only the lines that can show are laid out.
-                val fits = (size.height / (px * 1.25f)).toInt() + 1
-                val layout = measurer.measure(AnnotatedString(lines.take(fits).joinToString("\n")), style, softWrap = false)
-                onDrawBehind { drawText(layout) }
+                val layout = if (shown.isEmpty()) null
+                    else measurer.measure(AnnotatedString(shown.joinToString("\n")), style, softWrap = false)
+                onDrawBehind { if (layout != null) drawText(layout, topLeft = Offset(0f, 0f)) }
             },
     )
 }
