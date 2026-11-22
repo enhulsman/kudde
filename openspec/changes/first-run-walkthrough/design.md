@@ -590,8 +590,7 @@ moderate that each is what he wants):
 4. **Not resumed.** Step 4 is not in the checkpoint; after a process death
    the home opens, and the card's Alerts row holds the same state. Back on
    step 4 returns to step 3.
-5. **The welcome lists four steps** (WL3, WL6 reworded, WL13 "if you
-   like"), so it does not promise three and show four.
+5. **The welcome lists four steps** (WL3, WL6 reworded, WL13 "(optional)"), so it does not promise three and show four.
 6. **No store link for ntfy.** D10 keeps one link out (the setup guide);
    AL3 and AL8 name ntfy and the guide covers installing it and kudde-push.
 
@@ -644,7 +643,7 @@ replaces in `strings.xml`.
 | WL4 | 1 · Find your machine / Linux or WSL running herdr-core and OpenSSH, on the same Wi-Fi or VPN as your phone. | new |
 | WL5 | 2 · Add this phone's key / kudde uses your password once, or you run one command yourself. | new |
 | WL6 | 3 · Connect / kudde checks the machine and shows how many agents run there. | new (D13 replaces "Open your agents") |
-| WL13 | 4 · Turn on alerts, if you like / Hear when an agent needs you, also with kudde closed. | new (D13) |
+| WL13 | 4 · Turn on alerts (optional) / Hear when an agent needs you, also with kudde closed. | new (D13) |
 | WL7 | Set up a machine | Add machine |
 | WL8 | Import a machine list | existing Machines action, not on welcome |
 | WL11 | No machines yet | retained on empty home after first connection |
