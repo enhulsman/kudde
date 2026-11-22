@@ -27,7 +27,8 @@ without the welcome, and key rejection on a listed machine.
 mark, a headline, one line, four numbered steps and one main "Set up a
 machine" button. "Forced" means that home, Machines and incoming navigation
 wait until a real machine is connected. There is no skip or way into the
-app before that. Back on the welcome closes the app; leaving and returning
+app before that. The welcome has no back arrow and Back there closes the
+app; on a setup step, Back goes one step back. Leaving and returning
 resumes the same screen and step on every start until connection succeeds. A missing screen lock is explained after the welcome,
 before setup can use the key. Step 1 asks where the machine is and explains
 reach failures in place. Step 2 is "This phone's key", with the two choices
