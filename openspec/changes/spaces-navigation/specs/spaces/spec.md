@@ -582,8 +582,8 @@ The line under the name SHALL stay as capability agent-names sets it.
 The tab overview SHALL show one tab at a time: the space's name, the
 space's tabs in desk order to choose from, and the chosen tab's panes as
 tiles placed as the splits place them. A tile SHALL show its terminal's
-mark, name and state, over a still picture of that terminal's screen as the
-desk shows it, read once when the overview opens and when the tab shown
+mark, name and state, over a still picture of that terminal's screen, its
+lines wrapped to the tile's width and its last lines shown, read once when the overview opens and when the tab shown
 changes. The picture SHALL NOT update while the overview is open, and
 reading it SHALL NOT mark the terminal seen on the desk. When the desk
 gives no picture, the tile SHALL show as it does without one. A placeholder
@@ -631,6 +631,12 @@ app SHALL NOT draw live terminals side by side at phone width.
 - **WHEN** the person opens its overview
 - **THEN** each tile shows its own terminal's screen as a still picture under its mark, name and state
 - **AND** neither terminal is marked seen on the desk
+
+#### Scenario: A wide screen is re-flowed to the tile
+- **GIVEN** a terminal whose screen is a wide build log
+- **WHEN** the overview shows it in a narrow tile
+- **THEN** the tile shows its last lines wrapped to the tile's width
+- **AND** the tile has no empty space above them while lines remain
 
 #### Scenario: A picture stays still
 - **GIVEN** the overview is open and a terminal in it prints new lines

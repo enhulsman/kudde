@@ -33,12 +33,37 @@ class TabOverviewScreenshotTest {
 
     @Test fun rowsPaper() = capture("rows", "tb-build", dark = false)
 
-    // Plain-text screens as the desk gives them (design D11); zsh's tile (t3) gets none, so the
-    // golden shows a fallback tile beside pictured ones.
-    private val pictures = mapOf(
-        "t1" to "\$ npm run build\n> website@1.4.0 build\n> astro build\n\n 12:01:44 [build] 18 pages\n 12:01:46 [build] Complete!\n\nAllow Bash: npm run deploy?\n  1. Yes   2. No",
-        "t2" to "> add og tags to every page\n\n- layout.astro\n- blog/[slug].astro\n\nDone with 2 of 5 files",
-    )
+    // Plain-text screens as the desk gives them (design D11), wide as the desk's: a build log of
+    // 40 lines at 170 columns inside a box frame, and a Claude-Code-like screen with a rule line
+    // and a prompt. zsh's tile (t3) gets none, so the golden shows a fallback tile beside them.
+    private val buildLog: String = run {
+        val inner = 168
+        val frame = "\u2502 %-${inner}s \u2502"
+        val body = (1..38).map { i ->
+            frame.format(
+                "12:01:%02d [build] page %d of 38 written to dist/blog/post-%d/index.html (%d kB, minified, gzip %d kB), no warnings from the image or link checks".format(i, i, i, 20 + i, 6 + i % 5),
+            )
+        }
+        listOf("\u256d" + "\u2500".repeat(inner + 2) + "\u256e") + body + listOf("\u2570" + "\u2500".repeat(inner + 2) + "\u256f")
+    }.joinToString("\n")
+
+    private val claudeScreen = listOf(
+        "> add og tags to every page",
+        "",
+        "I'll add the tags to the shared layout first, then check each page that overrides the head, so none is missed.",
+        "",
+        "- layout.astro: title, description, og:image from the page's front matter",
+        "- blog/[slug].astro: per-post image, falls back to the site image",
+        "",
+        "Edited 2 of 5 files. Next: pages/about.astro, pages/index.astro and the 404 page, then a build to check the output.",
+        "",
+        "\u2500".repeat(150),
+        "> ",
+        "\u2500".repeat(150),
+        "  ? for shortcuts",
+    ).joinToString("\n")
+
+    private val pictures = mapOf("t1" to buildLog, "t2" to claudeScreen)
 
     private fun capture(case: String, tab: String?, dark: Boolean) {
         val ui = tabOverviewUi(overviewRender, agentsUi(overviewRender, NOW, res, SpacesFixtures::utc), "workstation", "s-website", tab, spacesTexts(res), pictures)!!
