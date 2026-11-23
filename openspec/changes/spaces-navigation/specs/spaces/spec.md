@@ -492,7 +492,9 @@ once, as today.
 ### Requirement: Input during the wait is never lost
 Input to a terminal that is still in its wait SHALL end the wait: the
 terminal SHALL be opened at once and the input SHALL then be delivered to
-it once, in the order given. Input here is a typed character, backspace, a
+it once, in the order given. This applies to controls available on the
+destination. A step to another terminal retires the previous terminal’s
+keyboard and hides its keys row. Input here is a typed character, backspace, a
 key of the keys row, the interrupt key, a tap or a drag on the terminal, a
 tap on the chip above the keys, and sending the compose sheet's text. When
 the terminal cannot be opened at that moment (no running connection, or the
@@ -503,12 +505,17 @@ not handed to an attached terminal. A terminal left after such input was
 attached, and is detached on leaving as today.
 
 #### Scenario: Typing during the wait
-- **GIVEN** the person stepped to terminal B at 0 ms with the keyboard up
+- **GIVEN** the person stepped to terminal B at 0 ms and B can receive keyboard input
 - **WHEN** the person types "y" at 150 ms
 - **THEN** B is opened at 150 ms and receives "y" once
 
+#### Scenario: The previous keyboard closes on a step
+- **GIVEN** terminal A has its keyboard and keys row open
+- **WHEN** the person steps to terminal B
+- **THEN** the old keyboard and keys row close, and any late input from A is discarded
+
 #### Scenario: Two keys in a row
-- **GIVEN** the person stepped to terminal B at 0 ms
+- **GIVEN** the person stepped to terminal B at 0 ms and can use B’s keys row
 - **WHEN** the person taps esc at 100 ms and the down arrow at 120 ms
 - **THEN** B is opened at 100 ms and receives esc and then the down arrow, each once
 

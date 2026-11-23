@@ -44,7 +44,10 @@ author, tested on a few phones, built on herdr-core 0.1.x.
   screen, and a working line while the agent works. Answer from a message
   box, photos included; `/` and `!` commands work as in the agent's own box.
   When the app cannot read an agent's log, the terminal is all you see.
-- **Changes:** a button on an agent's terminal and chat lists the files not
+- **Spaces:** Spaces shows your desk’s spaces, tabs and panes in order. Tap a
+  tab’s map to see its panes. Swipe sideways on the title bar to move within
+  the current tab. Changes is under More options.
+- **Changes:** On an agent’s terminal and chat, Changes lists the files not
   committed yet in its repository, with lines added and removed, and shows
   each file's diff wrapped to the screen. It follows the agent as it works and
   only reads: nothing is staged, committed or discarded from the phone.

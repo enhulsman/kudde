@@ -45,6 +45,7 @@ import org.robolectric.android.controller.ActivityController
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import org.robolectric.shadows.ShadowChoreographer
+import uniffi.kudde_mobile.ChatRow
 
 /** Shared wiring to the real routes, never a copy of their screen/Back/size decisions. */
 class AgentRouteScenario : AutoCloseable {
@@ -272,6 +273,29 @@ class AgentRouteStepTest {
         assertTrue("input never reaches the departed pane", it.rig.ports.opens.first().view.calls.none { c -> c.startsWith("type ") })
         it.rig.advance(800)
         assertEquals("dwell does not open twice", 2, it.rig.ports.opens.size)
+    }
+
+    @Test fun aSwipeOnAWideChatTableScrollsItWithoutStepping() = AgentRouteScenario().use {
+        val header = listOf("Repository", "Work remaining", "Verification notes", "Expected outcome")
+        val divider = List(header.size) { "---" }
+        val row = listOf("website", "Review the navigation behaviour", "Run the phone checks", "Keep the current pane open")
+        val table = listOf(header, divider, row).joinToString("\n") { it.joinToString(" | ", "| ", " |") }
+        it.rig.ports.chat(it.rig.key).answer(ChatRow("wide-table", "said", table, "", emptyList(), emptyList()))
+        it.show(chat = true)
+        it.rig.await("the wide table can scroll sideways") {
+            unmergedSemanticsNodes().any { node ->
+                node.config.getOrNull(SemanticsProperties.HorizontalScrollAxisRange)?.maxValue()?.let { max -> max > 0f } == true
+            }
+        }
+        val tableNode = unmergedSemanticsNodes().single { node ->
+            node.config.getOrNull(SemanticsProperties.HorizontalScrollAxisRange)?.maxValue()?.let { max -> max > 0f } == true
+        }
+        val scrollRange = tableNode.config[SemanticsProperties.HorizontalScrollAxisRange]
+        val before = scrollRange.value()
+        it.swipe(tableNode.boundsInWindow)
+        assertTrue("the swipe scrolls the table", scrollRange.value() > before)
+        assertEquals("the swipe keeps the current pane open", it.rig.key, it.rig.home.openKey)
+        assertEquals("the swipe does not attach another terminal", 1, it.rig.ports.opens.size)
     }
 
     @Test fun disposalCancelsAnUnopenedDestination() = AgentRouteScenario().use {
