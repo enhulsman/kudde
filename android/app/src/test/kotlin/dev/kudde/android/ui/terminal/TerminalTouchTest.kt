@@ -23,6 +23,7 @@ import dev.kudde.android.ui.theme.KuddeTheme
 import dev.kudde.android.ui.theme.KuddeType
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -112,15 +113,16 @@ class TerminalTouchTest {
         idle()
     }
 
-    /** One finger from ([x], [y0]) to ([x], [y1]) in [steps] moves. */
-    private fun drag(x: Float, y0: Float, y1: Float, steps: Int = 12) {
+    /** One finger from ([x], [y0]) to ([endX], [y1]) in [steps] moves. */
+    private fun drag(x: Float, y0: Float, y1: Float, steps: Int = 12, endX: Float = x) {
         val down = SystemClock.uptimeMillis()
         send(MotionEvent.obtain(down, down, MotionEvent.ACTION_DOWN, x, y0, 0))
         for (i in 1..steps) {
             val y = y0 + (y1 - y0) * i / steps
-            send(MotionEvent.obtain(down, down + i * 10L, MotionEvent.ACTION_MOVE, x, y, 0))
+            val currentX = x + (endX - x) * i / steps
+            send(MotionEvent.obtain(down, down + i * 10L, MotionEvent.ACTION_MOVE, currentX, y, 0))
         }
-        send(MotionEvent.obtain(down, down + (steps + 1) * 10L, MotionEvent.ACTION_UP, x, y1, 0))
+        send(MotionEvent.obtain(down, down + (steps + 1) * 10L, MotionEvent.ACTION_UP, endX, y1, 0))
     }
 
     /** Two fingers on a horizontal line around ([cx], [cy]), spreading from [from] to [to] px apart. */
@@ -254,6 +256,16 @@ class TerminalTouchTest {
         val (_, screen, _) = open(TermPhase.Watching, 160, 44, typing = false)
         pinch(midX, midY, 200f, 600f)
         assertTrue("zoom: ${screen.watch.zoom}", screen.watch.zoom > 1f)
+    }
+
+    @Test
+    fun aHorizontalDragOnAZoomedTerminalPansWithoutStepping() {
+        val (_, screen, _) = open(TermPhase.Watching, 160, 44, typing = false)
+        pinch(midX, midY, 200f, 600f)
+        val before = screen.watch.panX
+        drag(midX, midY, midY, endX = midX - 180f)
+        assertNotEquals("the drag pans the zoomed terminal", before, screen.watch.panX)
+        assertTrue("the drag never steps to another pane", tabs.isEmpty() && swipes.isEmpty())
     }
 
     /** One finger along the title bar's middle, from ([x0], [y0]) to ([x1], [y1]). */
