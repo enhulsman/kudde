@@ -8,11 +8,12 @@ options in the log's order, each as "Option N of M", its label, then its
 description (in one stop, with "Preview available" when it has a preview, and
 "checked" or "not checked" for a multi-select option), then "Something else",
 then "Skip". Every action SHALL be a button reachable without the terminal.
-A step change ("Question 2 of 3") SHALL be announced once. The text the card
+A step change ("Question 2 of 3") SHALL be announced once; the review step
+SHALL be announced once as "Send answers". The text the card
 shows when it could not send ("Already answered at the desk. Nothing was
 sent.", "The question changed. Nothing was sent.", "Could not confirm the
-answer arrived. Check the terminal.") SHALL be announced once when it
-appears. The collapsed line SHALL read like its text.
+answer arrived. Check the terminal.", "Not connected. Nothing was sent.")
+SHALL be announced once when it appears. The collapsed line SHALL read like its text.
 
 #### Scenario: TalkBack reads a card
 - **WHEN** a card with two options, "Something else" and "Skip" appears with TalkBack on
