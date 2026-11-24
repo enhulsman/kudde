@@ -1035,7 +1035,11 @@ async fn a_return_to_the_app_retries_a_waiting_machine_now() {
     let back = Instant::now();
     rig.hub.foreground();
     let mut core = rig.core().await;
-    assert_eq!((Instant::now() - back).as_secs(), 0, "no wait on the return");
+    assert_eq!(
+        (Instant::now() - back).as_secs(),
+        0,
+        "no wait on the return"
+    );
     core.connect("0.1.15", vec![]).await;
     rig.until_state(WS, connected).await;
     assert_eq!(rig.dialer.dials(SRV).len(), 1, "the host key still waits");
