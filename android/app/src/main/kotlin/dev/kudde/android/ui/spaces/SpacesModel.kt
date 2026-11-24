@@ -68,6 +68,8 @@ data class SpacesUi(
     val empty: AgentsEmpty?,
     val emptyText: String?,
     val startError: String?,
+    val setupNotices: List<NoticeUi> = emptyList(),
+    val unfinished: dev.kudde.android.ui.agents.UnfinishedSetup? = null,
 )
 
 /**
@@ -124,14 +126,16 @@ fun spacesUi(snapshot: HubSnapshot, agents: AgentsUi, texts: SpacesTexts): Space
         }
     }
     val empty = when {
+        agents.empty == AgentsEmpty.NoScreenLock -> AgentsEmpty.NoScreenLock
         agents.empty == AgentsEmpty.StartFailed -> AgentsEmpty.StartFailed
         snapshot.machines.isEmpty() -> AgentsEmpty.NoMachines
+        agents.empty == AgentsEmpty.Unfinished && items.isEmpty() -> AgentsEmpty.Unfinished
         else -> null
     }
     return SpacesUi(
         items, agents.notices, agents.machinesBadge, agents.storageNotice, empty,
         if (empty == null && items.none { it is SpacesItem.SpaceHeader || it is SpacesItem.Agent || it is SpacesItem.Other }) "No spaces yet" else null,
-        agents.startError,
+        agents.startError, agents.setupNotices, agents.unfinished,
     )
 }
 

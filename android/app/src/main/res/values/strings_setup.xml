@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- First setup texts, approved by the owner (design.md "Texts", review parts 1 to 5, 2026-11-22). Ids in comments. -->
+<resources>
+    <!-- WL1 to WL9 -->
+    <string name="wl_title">Set up your first machine</string>
+    <string name="wl_line">See which agents need you, read their work and reply on your own machines.</string>
+    <string name="wl_steps_title">Set up in four steps</string>
+    <string name="wl_step1_title">1 · Find your machine</string>
+    <string name="wl_step1_text">Linux or WSL running herdr-core and OpenSSH, on the same Wi-Fi or VPN as your phone.</string>
+    <string name="wl_step2_title">2 · Add this phone\'s key</string>
+    <string name="wl_step2_text">kudde uses your password once, or you run one command yourself.</string>
+    <string name="wl_step3_title">3 · Connect</string>
+    <string name="wl_step3_text">kudde checks the machine and shows how many agents run there.</string>
+    <string name="wl_step4_title">4 · Turn on alerts (optional)</string>
+    <string name="wl_step4_text">Hear when an agent needs you, also with kudde closed.</string>
+    <string name="wl_action">Set up a machine</string>
+    <string name="wl_guide">Setup guide</string>
+    <string name="wl_empty_title">No machines yet</string>
+    <string name="wl_empty_detail">Add a machine that runs herdr-core to see its agents here.</string>
+    <!-- Step 1: A1 to A9 -->
+    <string name="a_heading">Where is it?</string>
+    <string name="a_address">Address</string>
+    <string name="a_address_hint">workstation or 192.0.2.10</string>
+    <string name="a_address_help">The machine\'s name on your network or VPN, or its IP address.</string>
+    <string name="a_user">User</string>
+    <string name="a_user_hint">your login name there</string>
+    <string name="a_port">Port</string>
+    <string name="a_name">Name</string>
+    <string name="a_name_hint">optional</string>
+    <string name="a_name_help">How kudde lists this machine. Leave it empty to use the address.</string>
+    <string name="a_tailscale">Tailscale SSH does not work with the phone key: use an address and port where OpenSSH answers.</string>
+    <string name="a_continue">Continue</string>
+    <string name="a_connecting">Connecting to %1$s…</string>
+    <string name="a_slow">Still no answer. This can take 20 seconds.</string>
+    <string name="f_try_again">Try again</string>
+    <!-- Step 2: M1 to M10, K1, K2, R1, R17 to R19 -->
+    <string name="m_heading">This phone\'s key</string>
+    <string name="m_sentence">On %1$s, signed in as %2$s, paste this into a terminal and press Enter:</string>
+    <string name="m_copy">Copy</string>
+    <string name="m_copied">Copied</string>
+    <string name="m_share">Share</string>
+    <string name="m_note_send">Sending it to yourself in a note or a message is fine: nothing in it is secret.</string>
+    <string name="m_note_what">It adds this phone\'s key, then prints the machine\'s host key. With this key, SSH runs only herdr-core: no terminal session, no forwarding. herdr-core can still run commands as that user, so treat the key like a shell login.</string>
+    <string name="m_note_shells">For sh, bash and zsh.</string>
+    <string name="m_compare">Compare the fingerprint</string>
+    <string name="m_command_name">Setup command</string>
+    <string name="d_body">First connection to %1$s. The command you ran there printed its host key. Trust it only if the fingerprint is the same:</string>
+    <string name="d_warning">Not the same? Do not trust it. Something else answered at that address: Tailscale SSH, or another SSH server on that port.</string>
+    <string name="k_rejected_title">%1$s did not accept the phone key.</string>
+    <string name="k_rejected_detail">Choose how to add it, signed in as %2$s. If you already ran the command, check that its quotes arrived unchanged, then try again.</string>
+    <string name="k_missing_title">herdr-core was not found on %1$s.</string>
+    <string name="k_missing_detail">Install it there as %2$s, then try again. The setup guide has the command.</string>
+    <string name="r_choice_password">kudde adds it for you</string>
+    <string name="r_choice_password_text">kudde signs in once as %1$s with that account\'s password, adds the same key and signs out. The password is not stored.</string>
+    <string name="r_choice_manual">Add it yourself</string>
+    <string name="r_choice_manual_text">Run one command at the machine. kudde never sees a password.</string>
+    <string name="r_choices_note">Both ways add only this phone\'s public key, limited to herdr-core. Existing keys stay in place.</string>
+    <!-- Step 3: C1 to C9 -->
+    <string name="c_heading">Connected</string>
+    <string name="c_connected">%1$s is connected.</string>
+    <plurals name="c_agents">
+        <item quantity="one">%1$d agent is running there.</item>
+        <item quantity="other">%1$d agents are running there.</item>
+    </plurals>
+    <string name="c_none">No agents are running there yet. One you start at your desk in herdr shows up here by itself.</string>
+    <string name="c_continue">Continue</string>
+    <!-- Step 4: AL1 to AL11, C4, C6, C7 -->
+    <string name="al_heading">Alerts (optional)</string>
+    <string name="al_intro">kudde can tell you when an agent needs you or has finished, also while the app is closed.</string>
+    <string name="al_needs">It needs two things: a UnifiedPush app such as ntfy on this phone, and kudde-push running on %1$s. The setup guide shows how to install kudde-push.</string>
+    <string name="al_turn_on">Turn on alerts</string>
+    <string name="al_test_waiting">Sending a test alert from %1$s…</string>
+    <string name="al_test_received">Alerts reach this phone.</string>
+    <string name="al_test_missed_title">No test alert from %1$s within 30 seconds.</string>
+    <string name="al_test_missed_detail">Check that kudde-push runs there; the setup guide shows how.</string>
+    <string name="al_no_distributor">Alerts need a UnifiedPush app, such as ntfy. Install one, then try again.</string>
+    <string name="al_waiting">Waiting for the UnifiedPush app…</string>
+    <string name="al_not_allowed">Notifications are not allowed for kudde.</string>
+    <string name="al_allow">Allow</string>
+    <string name="al_already_on">Alerts are on on this phone.</string>
+    <string name="al_send_test">Send test alert</string>
+    <string name="al_show_agents">Show my agents</string>
+    <string name="al_start_terminal">Start a terminal or agent</string>
+    <string name="al_done">Done</string>
+    <!-- P2, P3 -->
+    <string name="p_where_any">To let this phone into a machine, run this there, signed in as the user your agents run under:</string>
+    <string name="p_copy_key_line">Copy only the key line</string>
+    <string name="p_link_add_yourself">Add it yourself</string>
+    <string name="u_continue_row">Continue setup</string>
+    <string name="u_continue_row_detail">Opens the step this machine is at</string>
+</resources>

@@ -3,10 +3,6 @@ package dev.kudde.android.ui.flows
 import androidx.compose.foundation.layout.Box
 import com.github.takahirom.roborazzi.captureRoboImage
 import dev.kudde.android.testing.KuddeTestRunner
-import dev.kudde.android.ui.addmachine.AddMachineActions
-import dev.kudde.android.ui.addmachine.AddMachineScreen
-import dev.kudde.android.ui.addmachine.MachineInput
-import dev.kudde.android.ui.addmachine.validateMachine
 import dev.kudde.android.ui.hostkey.HostKeyChange
 import dev.kudde.android.ui.hostkey.HostKeyChangedActions
 import dev.kudde.android.ui.hostkey.HostKeyChangedScreen
@@ -31,33 +27,7 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(qualifiers = "w412dp-h915dp-xhdpi")
 class MachineFlowsScreenshotTest {
-    private val noForm = AddMachineActions({}, {}, {})
     private val noChange = HostKeyChangedActions({}, {}, {}, {})
-
-    @Test fun addMachineEmptyGraphite() = addMachineEmpty("add-machine-empty-graphite", dark = true)
-
-    @Test fun addMachineEmptyPaper() = addMachineEmpty("add-machine-empty-paper", dark = false)
-
-    private fun addMachineEmpty(name: String, dark: Boolean) = capture(name, dark) {
-        AddMachineScreen(MachineInput(), errors = null, waitingFor = null, error = null, actions = noForm)
-    }
-
-    /** After Save: a name already listed, no host, a port out of range, a user with @. */
-    private val badInput = MachineInput(name = "server", host = "", port = "70000", user = "dev@server")
-
-    @Test fun addMachineErrorsGraphite() = addMachineErrors("add-machine-errors-graphite", dark = true)
-
-    @Test fun addMachineErrorsPaper() = addMachineErrors("add-machine-errors-paper", dark = false)
-
-    private fun addMachineErrors(name: String, dark: Boolean) = capture(name, dark) {
-        AddMachineScreen(
-            badInput,
-            errors = validateMachine(badInput, listOf("server")),
-            waitingFor = null,
-            error = null,
-            actions = noForm,
-        )
-    }
 
     /** Render 8: workstation just added, its first host key waiting for the person. */
     private val prompt = HostKeyPrompt("workstation", "workstation:22", "ED25519", PRESENTED)
@@ -68,13 +38,6 @@ class MachineFlowsScreenshotTest {
 
     private fun hostKeyConfirm(name: String, dark: Boolean) = capture(name, dark) {
         Box {
-            AddMachineScreen(
-                MachineInput(name = "workstation", host = "workstation", user = "dev"),
-                errors = null,
-                waitingFor = "workstation:22",
-                error = null,
-                actions = noForm,
-            )
             TrustDialog(prompt, error = null, onTrust = {}, onCancel = {})
         }
     }

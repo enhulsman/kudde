@@ -27,6 +27,7 @@ import dev.kudde.android.ui.spaces.spacesTexts
 import dev.kudde.android.ui.spaces.spacesUi
 import dev.kudde.android.ui.agent.AgentHost
 import dev.kudde.android.ui.setup.HomeDeviceSecurity
+import dev.kudde.android.ui.setup.openScreenLockSettings
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -63,7 +64,7 @@ fun AgentsRoute(app: KuddeApp, flows: MachineFlows, home: AgentsHome, ports: Age
     val spin = remember(context) {
         Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) != 0f
     }
-    val actions = remember(flows, home, app) {
+    val actions = remember(flows, home, app, context) {
         AgentsActions(
             onMachines = flows::openMachines,
             onAddMachine = flows::openAddMachine,
@@ -71,6 +72,9 @@ fun AgentsRoute(app: KuddeApp, flows: MachineFlows, home: AgentsHome, ports: Age
             onCloseSheet = home::close,
             onToggleOthers = home::toggleOthers,
             onRetry = app.hubHost::retry,
+            onContinueSetup = { flows.openSetup(it) },
+            onNewTerminal = app.newTerminal::tapNew,
+            onScreenLock = { openScreenLockSettings { context.startActivity(it) } },
         )
     }
     val new = app.newTerminal

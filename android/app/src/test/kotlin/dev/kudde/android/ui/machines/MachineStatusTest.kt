@@ -162,7 +162,7 @@ class MachineStatusTest {
     fun aRejectedKeyRetriesAndLeadsToTheAuthorizedKeysLine() {
         val c = card(MachineState.KeyRejected)
         assertEquals("Phone key not accepted · retrying", c.statusText)
-        assertEquals(CardLinkUi(CardLink.AddPhoneKey, "Add the phone key", "One line for this machine's authorized_keys"), c.link)
+        assertEquals(CardLinkUi(CardLink.AddPhoneKey, "Add it yourself", "Run one command at the machine. kudde never sees a password."), c.link)
     }
 
     @Test

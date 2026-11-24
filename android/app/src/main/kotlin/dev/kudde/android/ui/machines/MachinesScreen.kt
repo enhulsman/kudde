@@ -253,8 +253,14 @@ private fun MachineCard(machine: MachineCardUi, actions: MachinesActions) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 BasicText(machine.name, style = KuddeType.machineName.copy(color = c.fg))
                 StatusLine(machine)
-                machine.detail?.let {
-                    BasicText(it, style = KuddeType.secondary.copy(color = c.dimText), maxLines = 3)
+                val reach = machine.reach
+                if (reach != null) {
+                    BasicText(reach.reason, style = KuddeType.secondary.copy(color = c.dimText), maxLines = 3)
+                    reach.recovery?.let { BasicText(it, style = KuddeType.secondary.copy(color = c.dimText), maxLines = 3) }
+                } else {
+                    machine.detail?.let {
+                        BasicText(it, style = KuddeType.secondary.copy(color = c.dimText), maxLines = 3)
+                    }
                 }
             }
             when (machine.button) {
