@@ -40,6 +40,32 @@ the person unplugs it; Wi-Fi only, so a lower bound.
   notifications. A notification swiped away leaves the live list but stays in
   dumpsys's "attention state" section.
 
+## TalkBack speech
+
+With kudde debug installed on the configured test phone, run:
+
+```sh
+scripts/talkback-phone.py
+```
+
+The runner uses Python 3, a JDK and the Android SDK tools already used for
+the app. The test phone needs Google TalkBack in English, Android's `uinput`
+tool and a connection from kudde to the local herdr-core with a desktop
+layout. Use the same test phone configuration as `phone.sh`. Enable USB or
+wireless debugging and leave the phone in portrait.
+
+The runner creates two fake panes, opens the real TalkBack Actions menu,
+and checks that `Next terminal` speaks the next pane's name and place once.
+At the last pane the tab-end message must also be spoken once. Pass
+`--reduced-motion` to run with the app's animation scale set to zero. It counts
+distinct utterance IDs from TalkBack's speech log, including utterances split
+into fragments. It exits nonzero on a missing or repeated reading.
+
+The test briefly enables verbose TalkBack logging on the test phone and
+keeps only the test result. It removes the helper and fake panes and restores
+the phone settings when it exits, including after a failed check. Do not
+use `phone.sh ui` during the run: its UI dump pauses TalkBack.
+
 ## A fake agent
 
 `scripts/fake-agent.sh start` opens terminal `phonecheck` on the desk; `set
