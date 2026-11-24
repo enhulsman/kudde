@@ -31,6 +31,15 @@ class PhoneKeyLineTest {
     }
 
     @Test
+    fun theCommandIsThePhoneKeyVariantWithoutAHostKeyPart() {
+        val manager = KeyManager(FakeBackend())
+        val key = phoneKeyLine(manager)
+        assertEquals(uniffi.kudde_mobile.setupCommand(manager.publicKey(), "kudde", null), key.command)
+        assertTrue(key.command!!, !key.command!!.contains("ssh-keygen"))
+        assertTrue(key.command!!, key.command!!.contains(key.line!!))
+    }
+
+    @Test
     fun aKeyThatCannotBeCreatedShowsWhyInsteadOfALine() {
         val key = phoneKeyLine(KeyManager(FakeBackend().apply { generateFails = true }))
         assertNull(key.line)

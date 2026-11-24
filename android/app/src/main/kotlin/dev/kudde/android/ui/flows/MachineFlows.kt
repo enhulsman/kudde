@@ -246,6 +246,11 @@ class MachineFlows(
         )
     }
 
+    /** Step 4's routes on, and step 3's way to the home: setup is over (first setup completed at step 3). */
+    fun finishSetup() {
+        if (screen == Screen.Setup && setupStep >= 3) show(Screen.Agents, null)
+    }
+
     /** Step 3's "Continue"; step 4 is reached nowhere else. */
     fun continueToAlerts() {
         if (screen == Screen.Setup && setupStep == 3) setupStep = 4

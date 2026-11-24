@@ -24,18 +24,18 @@ import dev.kudde.android.ui.agents.AgentsHome
 import dev.kudde.android.ui.agents.AgentsRoute
 import dev.kudde.android.ui.flows.MachineFlows
 import dev.kudde.android.ui.flows.Screen
-import dev.kudde.android.ui.flows.LockNoticeStub
-import dev.kudde.android.ui.flows.SetupScreen
-import dev.kudde.android.ui.flows.WelcomeStub
 import dev.kudde.android.ui.hostkey.HostKeyChangedActions
 import dev.kudde.android.ui.hostkey.HostKeyChangedScreen
 import dev.kudde.android.ui.hostkey.TrustDialog
 import dev.kudde.android.ui.hostkey.hostKeyChange
 import dev.kudde.android.ui.machines.MachinesRoute
 import dev.kudde.android.ui.phonekey.PhoneKeyRoute
+import dev.kudde.android.ui.setup.LockNoticeRoute
 import dev.kudde.android.ui.setup.PrefsSetupProgress
+import dev.kudde.android.ui.setup.SetupRoute
 import dev.kudde.android.ui.setup.StringSecretField
 import dev.kudde.android.ui.setup.UniffiPasswordPorts
+import dev.kudde.android.ui.setup.WelcomeRoute
 import dev.kudde.android.ui.theme.KuddeTheme
 import org.unifiedpush.android.connector.UnifiedPush
 
@@ -107,9 +107,9 @@ private fun Root(app: KuddeApp) {
             // AgentsRoute's own BackHandler closes its sheet before this one leaves the app.
             Screen.Agents -> AgentsRoute(app, flows, home)
             Screen.Machines -> MachinesRoute(app, flows, onBack = { flows.back() })
-            Screen.Welcome -> WelcomeStub(onStart = flows::startFirstSetup)
-            Screen.LockNotice -> LockNoticeStub(onContinue = flows::lockNoticeContinue, onBack = { flows.back() })
-            Screen.Setup -> SetupScreen(flows.setupStep, onBack = { flows.back() })
+            Screen.Welcome -> WelcomeRoute(flows)
+            Screen.LockNotice -> LockNoticeRoute(flows)
+            Screen.Setup -> SetupRoute(app, flows)
             // onSnapshot returns to Machines once the machine no longer shows a changed key.
             Screen.HostKeyChanged -> hostKeyChange(snapshot, flows.machine)?.let { change ->
                 HostKeyChangedScreen(

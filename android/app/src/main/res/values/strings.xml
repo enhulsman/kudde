@@ -147,8 +147,8 @@
     <string name="link_check_host_key_detail">Connects once you trust its fingerprint</string>
     <string name="link_compare_host_keys">Compare the host keys</string>
     <string name="link_compare_host_keys_detail">The machine shows a different key than the one you trusted</string>
-    <string name="link_add_phone_key">Add the phone key</string>
-    <string name="link_add_phone_key_detail">One line for this machine\'s authorized_keys</string>
+    <string name="link_add_phone_key">Add it yourself</string>
+    <string name="link_add_phone_key_detail">Run one command at the machine. kudde never sees a password.</string>
     <!-- Add machine (render 8 shows Name and Host; the rest follows its style). -->
     <string name="add_title">Add machine</string>
     <string name="field_name">Name</string>
@@ -173,7 +173,8 @@
 
     <!-- First connection: the host-key confirm (render 8). %1$s is host:port, drawn in the text colour. -->
     <string name="trust_title">Trust this machine?</string>
-    <string name="trust_body">First connection to %1$s. Check that this fingerprint matches the machine\'s host key.</string>
+    <string name="trust_body">First connection to %1$s. The command you ran there printed its host key. Trust it only if the fingerprint is the same:</string>
+    <string name="trust_warning">Not the same? Do not trust it. Something else answered at that address: Tailscale SSH, or another SSH server on that port.</string>
     <string name="trust_after">After this, a different key stops the connection.</string>
     <string name="cancel">Cancel</string>
     <string name="trust_confirm">Trust and connect</string>

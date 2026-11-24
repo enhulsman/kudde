@@ -29,7 +29,7 @@ import dev.kudde.android.key.KeyManager
 import dev.kudde.android.ui.components.DialogNote
 import dev.kudde.android.ui.components.DialogText
 import dev.kudde.android.ui.components.ErrorText
-import dev.kudde.android.ui.components.MonoBox
+import dev.kudde.android.ui.setup.CommandBox
 import dev.kudde.android.ui.components.OutlineButton
 import dev.kudde.android.ui.components.SubScreenTopBar
 import dev.kudde.android.ui.hostkey.highlighted
@@ -44,10 +44,10 @@ import dev.kudde.android.ui.theme.KuddeTheme
 
 /** The line, or why there is none (no screen lock, a Keystore problem). */
 @Immutable
-data class PhoneKeyLine(val line: String?, val error: String?)
+data class PhoneKeyLine(val line: String?, val error: String?, val command: String? = null)
 
 fun phoneKeyLine(keyManager: KeyManager): PhoneKeyLine = try {
-    PhoneKeyLine(keyManager.authorizedKeysLine(), null)
+    PhoneKeyLine(keyManager.authorizedKeysLine(), null, uniffi.kudde_mobile.setupCommand(keyManager.publicKey(), KeyManager.COMMENT, null))
 } catch (e: Exception) {
     PhoneKeyLine(null, e.message?.takeIf { it.isNotBlank() } ?: e.toString())
 }
@@ -78,16 +78,17 @@ fun PhoneKeyScreen(
             if (machine != null) {
                 DialogText(highlighted(R.string.phone_key_where_machine, machine, c.fg))
             } else {
-                DialogText(stringResource(R.string.phone_key_where_any))
+                DialogText(stringResource(R.string.p_where_any))
             }
             if (key.line != null) {
-                MonoBox(listOf(key.line))
+                CommandBox(key.command ?: key.line)
                 DialogNote(stringResource(R.string.phone_key_restricted))
                 OutlineButton(
                     stringResource(if (copied) R.string.phone_key_copied else R.string.phone_key_copy),
-                    { onCopy(key.line) },
+                    { onCopy(key.command ?: key.line) },
                     Modifier.padding(top = KuddeSpacing.s4).fillMaxWidth(),
                 )
+                OutlineButton(stringResource(R.string.p_copy_key_line), { onCopy(key.line) }, Modifier.fillMaxWidth())
             } else {
                 ErrorText(stringResource(R.string.phone_key_unavailable, key.error.orEmpty()))
             }

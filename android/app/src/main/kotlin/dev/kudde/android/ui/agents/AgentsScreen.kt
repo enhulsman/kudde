@@ -62,6 +62,9 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.kudde.android.R
+import dev.kudde.android.ui.setup.EmptyHome
+import dev.kudde.android.ui.setup.LockNoticeCard
+import dev.kudde.android.ui.setup.UnfinishedHome
 import dev.kudde.android.ui.components.Chevron
 import dev.kudde.android.ui.components.ChevronIcon
 import dev.kudde.android.ui.components.OutlineButton
@@ -95,6 +98,12 @@ data class AgentsActions(
     val onToggleOthers: () -> Unit,
     /** Start the hub again after it failed to start. */
     val onRetry: () -> Unit,
+    /** "Continue setup" on a machine whose setup is not finished, by machine name. */
+    val onContinueSetup: (String) -> Unit = {},
+    /** "New terminal" under "No agents yet". */
+    val onNewTerminal: () -> Unit = {},
+    /** "Set a screen lock": Android's settings. */
+    val onScreenLock: () -> Unit = {},
 ) {
     companion object {
         /** Does nothing; for screenshots. */
@@ -141,14 +150,20 @@ fun AgentsScreen(
                 ui.storageNotice?.let { text ->
                     item(key = "storage") { StorageNotice(text) }
                 }
+                val unfinished = ui.setupNotices.map { it.machine }.toSet()
                 for (notice in ui.notices) {
+                    if (notice.machine in unfinished) continue
                     item(key = "notice/${notice.machine}") { MachineNotice(notice, actions.onMachines) }
                 }
+                for (notice in ui.setupNotices) {
+                    item(key = "setup/${notice.machine}") { MachineNotice(notice) { actions.onContinueSetup(notice.machine) } }
+                }
                 when (ui.empty) {
-                    AgentsEmpty.NoMachines -> item(key = "empty") { NoMachines(actions.onAddMachine) }
-                    AgentsEmpty.NoAgents -> item(key = "empty") { NoAgents() }
-                    AgentsEmpty.NoScreenLock, AgentsEmpty.Unfinished -> item(key = "empty") {
-                        BasicText(ui.emptyTitle.orEmpty(), style = KuddeType.body.copy(color = c.muted))
+                    AgentsEmpty.NoMachines -> item(key = "empty") { EmptyHome(actions.onAddMachine) }
+                    AgentsEmpty.NoAgents -> item(key = "empty") { NoAgents(ui.emptyAction, actions.onNewTerminal) }
+                    AgentsEmpty.NoScreenLock -> item(key = "empty") { LockNoticeCard(actions.onScreenLock) }
+                    AgentsEmpty.Unfinished -> item(key = "empty") {
+                        UnfinishedHome(ui.unfinished?.machine.orEmpty(), onContinue = { ui.unfinished?.let { actions.onContinueSetup(it.machine) } })
                     }
                     AgentsEmpty.StartFailed -> item(key = "empty") { StartFailed(ui.startError.orEmpty(), actions.onRetry) }
                     null -> Unit
@@ -615,14 +630,6 @@ internal fun SpinnerRing(turn: () -> Float) {
     }
 }
 
-/** First launch: no machines yet (no signed-off render; the Machines screen's text and button). */
-@Composable
-internal fun NoMachines(onAddMachine: () -> Unit) {
-    EmptyBlock(stringResource(R.string.agents_empty_machines_title), stringResource(R.string.machines_empty)) {
-        OutlineButton(stringResource(R.string.machines_add), onAddMachine, Modifier.fillMaxWidth())
-    }
-}
-
 /** The hub could not start: the reason as the Machines screen gives it, and Try again (no signed-off render). */
 @Composable
 internal fun StartFailed(reason: String, onRetry: () -> Unit) {
@@ -632,8 +639,12 @@ internal fun StartFailed(reason: String, onRetry: () -> Unit) {
 }
 
 @Composable
-private fun NoAgents() {
-    EmptyBlock(stringResource(R.string.agents_empty_agents_title), stringResource(R.string.agents_empty_agents_body))
+private fun NoAgents(action: String?, onAction: () -> Unit) {
+    EmptyBlock(
+        stringResource(R.string.agents_empty_agents_title),
+        stringResource(R.string.agents_empty_agents_body),
+        action?.let { label -> { OutlineButton(label, onAction, Modifier.fillMaxWidth()) } },
+    )
 }
 
 @Composable

@@ -49,8 +49,10 @@ import dev.kudde.android.ui.agents.NewEntryUi
 import dev.kudde.android.ui.agents.NewSheetActions
 import dev.kudde.android.ui.agents.NewTerminalSheet
 import dev.kudde.android.ui.agents.NoMachineSnack
-import dev.kudde.android.ui.agents.NoMachines
 import dev.kudde.android.ui.agents.OtherRow
+import dev.kudde.android.ui.setup.EmptyHome
+import dev.kudde.android.ui.setup.LockNoticeCard
+import dev.kudde.android.ui.setup.UnfinishedHome
 import dev.kudde.android.ui.agents.Ring
 import dev.kudde.android.ui.agents.Section
 import dev.kudde.android.ui.agents.Spinner
@@ -117,11 +119,20 @@ fun SpacesScreen(
             }
             LazyColumn(Modifier.fillMaxWidth().weight(1f), state = state) {
                 ui.storageNotice?.let { text -> item(key = "storage") { StorageNotice(text) } }
+                val unfinished = ui.setupNotices.map { it.machine }.toSet()
                 for (notice in ui.notices) {
+                    if (notice.machine in unfinished) continue
                     item(key = "notice/${notice.machine}") { MachineNotice(notice, actions.onMachines) }
                 }
+                for (notice in ui.setupNotices) {
+                    item(key = "setup/${notice.machine}") { MachineNotice(notice) { actions.onContinueSetup(notice.machine) } }
+                }
                 when (ui.empty) {
-                    AgentsEmpty.NoMachines -> item(key = "empty") { NoMachines(actions.onAddMachine) }
+                    AgentsEmpty.NoMachines -> item(key = "empty") { EmptyHome(actions.onAddMachine) }
+                    AgentsEmpty.NoScreenLock -> item(key = "empty") { LockNoticeCard(actions.onScreenLock) }
+                    AgentsEmpty.Unfinished -> item(key = "empty") {
+                        UnfinishedHome(ui.unfinished?.machine.orEmpty(), onContinue = { ui.unfinished?.let { actions.onContinueSetup(it.machine) } })
+                    }
                     AgentsEmpty.StartFailed -> item(key = "empty") { StartFailed(ui.startError.orEmpty(), actions.onRetry) }
                     else -> Unit
                 }

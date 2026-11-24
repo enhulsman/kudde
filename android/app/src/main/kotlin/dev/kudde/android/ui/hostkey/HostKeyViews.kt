@@ -66,6 +66,7 @@ fun TrustDialog(prompt: HostKeyPrompt, error: String?, onTrust: (HostKeyPrompt) 
     ModalDialog(stringResource(R.string.trust_title), onDismiss = onCancel) {
         DialogText(highlighted(R.string.trust_body, prompt.address, c.fg))
         MonoBox(listOf(prompt.algorithm, prompt.fingerprint))
+        DialogText(stringResource(R.string.trust_warning))
         DialogNote(stringResource(R.string.trust_after))
         error?.let { ErrorText(it) }
         DialogButtons {
