@@ -133,6 +133,8 @@ fun ChatScreen(
     menuState: TitleBarMenuState = remember { TitleBarMenuState() },
     /** A tap on the question card: the hub answers it. */
     onAnswer: (ChatChoice) -> Unit = {},
+    /** The own-words field takes the focus when it opens; false in still screenshots (a focused cursor blinks forever). */
+    focusOther: Boolean = true,
 ) {
     val c = KuddeTheme.colors
     // An exited agent's conversation stays, read-only (its lookup reads None).
@@ -164,10 +166,24 @@ fun ChatScreen(
                 broken -> Bottom(BROKEN, onTerminal)
                 poll?.exited == true -> Bottom(EXITED, null)
                 else -> {
-                    // At most half the height: a taller card scrolls inside it.
-                    poll?.question?.let { q -> QuestionCard(q, state.card, onAnswer, onTerminal, Modifier.weight(1f, fill = false)) }
-                    state.refusal?.let { r -> Bottom(r.text, if (r.terminal) onTerminal else null) }
-                    MessageBox(state, onPick, onSend)
+                    val q = poll?.question
+                    // A card takes the message box's place: no box and no keyboard while it waits
+                    // (the draft stays in the state); a keyboard already open closes.
+                    val keyboard = LocalSoftwareKeyboardController.current
+                    val focus = LocalFocusManager.current
+                    LaunchedEffect(q != null) {
+                        if (q != null) {
+                            focus.clearFocus()
+                            keyboard?.hide()
+                        }
+                    }
+                    if (q != null) {
+                        // At most half the height: a taller card scrolls inside it.
+                        QuestionCard(q, state.card, onAnswer, onTerminal, Modifier.weight(1f, fill = false), focusOther)
+                    } else {
+                        state.refusal?.let { r -> Bottom(r.text, if (r.terminal) onTerminal else null) }
+                        MessageBox(state, onPick, onSend)
+                    }
                 }
             }
         }

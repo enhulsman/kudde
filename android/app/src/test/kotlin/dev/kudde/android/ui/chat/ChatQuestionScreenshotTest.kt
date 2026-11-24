@@ -21,9 +21,12 @@ import uniffi.kudde_mobile.ChatPoll
 import uniffi.kudde_mobile.ChatQuestion
 import uniffi.kudde_mobile.ChatRow
 
-// chat-questions task 4.4: the question card in paper and graphite, at the
-// default font and at 1.3x, and with a 700-character description. Still
-// frames only (animate = false). Goldens: src/test/snapshots/chat-question-<scene>-<theme>.png.
+// chat-questions task 4.4: the question card (direction A) in paper and
+// graphite, at the default font and at 1.3x, with a 700-character
+// description, a multi-select question with two ticked, and the own-words
+// field open with text. The message box is hidden under every card. Still
+// frames only (animate = false; the field unfocused, so no cursor blinks and
+// no keyboard, which Robolectric does not draw anyway). Goldens: src/test/snapshots/chat-question-<scene>-<theme>.png.
 @RunWith(KuddeTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(qualifiers = "w412dp-h915dp-xhdpi")
@@ -61,13 +64,14 @@ class ChatQuestionScreenshotTest {
         gaugeUsed = 41_000u, gaugeWindow = null, gaugePercent = null, queued = emptyList(), timings = "", question = q,
     )
 
-    private fun capture(scene: String, q: ChatQuestion, fontScale: Float = 1f) {
+    private fun capture(scene: String, q: ChatQuestion, fontScale: Float = 1f, state: () -> ChatState = { ChatState() }) {
         for (dark in listOf(false, true)) {
+            val s = state()
             captureRoboImage("src/test/snapshots/chat-question-$scene-${if (dark) "graphite" else "paper"}.png") {
                 val d = LocalDensity.current
                 CompositionLocalProvider(LocalDensity provides Density(d.density, fontScale)) {
                     KuddeTheme(dark = dark) {
-                        ChatScreen(header, actions, poll(q), ChatState(), source, { 0L }, onTerminal = {}, onPick = {}, onSend = {}, animate = false)
+                        ChatScreen(header, actions, poll(q), s, source, { 0L }, onTerminal = {}, onPick = {}, onSend = {}, animate = false, focusOther = false)
                     }
                 }
             }
@@ -90,5 +94,27 @@ class ChatQuestionScreenshotTest {
                 "no server to start, no port to open, no password to keep. ").repeat(5).take(700),
         )
         capture("long", one(database.copy(options = listOf(long) + database.options.drop(1)), login, tests, step = 0u))
+    }
+
+    @Test
+    fun multiSelect() {
+        val ask = ChatAsk(
+            text = "Which pages should the website get first?", header = "Pages", multi = true, answerable = true,
+            options = listOf(
+                ChatOption("Home", "What it is, in one screen.", null),
+                ChatOption("Pricing", "The plans and what each includes.", null),
+                ChatOption("Docs", "Setup and the first steps.", null),
+                ChatOption("Blog", "Release notes and longer posts.", null),
+            ),
+        )
+        capture("multi", one(ask)) { ChatState().apply { card.toggle(1); card.toggle(2) } }
+    }
+
+    @Test
+    fun somethingElseOpen() = capture("other", one(database)) {
+        ChatState().apply {
+            card.otherOpen = true
+            card.otherText = "Use Postgres, but through Docker"
+        }
     }
 }

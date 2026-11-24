@@ -33,6 +33,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
+import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.android.controller.ActivityController
 import org.robolectric.annotation.Config
@@ -100,8 +101,11 @@ class ChatQuestionTest {
     }
 
     /** The chat with [p] shown; [state] can change it afterwards. */
+    /** The poll on screen; set it to change what the chat shows. */
+    private var shown by mutableStateOf<ChatPoll?>(null)
+
     private fun show(p: ChatPoll, state: ChatState = ChatState()): ChatState {
-        var shown by mutableStateOf(p)
+        shown = p
         val c = Robolectric.buildActivity(ComponentActivity::class.java).setup()
         controller = c
         c.get().setContent {
@@ -120,6 +124,8 @@ class ChatQuestionTest {
     }
 
     private fun idle() = shadowOf(Looper.getMainLooper()).idle()
+
+    private fun focused() = semanticsNodes().any { it.config.getOrNull(SemanticsProperties.Focused) == true }
 
     private fun spoken(n: SemanticsNode): String = (n.descriptions() + n.texts()).joinToString(" | ")
 
@@ -143,7 +149,10 @@ class ChatQuestionTest {
 
     /** Drawn on screen: the reader's tree and the raw one (an option's row reads as one stop). */
     private fun shows(text: String) = (semanticsNodes() + unmergedSemanticsNodes())
-        .any { n -> n.descriptions().any { text in it } || n.texts().any { text in it } }
+        .any { n ->
+            n.descriptions().any { text in it } || n.texts().any { text in it } ||
+                n.config.getOrNull(SemanticsProperties.EditableText)?.text?.contains(text) == true
+        }
 
     // ---- 4.1 state
 
@@ -197,14 +206,83 @@ class ChatQuestionTest {
         assertEquals("Too long: 2000 characters at most", otherProblem("x".repeat(2001)))
     }
 
+    // chat-view delta "The message box while a question card shows" (owner, 2026-11-25).
     @Test
-    fun theMessageBoxRefusesUnderACard() {
+    fun theMessageBoxIsHiddenWhileACardShows() {
+        show(poll(question(database), rows))
+        assertNull(node("Attach photos"))
+        assertFalse(shows("Message"))
+        assertNotNull(node(SKIP))
+    }
+
+    @Test
+    fun theMessageBoxComesBackWithItsDraftWhenTheCardEnds() {
         val s = ChatState()
         s.draft = "Use SQLite"
-        assertNull(s.send(rows, "blocked", now = 0, card = true))
-        assertEquals("Use SQLite", s.draft)
-        assertEquals("Answer the question above first", s.refusal?.text)
-        assertTrue(s.pending.isEmpty())
+        show(poll(question(database), rows), s)
+        assertNull(node("Attach photos"))
+        shown = poll(null, rows)
+        idle()
+        assertNotNull(node("Attach photos"))
+        assertTrue(shows("Use SQLite"))
+        assertNull(node(SKIP))
+    }
+
+    @Test
+    fun aCardClosesAKeyboardAlreadyOpen() {
+        show(poll(null, rows))
+        val box = semanticsNodes().first { it.config.contains(SemanticsProperties.EditableText) }
+        box.config[SemanticsActions.RequestFocus].action!!.invoke()
+        idle()
+        assertTrue(focused())
+        shown = poll(question(database), rows)
+        idle()
+        assertFalse("nothing holds the focus, so no keyboard", focused())
+    }
+
+    @Test
+    fun somethingElseTakesTheFocusAndSendGivesItBack() {
+        val s = show(poll(question(database), rows))
+        s.card.follow(s.poll?.question)
+        tap(SOMETHING_ELSE)
+        val field = semanticsNodes().first { it.config.contains(SemanticsProperties.EditableText) }
+        assertEquals("the keyboard opens for the field", true, field.config.getOrNull(SemanticsProperties.Focused))
+        s.card.otherText = "Use Postgres, but through Docker"
+        idle()
+        tap(SEND)
+        assertFalse(focused())
+        assertEquals(listOf<ChatChoice>(ChatChoice.Other("Use Postgres, but through Docker")), answers)
+    }
+
+    @Test
+    fun backDismissesTheFieldAndKeepsTheCard() {
+        show(poll(question(database), rows))
+        tap(SOMETHING_ELSE)
+        assertTrue(focused())
+        controller!!.get().onBackPressedDispatcher.onBackPressed()
+        idle()
+        assertFalse(focused())
+        assertFalse(shows(TYPE_YOUR_ANSWER))
+        assertNotNull(node(SKIP))
+        assertNotNull(node(SOMETHING_ELSE))
+    }
+
+    @Test
+    fun aMultiSelectQuestionTicksAndSendsOnceConfirmed() {
+        val ask = database.copy(
+            multi = true,
+            options = database.options.map { it.copy(preview = null) } + ChatOption("Plain JSON files", "", null),
+        )
+        show(poll(question(ask), rows))
+        assertTrue(shows(CHOOSE_ANY))
+        assertTrue(shows("0 selected"))
+        assertTrue("Send waits for a tick", node(SEND)!!.config.contains(SemanticsProperties.Disabled))
+        tap("Option 1 of 3, SQLite (Recommended), One file, no server., not checked")
+        tap("Option 3 of 3, Plain JSON files, not checked")
+        assertTrue(shows("2 selected"))
+        assertNotNull(node("Option 1 of 3, SQLite (Recommended), One file, no server., checked"))
+        tap(SEND)
+        assertEquals(listOf<ChatChoice>(ChatChoice.Multi(listOf(0u, 2u))), answers)
     }
 
     @Test
@@ -227,10 +305,11 @@ class ChatQuestionTest {
     fun aSingleQuestionShowsItsOptionsSomethingElseAndSkip() {
         show(poll(question(database), rows))
         assertTrue(shows("Which database should the todo app use?"))
-        assertTrue(shows("1."))
+        // The numbers sit in keycaps, without a dot (direction A).
+        assertTrue(unmergedSemanticsNodes().any { it.texts() == listOf("1") })
         assertTrue(shows("SQLite (Recommended)"))
         assertTrue(shows("One file, no server."))
-        assertTrue(shows("2."))
+        assertTrue(unmergedSemanticsNodes().any { it.texts() == listOf("2") })
         assertTrue(shows("Needs a running server."))
         assertNotNull(node(SOMETHING_ELSE))
         assertNotNull(node(SKIP))
@@ -442,7 +521,8 @@ class ChatQuestionTest {
         assertEquals("Preview", PREVIEW)
         assertEquals("Preview: Postgres", previewTitle("Postgres"))
         assertEquals("Open the terminal", OPEN_TERMINAL)
-        assertEquals("Answer the question above first", ANSWER_ABOVE_FIRST)
+        assertEquals("2 selected", RuntimeEnvironment.getApplication().getString(dev.kudde.android.R.string.chat_question_selected, 2))
+        assertEquals("0 selected", RuntimeEnvironment.getApplication().getString(dev.kudde.android.R.string.chat_question_selected, 0))
         assertEquals("Question from the agent", QUESTION_FROM_AGENT)
     }
 }

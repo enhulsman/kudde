@@ -126,15 +126,12 @@ class ChatState {
      * The send button: the draft and photos leave the box as a pending
      * bubble, to be typed as [Outgoing.typed]. Null when there is nothing to
      * send, or while a slash command's waiting line refuses sends (the draft
-     * stays and the refusal says so), or while a question [card] shows.
+     * stays and the refusal says so). While a question card shows there is
+     * no message box at all (chat-questions).
      */
-    fun send(rows: List<ChatRow>, status: String, now: Long, card: Boolean = false): Outgoing? {
+    fun send(rows: List<ChatRow>, status: String, now: Long): Outgoing? {
         val text = draft
         if (text.isBlank() && attached.isEmpty()) return null
-        if (card) {
-            refusal = Refusal(ANSWER_ABOVE_FIRST, terminal = false)
-            return null
-        }
         sendRefusal(pending, now)?.let {
             refusal = Refusal(it, terminal = true)
             return null
