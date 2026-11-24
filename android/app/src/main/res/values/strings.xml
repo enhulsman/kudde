@@ -361,7 +361,10 @@
     <string name="alerts_test_missed">No test alert within 30 s · is kudde-push running there?</string>
     <!-- Proposed first-run wording, awaiting owner sign-off. -->
     <string name="setup_title">Set up a machine</string>
-    <string name="setup_step">Step %1$d of 3</string>
+    <string name="setup_step">Step %1$d of 4</string>
+    <string name="setup_stub_welcome">Welcome (numbered stub)</string>
+    <string name="setup_stub_start">Set up a machine</string>
+    <string name="setup_stub_lock">Set a screen lock (numbered stub)</string>
     <!-- Proposed first-run texts; owner approval is still pending (section 1.1). -->
     <string name="setup_reach_no_answer">No answer from %1$s.</string>
     <string name="setup_reach_no_answer_help">Check that the phone is on the same Wi-Fi or VPN as the machine, and that the address is right.</string>
