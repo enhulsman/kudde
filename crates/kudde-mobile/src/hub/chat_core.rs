@@ -5,7 +5,7 @@
 
 use kudde_chat::locate::{EmptyGuard, Lookup};
 use kudde_chat::tail::Chunk;
-use kudde_chat::{Agent, Gauge, Health, Item, Key, Parser, keep_keys};
+use kudde_chat::{Agent, Gauge, Health, Item, Key, Parser, keep_keys, question};
 use std::time::{Duration, Instant};
 
 /// The first open reads at most this much of the log's end; so does a
@@ -486,6 +486,31 @@ impl ChatCore {
 
     pub fn lookup(&self) -> Option<&Lookup> {
         self.lookup.as_ref()
+    }
+
+    /// The question the agent shown waits on, by its log (chat-questions
+    /// design D1, first witness); Claude Code only.
+    pub fn question(&self) -> Option<question::Asked> {
+        let o = self.log.as_ref().filter(|o| o.agent == Agent::Claude)?;
+        o.parser.question().cloned()
+    }
+
+    /// The question call with this id in the log held.
+    pub fn asked(&self, id: &str) -> Option<question::Asked> {
+        self.log.as_ref()?.parser.asked(id).cloned()
+    }
+
+    /// The agent in front and the session looked up last are the ones
+    /// shown (design D1, third witness).
+    pub fn shows(&self, t: &Term) -> bool {
+        let Some(o) = self.log.as_ref() else {
+            return false;
+        };
+        let session = match &self.lookup {
+            Some(Lookup::Found { session, .. } | Lookup::Empty { session }) => session,
+            _ => return false,
+        };
+        t.agent == Some(o.agent) && *session == o.session
     }
 
     pub fn view(&self) -> View {

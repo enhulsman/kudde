@@ -226,6 +226,36 @@ pub fn progress(screen: &str, qs: &[Question]) -> Progress {
         .map_or(Progress::Gone, |(i, _)| Progress::Question(i))
 }
 
+/// Whether `answer` for question `step` may start with the screen at `p`:
+/// on that question; the review step for Submit; the dialog anywhere for Skip.
+pub fn before(answer: &Answer, step: usize, p: Progress) -> bool {
+    match answer {
+        Answer::Option(_) | Answer::Other | Answer::Multi(_) => p == Progress::Question(step),
+        Answer::Submit => p == Progress::Review,
+        Answer::Skip => p != Progress::Gone,
+    }
+}
+
+/// What the screen after a step says about it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Moved {
+    /// On the next question or the review step: done.
+    Yes,
+    /// Not yet (or never: a rebound key).
+    No,
+    /// The dialog is gone: done once the log holds the call's result.
+    AskLog,
+}
+
+pub fn moved_on(answer: &Answer, step: usize, p: Progress) -> Moved {
+    match (answer, p) {
+        (_, Progress::Gone) => Moved::AskLog,
+        (Answer::Submit | Answer::Skip, _) => Moved::No,
+        (_, Progress::Question(i)) if i == step => Moved::No,
+        _ => Moved::Yes,
+    }
+}
+
 /// Why an answer sends nothing.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Refusal {

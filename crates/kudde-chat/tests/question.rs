@@ -611,3 +611,45 @@ mod check {
         );
     }
 }
+
+// ---- the screen before and after a step (design D4)
+
+mod steps {
+    use super::*;
+    use kudde_chat::question::{Moved, before, moved_on};
+
+    #[test]
+    fn a_step_starts_only_where_the_screen_is() {
+        let q = |i| Progress::Question(i);
+        assert!(before(&Answer::Option(1), 0, q(0)));
+        assert!(!before(&Answer::Option(1), 0, q(1)));
+        assert!(!before(&Answer::Option(1), 0, Progress::Review));
+        assert!(before(&Answer::Other, 1, q(1)));
+        assert!(!before(&Answer::Other, 1, Progress::Gone));
+        assert!(before(&Answer::Submit, 2, Progress::Review));
+        assert!(!before(&Answer::Submit, 2, q(1)));
+        assert!(before(&Answer::Skip, 0, q(1)));
+        assert!(before(&Answer::Skip, 0, Progress::Review));
+        assert!(!before(&Answer::Skip, 0, Progress::Gone));
+    }
+
+    #[test]
+    fn a_step_is_done_when_the_screen_moves_on() {
+        let q = |i| Progress::Question(i);
+        assert_eq!(moved_on(&Answer::Option(0), 0, q(1)), Moved::Yes);
+        assert_eq!(
+            moved_on(&Answer::Option(0), 1, Progress::Review),
+            Moved::Yes
+        );
+        assert_eq!(moved_on(&Answer::Option(0), 0, q(0)), Moved::No);
+        assert_eq!(
+            moved_on(&Answer::Option(0), 0, Progress::Gone),
+            Moved::AskLog
+        );
+        assert_eq!(moved_on(&Answer::Other, 0, Progress::Gone), Moved::AskLog);
+        assert_eq!(moved_on(&Answer::Submit, 2, Progress::Review), Moved::No);
+        assert_eq!(moved_on(&Answer::Submit, 2, Progress::Gone), Moved::AskLog);
+        assert_eq!(moved_on(&Answer::Skip, 0, q(0)), Moved::No);
+        assert_eq!(moved_on(&Answer::Skip, 0, Progress::Gone), Moved::AskLog);
+    }
+}
