@@ -103,7 +103,7 @@ jobs:
       - run: cargo fmt --all --check
       - run: cargo clippy --locked --all-targets --features kudde-mobile/vt,kudde-mobile/spike -- -D warnings
       # The SSH tests (crates/kudde-mobile/tests/sshd.rs) start a throwaway sshd.
-      - run: sudo apt-get install -y --no-install-recommends openssh-server > /dev/null
+      - run: sudo apt-get install -y --no-install-recommends openssh-server zsh fish > /dev/null
       - run: cargo test --locked --features kudde-mobile/vt,kudde-mobile/spike
         env:
           KUDDE_REQUIRE_SSHD: "1"

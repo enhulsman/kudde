@@ -22,7 +22,7 @@ use std::time::{Duration, Instant};
 
 use kudde_mobile::{
     AgentAttention, Hub, HubListener, HubSnapshot, MachineState, SignError, SshError, SshSigner,
-    authorized_keys_line, ssh_public_key_line, ssh_run_spike,
+    authorized_keys_line, setup_command, ssh_public_key_line, ssh_run_spike,
 };
 use p256::ecdsa::SigningKey;
 use p256::ecdsa::signature::Signer as _;
@@ -124,6 +124,28 @@ fn session_path(home: &Path, extra: &[&str]) -> String {
 /// dirs plus `path_dirs` under that home). None (and says why) when OpenSSH is
 /// not installed.
 fn sshd(name: &str, authorized: &str, path_dirs: &[&str], env: &[(&str, String)]) -> Option<Sshd> {
+    start_sshd(name, Some(authorized), path_dirs, env)
+}
+
+/// The same with `StrictModes yes` and `AuthorizedKeysFile` set to the file the
+/// setup command writes, `<session HOME>/.ssh/authorized_keys`, which starts
+/// absent (`authorized` None). sshd walks the file's parent directories up to
+/// the login account's real home and refuses any that is group or world
+/// writable, so the scratch dir lives under cargo's target dir (inside the
+/// checkout, below that home) instead of the world-writable `/tmp`. `SetEnv
+/// HOME` only changes the session's variable, not the home sshd validates:
+/// the validation applies to the real path, which is why the file is named in
+/// full and not as `%h/.ssh/authorized_keys`.
+fn strict_sshd(name: &str, path_dirs: &[&str], env: &[(&str, String)]) -> Option<Sshd> {
+    start_sshd(name, None, path_dirs, env)
+}
+
+fn start_sshd(
+    name: &str,
+    authorized: Option<&str>,
+    path_dirs: &[&str],
+    env: &[(&str, String)],
+) -> Option<Sshd> {
     if !Path::new(SSHD).exists() {
         assert!(
             std::env::var_os("KUDDE_REQUIRE_SSHD").is_none(),
@@ -133,7 +155,11 @@ fn sshd(name: &str, authorized: &str, path_dirs: &[&str], env: &[(&str, String)]
         return None;
     }
     // Short: a real core's sockets go under it (108-byte socket path limit).
-    let dir = std::env::temp_dir().join(format!("hsd-{}-{name}", std::process::id()));
+    let base = match authorized {
+        Some(_) => std::env::temp_dir(),
+        None => PathBuf::from(env!("CARGO_TARGET_TMPDIR")),
+    };
+    let dir = base.join(format!("hsd-{}-{name}", std::process::id()));
     fresh_dir(&dir).unwrap_or_else(|e| panic!("scratch dir {}: {e}", dir.display()));
     std::fs::create_dir(dir.join("home")).unwrap();
     let host_key = dir.join("host_key");
@@ -154,7 +180,14 @@ fn sshd(name: &str, authorized: &str, path_dirs: &[&str], env: &[(&str, String)]
         .nth(1)
         .unwrap()
         .to_owned();
-    std::fs::write(dir.join("authorized_keys"), format!("{authorized}\n")).unwrap();
+    let keys_file = match authorized {
+        Some(line) => {
+            std::fs::write(dir.join("authorized_keys"), format!("{line}\n")).unwrap();
+            dir.join("authorized_keys")
+        }
+        None => dir.join("home/.ssh/authorized_keys"),
+    };
+    let strict = if authorized.is_some() { "no" } else { "yes" };
 
     let home = dir.join("home");
     let mut set_env = vec![
@@ -177,11 +210,11 @@ fn sshd(name: &str, authorized: &str, path_dirs: &[&str], env: &[(&str, String)]
             .port();
         let config = format!(
             "Port {port}\nListenAddress 127.0.0.1\nHostKey {host}\nAuthorizedKeysFile {keys}\n\
-             PidFile {pid}\nUsePAM no\nStrictModes no\nPasswordAuthentication no\n\
+             PidFile {pid}\nUsePAM no\nStrictModes {strict}\nPasswordAuthentication no\n\
              KbdInteractiveAuthentication no\nPubkeyAuthentication yes\nLogLevel VERBOSE\n\
              SetEnv {set_env}\n",
             host = host_key.display(),
-            keys = dir.join("authorized_keys").display(),
+            keys = keys_file.display(),
             pid = dir.join("sshd.pid").display(),
         );
         std::fs::write(dir.join("sshd_config"), config).unwrap();
@@ -892,4 +925,390 @@ fn the_hub_lists_a_real_cores_agents_and_closes_on_suspend() {
     let s = app.hub.snapshot();
     assert_eq!(machine_state(&s), MachineState::Paused);
     assert_eq!(s.agents.len(), 1, "rows stay, as of the last connection");
+}
+
+// The setup command (first-run-walkthrough tasks 2.3 and 2.8): the exact text
+// the app generates, run by the shells people paste it into, against a scratch
+// HOME under a StrictModes sshd. Only the host public-key path is substituted.
+
+const HOST_PUB: &str = "/etc/ssh/ssh_host_ed25519_key.pub";
+const OTHER_KEY: &str =
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOtherKeyOtherKeyOtherKeyOtherKeyOtherK other@desk";
+
+/// The shell's path, or None (explicit skip, a failure when sshd is required).
+fn shell(name: &str) -> Option<PathBuf> {
+    for dir in ["/usr/bin", "/bin"] {
+        let path = Path::new(dir).join(name);
+        if path.exists() {
+            return Some(path);
+        }
+    }
+    assert!(
+        std::env::var_os("KUDDE_REQUIRE_SSHD").is_none(),
+        "KUDDE_REQUIRE_SSHD is set but {name} is not installed"
+    );
+    eprintln!("skipped: {name} is not installed");
+    None
+}
+
+fn is_root() -> bool {
+    let id = Command::new("id").arg("-u").output().unwrap();
+    String::from_utf8_lossy(&id.stdout).trim() == "0"
+}
+
+fn mode(path: &Path) -> u32 {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::metadata(path).unwrap().permissions().mode() & 0o7777
+}
+
+fn set_mode(path: &Path, mode: u32) {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode)).unwrap();
+}
+
+/// The generated command for `phone`, with the fixture's host public key in
+/// place of `/etc/ssh`'s, which is all that is substituted.
+fn setup_text(sshd: &Sshd, phone: &SigningKey, host_key: bool) -> String {
+    let command = setup_command(
+        spki(phone),
+        "kudde".into(),
+        host_key.then(|| "ED25519".to_owned()),
+    )
+    .unwrap();
+    command.replace(
+        HOST_PUB,
+        &sshd.dir.join("host_key.pub").display().to_string(),
+    )
+}
+
+/// Runs `command` as `shell -c`, as an ordinary user, with HOME the scratch
+/// home and `first` ahead of the system dirs on PATH.
+fn run_shell(
+    shell: &Path,
+    sshd: &Sshd,
+    command: &str,
+    first: Option<&Path>,
+) -> std::process::Output {
+    let mut path = String::new();
+    if let Some(dir) = first {
+        path.push_str(&format!("{}:", dir.display()));
+    }
+    path.push_str("/usr/bin:/bin");
+    Command::new(shell)
+        .arg("-c")
+        .arg(command)
+        .env_clear()
+        .env("HOME", sshd.home())
+        .env("PATH", path)
+        .stdin(Stdio::null())
+        .output()
+        .expect("the shell runs")
+}
+
+/// A start from nothing: HOME empty again.
+fn reset_home(sshd: &Sshd) {
+    let home = sshd.home();
+    for entry in std::fs::read_dir(&home).unwrap() {
+        let path = entry.unwrap().path();
+        let meta = std::fs::symlink_metadata(&path).unwrap();
+        if meta.is_dir() {
+            set_mode(&path, 0o700);
+            std::fs::remove_dir_all(&path).unwrap();
+        } else {
+            std::fs::remove_file(&path).unwrap();
+        }
+    }
+}
+
+fn ssh_dir(sshd: &Sshd) -> PathBuf {
+    sshd.home().join(".ssh")
+}
+
+fn keys_path(sshd: &Sshd) -> PathBuf {
+    ssh_dir(sshd).join("authorized_keys")
+}
+
+fn stdout(out: &std::process::Output) -> String {
+    String::from_utf8_lossy(&out.stdout).into_owned()
+}
+
+fn stderr(out: &std::process::Output) -> String {
+    String::from_utf8_lossy(&out.stderr).into_owned()
+}
+
+/// The fingerprint field of the command's output equals the fixture's.
+fn prints_fixture_fingerprint(sshd: &Sshd, out: &std::process::Output) -> bool {
+    stdout(out).split_whitespace().nth(1) == Some(sshd.host_key_fingerprint.as_str())
+}
+
+/// A wrapper that refuses the one operation `op` in a private PATH dir, with a
+/// message of its own; the other tools are the system's.
+fn refusing(sshd: &Sshd, op: &str) -> PathBuf {
+    let dir = sshd.dir.join(format!("wrap-{op}"));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join(op);
+    std::fs::write(
+        &path,
+        format!("#!/bin/sh\necho 'wrapper: {op} refused' >&2\nexit 1\n"),
+    )
+    .unwrap();
+    make_executable(&path);
+    dir
+}
+
+fn count_lines(file: &str, line: &str) -> usize {
+    file.lines().filter(|l| *l == line).count()
+}
+
+fn setup_cases(shell_name: &str) {
+    let Some(shell) = shell(shell_name) else {
+        return;
+    };
+    if is_root() {
+        eprintln!("skipped: run as an ordinary user, 0400 means nothing to root");
+        return;
+    }
+    let phone = key(31);
+    let Some(sshd) = strict_sshd(&format!("setup-{shell_name}"), &[], &[]) else {
+        return;
+    };
+    let line = app_line(&phone);
+    let command = setup_text(&sshd, &phone, true);
+
+    // Fresh HOME.
+    let out = run_shell(&shell, &sshd, &command, None);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    assert!(prints_fixture_fingerprint(&sshd, &out), "{}", stdout(&out));
+    assert_eq!(mode(&ssh_dir(&sshd)), 0o700);
+    assert_eq!(mode(&keys_path(&sshd)), 0o600);
+    let file = std::fs::read_to_string(keys_path(&sshd)).unwrap();
+    assert_eq!(count_lines(&file, &line), 1);
+
+    // An owner-owned .ssh at 0775.
+    reset_home(&sshd);
+    std::fs::create_dir(ssh_dir(&sshd)).unwrap();
+    set_mode(&ssh_dir(&sshd), 0o775);
+    let out = run_shell(&shell, &sshd, &command, None);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    assert_eq!(mode(&ssh_dir(&sshd)), 0o700);
+    assert_eq!(mode(&keys_path(&sshd)), 0o600);
+
+    // authorized_keys at 0400 holding another key without a final newline.
+    reset_home(&sshd);
+    std::fs::create_dir(ssh_dir(&sshd)).unwrap();
+    std::fs::write(keys_path(&sshd), OTHER_KEY).unwrap();
+    set_mode(&keys_path(&sshd), 0o400);
+    let out = run_shell(&shell, &sshd, &command, None);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    assert_eq!(mode(&keys_path(&sshd)), 0o600);
+    let file = std::fs::read_to_string(keys_path(&sshd)).unwrap();
+    assert!(file.starts_with(OTHER_KEY), "the other key's bytes");
+    assert_eq!(count_lines(&file, OTHER_KEY), 1, "on its own line");
+    assert_eq!(
+        count_lines(&file, &line),
+        1,
+        "the phone line on its own line"
+    );
+
+    // The phone line already present, and a rerun: the other key stays, the
+    // command appends again and still succeeds.
+    let out = run_shell(&shell, &sshd, &command, None);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    assert!(prints_fixture_fingerprint(&sshd, &out));
+    let file = std::fs::read_to_string(keys_path(&sshd)).unwrap();
+    assert!(file.starts_with(OTHER_KEY));
+    assert_eq!(count_lines(&file, OTHER_KEY), 1);
+    assert_eq!(count_lines(&file, &line), 2);
+
+    // A symlinked .ssh to a directory the user owns works: the line lands in it.
+    reset_home(&sshd);
+    let target = sshd.home().join("real-ssh");
+    std::fs::create_dir(&target).unwrap();
+    std::os::unix::fs::symlink(&target, ssh_dir(&sshd)).unwrap();
+    let out = run_shell(&shell, &sshd, &command, None);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    let file = std::fs::read_to_string(target.join("authorized_keys")).unwrap();
+    assert_eq!(count_lines(&file, &line), 1);
+
+    // Refusals, every one nonzero with the shell's or tool's own message and
+    // no fingerprint: a regular file where .ssh goes, a directory where
+    // authorized_keys goes, and mkdir, chmod and the append each failing.
+    type Refusal = (String, Box<dyn Fn()>, Option<PathBuf>);
+    let mut refused: Vec<Refusal> = Vec::new();
+    let s = ssh_dir(&sshd);
+    refused.push((
+        ".ssh is a regular file".into(),
+        Box::new({
+            let s = s.clone();
+            move || std::fs::write(&s, "x").unwrap()
+        }),
+        None,
+    ));
+    refused.push((
+        "authorized_keys is a directory".into(),
+        Box::new({
+            let s = s.clone();
+            move || {
+                std::fs::create_dir_all(s.join("authorized_keys")).unwrap();
+            }
+        }),
+        None,
+    ));
+    for op in ["mkdir", "chmod", "touch", "cat"] {
+        refused.push((
+            format!("{op} fails"),
+            Box::new(|| {}),
+            Some(refusing(&sshd, op)),
+        ));
+    }
+    for (case, arrange, first) in refused {
+        reset_home(&sshd);
+        arrange();
+        let out = run_shell(&shell, &sshd, &command, first.as_deref());
+        assert_ne!(out.status.code(), Some(0), "{case}");
+        assert!(!stderr(&out).is_empty(), "{case}: a message on stderr");
+        assert!(!stdout(&out).contains("SHA256:"), "{case}: no fingerprint");
+    }
+
+    // Wrong owner needs another account (root's chown): not testable as an
+    // ordinary user, so it is a stated skip and never a pass.
+    eprintln!(
+        "skipped: wrong-owner refusal needs root to chown; sshd's StrictModes covers it below"
+    );
+}
+
+#[test]
+fn the_setup_command_installs_the_key_through_sh() {
+    setup_cases("sh");
+}
+
+#[test]
+fn the_setup_command_installs_the_key_through_bash() {
+    setup_cases("bash");
+}
+
+#[test]
+fn the_setup_command_installs_the_key_through_zsh() {
+    setup_cases("zsh");
+}
+
+/// The command's own file is what a StrictModes sshd reads: an existing key
+/// and the phone key both sign in, the phone key still runs `connect` only,
+/// and the pty and forwarding restrictions hold.
+#[test]
+fn a_strict_sshd_accepts_the_commands_file_for_old_and_phone_keys() {
+    if is_root() {
+        eprintln!("skipped: run as an ordinary user");
+        return;
+    }
+    let (existing, phone) = (key(32), key(33));
+    let Some(sshd) = strict_sshd("setup-auth", &[], &[]) else {
+        return;
+    };
+    fake_core(&sshd, ".local/bin", "local-bin herdr-core");
+    std::fs::create_dir(ssh_dir(&sshd)).unwrap();
+    std::fs::write(keys_path(&sshd), spike_line(&existing)).unwrap(); // no final newline
+    set_mode(&keys_path(&sshd), 0o400);
+    let sh = shell("sh").unwrap();
+    let out = run_shell(&sh, &sshd, &setup_text(&sshd, &phone, true), None);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    assert!(prints_fixture_fingerprint(&sshd, &out));
+
+    let old = run(&sshd, &existing, None, signer(existing.clone(), false), "x")
+        .unwrap_or_else(|e| panic!("{e}: {}", sshd.log()));
+    assert_eq!(old.output, "spike-ok");
+    let new = run(
+        &sshd,
+        &phone,
+        None,
+        signer(phone.clone(), false),
+        "cat /etc/passwd",
+    )
+    .unwrap_or_else(|e| panic!("{e}: {}", sshd.log()));
+    assert_eq!(new.output, "local-bin herdr-core: connect\n");
+
+    let (failures, output, _) = block_on(async {
+        let session = raw_session(&sshd, &phone).await;
+        let mut channel = session.channel_open_session().await.unwrap();
+        channel
+            .request_pty(true, "xterm-256color", 80, 24, 0, 0, &[])
+            .await
+            .unwrap();
+        channel.request_shell(true).await.unwrap();
+        drain(&mut channel).await
+    });
+    assert_eq!(failures, 1, "the pty request is refused");
+    assert_eq!(output, "local-bin herdr-core: connect\n");
+    let forward = block_on(async {
+        let session = raw_session(&sshd, &phone).await;
+        session.tcpip_forward("127.0.0.1", 0).await
+    });
+    assert!(forward.is_err());
+}
+
+/// 2.8: the Phone key variant sent on standard input to `sh -s`, as the app
+/// does for the password way, through each login shell that sshd would start.
+#[test]
+fn the_phone_key_variant_arrives_on_standard_input_through_each_login_shell() {
+    if is_root() {
+        eprintln!("skipped: run as an ordinary user");
+        return;
+    }
+    let phone = key(34);
+    let Some(sshd) = strict_sshd("setup-stdin", &[], &[]) else {
+        return;
+    };
+    let line = app_line(&phone);
+    let variant = setup_text(&sshd, &phone, false);
+    let pasted = setup_text(&sshd, &phone, true);
+    for login in ["sh", "bash", "zsh", "fish"] {
+        let Some(login_shell) = shell(login) else {
+            continue;
+        };
+        reset_home(&sshd);
+        let input = |text: &str| {
+            use std::io::Write as _;
+            let mut child = Command::new(&login_shell)
+                .args(["-c", "sh -s"])
+                .env_clear()
+                .env("HOME", sshd.home())
+                .env("PATH", "/usr/bin:/bin")
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .unwrap();
+            child
+                .stdin
+                .take()
+                .unwrap()
+                .write_all(text.as_bytes())
+                .unwrap();
+            child.wait_with_output().unwrap()
+        };
+        let out = input(&format!("{variant}\n"));
+        assert_eq!(out.status.code(), Some(0), "{login}: {}", stderr(&out));
+        assert!(stdout(&out).is_empty(), "{login}: nothing printed");
+        let via_stdin = std::fs::read_to_string(keys_path(&sshd)).unwrap();
+        assert_eq!(count_lines(&via_stdin, &line), 1, "{login}");
+        assert_eq!(mode(&keys_path(&sshd)), 0o600);
+
+        // Exactly the file the pasted command leaves.
+        reset_home(&sshd);
+        let out = run_shell(&shell("sh").unwrap(), &sshd, &pasted, None);
+        assert_eq!(out.status.code(), Some(0));
+        assert_eq!(
+            std::fs::read_to_string(keys_path(&sshd)).unwrap(),
+            via_stdin,
+            "{login}"
+        );
+
+        // Cut off before the closing `)`: the shell sees a syntax error and
+        // runs nothing.
+        reset_home(&sshd);
+        let cut = variant.trim_end_matches(')');
+        let out = input(cut);
+        assert_ne!(out.status.code(), Some(0), "{login}: a cut transfer fails");
+        assert!(!ssh_dir(&sshd).exists(), "{login}: nothing changed");
+    }
 }

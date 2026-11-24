@@ -77,7 +77,7 @@ jobs:
           save-if: false
 
       # zsh: the start tests run the phone's agent wrapper in a real zsh.
-      - run: sudo apt-get install -y --no-install-recommends openssh-server zsh > /dev/null
+      - run: sudo apt-get install -y --no-install-recommends openssh-server zsh fish > /dev/null
 
       # The pinned version by its number; latest through latest.json, which
       # must still name the version resolved above.
