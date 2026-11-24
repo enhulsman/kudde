@@ -1,7 +1,7 @@
 ## 1. Facts to settle first
-- [ ] 1.1 **[owner]** Answer the eight decisions in `proposal.md`; record them in `decisions.md`.
-- [ ] 1.2 **[owner]** Sign off the texts table in the chat-view delta (they are public UI text).
-- [ ] 1.3 Search the issues (open and closed) for overlaps before filing follow-ups (Codex questions, permission prompts stay #31).
+- [x] 1.1 **[owner]** Answer the eight decisions in `proposal.md`; record them in `decisions.md`. (Answered 2026-11-21, all as picked.)
+- [x] 1.2 **[owner]** Sign off the texts table in the chat-view delta (they are public UI text). (Approved 2026-11-24 word for word, with the spoken wording in the accessibility delta.)
+- [x] 1.3 Search the issues (open and closed) for overlaps before filing follow-ups (Codex questions, permission prompts stay #31). (2026-11-24: no issue covers Codex questions or a keys guard in herdr-core, so both follow-ups in 6.2 are new; #31 keeps permission prompts and #65 is its closed duplicate; #71 asks herdr-core for a send guard for finished agents, the same kind of upstream guard, and a keys guard could be asked for beside it.)
 - [ ] 1.4 Move #51 to In Progress when work starts.
 
 ## 2. Tests first (Rust, `crates/kudde-chat`)
