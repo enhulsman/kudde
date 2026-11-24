@@ -46,8 +46,11 @@ and the log holds the call's result. When none matches, the card SHALL say
 "Could not confirm the answer arrived. Check the terminal." with the
 terminal button, and SHALL NOT send the keys again. A `terminal.keys` call
 whose outcome is not known (no reply, connection lost) SHALL be reported the
-same way and SHALL NOT be repeated. The app SHALL NOT read the result text
-of the call to learn the answer.
+same way and SHALL NOT be repeated. A check that cannot be made (its call
+fails) SHALL send nothing and SHALL be reported the same way. With no
+connection to the machine nothing SHALL be sent and the card SHALL say "Not
+connected. Nothing was sent." The app SHALL NOT read the result text of the
+call to learn the answer.
 
 #### Scenario: Choosing the second option
 - **WHEN** Ezra taps "2. Postgres" while the same dialog shows on the desk
@@ -64,6 +67,10 @@ of the call to learn the answer.
 #### Scenario: No reply to the keys
 - **WHEN** the connection drops while the keys are being sent
 - **THEN** the card says "Could not confirm the answer arrived. Check the terminal." and the keys are not sent again
+
+#### Scenario: No connection
+- **WHEN** Ezra taps an option while the machine is not connected
+- **THEN** nothing is sent and the card says "Not connected. Nothing was sent."
 
 #### Scenario: A rebound key
 - **WHEN** the keys were sent and the screen then shows neither a next step nor a closed dialog
@@ -155,7 +162,8 @@ card as it was.
 The card SHALL end, with no keys sent, when the call's result arrives, the
 status leaves `blocked`, or the target changes. It SHALL then become a quiet
 line "Answered: <header>" (or "Skipped: <header>" when the result has
-`is_error`) that opens the call's tool sheet. A tap that was already on its
+`is_error`) that opens the call's tool sheet; a call with several questions
+names every header, joined with ", " ("Answered: Database, Login"). A tap that was already on its
 way when the card ended SHALL send nothing (check one fails).
 
 #### Scenario: Answered at the desk
@@ -199,9 +207,10 @@ The card SHALL use these texts and no others of its own:
 | Preview sheet title | Preview: `<label>` |
 | Nothing sent: answered | Already answered at the desk. Nothing was sent. |
 | Nothing sent: changed | The question changed. Nothing was sent. |
+| Nothing sent: not connected | Not connected. Nothing was sent. |
 | Not confirmed | Could not confirm the answer arrived. Check the terminal. |
 | Unreadable or unsupported | Open the terminal |
-| Collapsed, answered | Answered: `<header>` |
+| Collapsed, answered | Answered: `<header>` (several: the headers joined with ", ") |
 | Collapsed, declined | Skipped: `<header>` |
 | Message box refusal | Answer the question above first |
 

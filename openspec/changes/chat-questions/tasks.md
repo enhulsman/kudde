@@ -23,7 +23,7 @@ Fixtures are invented JSONL with the shapes in `design.md` section A.
 - [x] 4.2 Compose card, free-text field, preview sheet, collapsed line; Robolectric tests for every scenario.
 - [x] 4.3 TalkBack tree test (order, announcements once, no focus steal) in Robolectric; the owner listens at 5.2.
 - [x] 4.4 Roborazzi golden of the card at two font scales and the long description (still flags only, no looping animation).
-- [x] 4.5 Check the card against `design/` and `design-tokens.json`; no new colours. (No render of this card exists in `design/`: existing tokens only, the needs-you edge; the look still needs the owner's sign-off from the goldens.)
+- [x] 4.5 Check the card against `design/` and `design-tokens.json`; no new colours. (No render of this card exists in `design/`. 2026-11-24: the owner rejected the placeholder look (the needs-you stripe); a redesign comes first. The look is all in `ChatQuestionLook.kt`, so a new one replaces that file and the goldens of 4.4 are recorded again.)
 
 ## 5. Review and phone check
 - [ ] 5.1 [phone] Stage a real Claude Code in plan mode on the test phone's desk (title through /rename, crop the status bar) and have it ask: one single-choice question; one with a preview; three questions; one multi-select; one answered by free text; one skipped. Record per case: the keys as the screen shows them, any extra delay from the quiet rule, and the result text. Update the "low" rows in `design.md` section B.
