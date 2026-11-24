@@ -144,10 +144,19 @@ moves the card on, and no keys for it are sent from the card.
 
 ### Requirement: A question where you may choose several
 A question with `multiSelect` SHALL show its options with checkboxes, the
-hint "Choose any number", how many are ticked ("N selected", "0 selected" at
-first) and a "Send" button, enabled with at least one box ticked. Tapping Send SHALL send, after the checks, the
-keys that toggle each ticked option and then the key that submits the
-question. The card SHALL report "Could not confirm the answer arrived. Check
+hint "Choose any number", how many are chosen ("N selected", "0 selected" at
+first) and one "Send" button in the footer, enabled with at least one box
+ticked or a typed answer. "Something else" SHALL be its last row; a typed
+answer there SHALL show as a ticked row with its text, SHALL count as one
+chosen, and SHALL go out with the ticked options through the footer's Send:
+the field gets no send button of its own on a multi-select question (a
+single-choice question keeps the field's own Send). Tapping Send SHALL send,
+after the checks, the keys that toggle each ticked option, then, with a
+typed answer, the key that focuses the free-text row, the text as one
+`terminal.send` with `force` (after the screen still shows the question),
+and then (again after that screen check) the key that submits the
+question; without a typed answer the toggles and the submit go as one
+`terminal.keys` call. The card SHALL report "Could not confirm the answer arrived. Check
 the terminal." when the screen does not move on. The keys for this question
 kind are not confirmed against the program (design, section B); until the
 phone check confirms them, a multi-select question SHALL show "Open the
@@ -156,6 +165,10 @@ terminal" with its options as plain text.
 #### Scenario: Two of three ticked
 - **WHEN** a multi-select question lists A, B and C and Ezra ticks A and C and taps Send
 - **THEN** the keys for A, for C and the submit are sent after the checks and the card moves on
+
+#### Scenario: A typed answer joins the ticks
+- **WHEN** a multi-select question lists Apple, Banana and Mango, Ezra ticks Apple, types "Berries" in "Something else" and taps the footer's Send
+- **THEN** the card reads "2 selected", the Berries row shows ticked, and the keys for Apple, the free-text row, the text "Berries" and the submit are sent in that order after the checks
 
 #### Scenario: Nothing ticked
 - **WHEN** no option is ticked and no text is typed
