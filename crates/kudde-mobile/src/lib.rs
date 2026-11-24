@@ -200,7 +200,7 @@ impl Hub {
     }
 
     /// Every return to the foreground: machines waiting for the Network
-    /// permission try again.
+    /// permission or out a backoff try again now.
     pub fn foreground(&self) {
         self.core.foreground();
     }

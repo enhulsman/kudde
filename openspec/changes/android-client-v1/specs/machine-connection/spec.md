@@ -112,7 +112,8 @@ no frame arrives for 45 s.
 - **THEN** the app shows "reconnecting" within 45 s
 
 ### Requirement: Connections recover on their own
-After a drop the app SHALL retry after 1 s backing off to 30 s, SHALL resubscribe
+After a drop the app SHALL retry after 1 s backing off to 10 s, SHALL retry at once
+when the person returns to the app (the backoff starting over), SHALL resubscribe
 events, SHALL reattach an open terminal into a fresh VT, and SHALL refetch
 documents after `missed` or a reconnect. Data shown while disconnected SHALL carry
 "as of hh:mm".
@@ -120,6 +121,10 @@ documents after `missed` or a reconnect. Data shown while disconnected SHALL car
 #### Scenario: Network switch
 - **WHEN** the phone moves from Wi-Fi to mobile data with a terminal open
 - **THEN** the terminal shows "reconnecting", then the current screen, with no stale content and no size change
+
+#### Scenario: Back to the app during a backoff
+- **WHEN** a machine is waiting out a retry and the person switches back to the app
+- **THEN** the app tries that machine at once, without waiting out the rest of the delay
 
 ### Requirement: Connections end in the background
 The app SHALL close its connections 60 s after it leaves the foreground,

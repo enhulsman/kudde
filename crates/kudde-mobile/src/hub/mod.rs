@@ -8,7 +8,7 @@
 //! hello, checks the core's version, subscribes, and then applies events until
 //! the connection ends. Failures the app can wait out (unreachable, Network
 //! off, herdr-core missing, the key not installed yet) retry after 1 s backing
-//! off to 30 s; ones that need the person (a fingerprint, a host key to
+//! off to 10 s, and at once on a return to the app; ones that need the person (a fingerprint, a host key to
 //! confirm or forget, a core or app to update) wait for [`HubCore::retry`],
 //! [`HubCore::resume`] or the matching call. The hub starts suspended: the
 //! app resumes it in the foreground and suspends it 60 s after leaving.
@@ -48,7 +48,7 @@ mod tests;
 const LIST_FILE: &str = "machines.json";
 const SEEN_FILE: &str = "seen.json";
 /// Retry delays after a failure; the last one repeats.
-const BACKOFF: [u64; 6] = [1, 2, 4, 8, 16, 30];
+const BACKOFF: [u64; 5] = [1, 2, 4, 8, 10];
 /// A connection that lasted this long starts the backoff over.
 const STABLE: Duration = Duration::from_secs(10);
 /// How long a closed command gets to report its exit status.
@@ -131,7 +131,7 @@ pub struct MachineView {
     pub last_connected_ms: Option<u64>,
     /// When the next attempt starts, ms since the epoch, while the state
     /// retries by itself (unreachable, key not accepted, herdr-core missing):
-    /// "retrying in 30 s". None while connecting, connected, paused, or
+    /// "retrying in 10 s". None while connecting, connected, paused, or
     /// waiting for the person (Network off too), and while a retry runs (the state
     /// then keeps the failure: "retrying").
     #[uniffi(default = None)]
@@ -734,7 +734,9 @@ impl HubCore {
 
     /// The app is back in the foreground, also within its 60 s in the
     /// background: machines waiting for Network (granted in Android settings
-    /// meanwhile) try again. Nothing while suspended; the resume connects all.
+    /// meanwhile) or out a backoff try again now, the backoff starting over.
+    /// Ones waiting for the person stay. Nothing while suspended; the resume
+    /// connects all.
     pub(crate) fn foreground(self: &Arc<Self>) {
         self.with(|hub, st| {
             if st.paused {
@@ -743,7 +745,7 @@ impl HubCore {
             let waiting: Vec<String> = st
                 .live
                 .iter()
-                .filter(|(_, l)| l.state == MachineState::NetworkOff)
+                .filter(|(_, l)| l.state == MachineState::NetworkOff || l.state.retrying())
                 .map(|(n, _)| n.clone())
                 .collect();
             for name in waiting {

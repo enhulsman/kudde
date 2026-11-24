@@ -87,8 +87,8 @@ class HubHost(
 
     /**
      * Every return to the foreground: starts a hub that failed to start, or
-     * lets a running one try machines waiting for the Network permission
-     * again (granted in Android settings meanwhile).
+     * lets a running one try again, at once, every machine waiting for the
+     * Network permission (granted in Android settings meanwhile) or out a backoff.
      */
     fun foreground() {
         val running = hub
