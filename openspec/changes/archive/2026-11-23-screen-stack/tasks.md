@@ -76,4 +76,4 @@ stand-in that re-implements them.
 
 - [x] 9.1 `decisions.md`: the structure decision (one screen at a time, keeper per agent, one cover) in one line.
 - [x] 9.2 Release notes line for the leaks fixed and the new motion, shown to Ezra first. **[owner]**
-- [ ] 9.3 `openspec validate screen-stack --strict`, then archive with the PR.
+- [x] 9.3 `openspec validate screen-stack --strict`, then archive with the PR.

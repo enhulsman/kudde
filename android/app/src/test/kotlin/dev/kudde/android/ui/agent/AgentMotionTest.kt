@@ -13,10 +13,13 @@ class AgentMotionTest {
     private val steps = listOf(0f, .5f, 1f)
     private val tile = Rect(16f, 100f, 196f, 460f)
 
+    private fun motionContract(): String =
+        generateSequence(File(System.getProperty("user.dir"))) { it.parentFile }
+            .map { File(it, "openspec/changes/archive/2026-11-23-screen-stack/motion.md") }
+            .firstOrNull { it.isFile }?.readText() ?: error("The archived screen-stack motion contract is missing")
+
     @Test fun everyChangeHasAnEntryAndEachMatchesMotionMd() {
-        val root = generateSequence(File(System.getProperty("user.dir"))) { it.parentFile }
-            .first { File(it, "openspec/changes/screen-stack/motion.md").exists() }
-        val source = File(root, "openspec/changes/screen-stack/motion.md").readText()
+        val source = motionContract()
         val rows = Regex("\\| (\\w+) \\| ([\\d.]+) \\| ([\\d.]+) \\|").findAll(source).toList()
         assertEquals(5, rows.size)
         for (row in rows) {
@@ -110,9 +113,7 @@ class AgentMotionTest {
     // Changed with motion.md (task 029): this asserted the 0.33 / 450 dp/s release rule.
     // The system decides now, so no threshold or fling number survives in the contract.
     @Test fun theSystemDecidesTheReleaseSoNoThresholdIsLeft() {
-        val source = File(generateSequence(File(System.getProperty("user.dir"))) { it.parentFile }
-            .first { File(it, "openspec/changes/screen-stack/motion.md").exists() },
-            "openspec/changes/screen-stack/motion.md").readText()
+        val source = motionContract()
         val back = source.substringAfter("Predictive Back on Changes").substringBefore("- `pushOverview`")
         assertTrue("The system decides" in back)
         for (gone in listOf("0.33", "450", "0.04")) assertFalse("$gone", gone in back)
