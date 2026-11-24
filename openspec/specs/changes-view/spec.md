@@ -3,21 +3,6 @@
 ## Purpose
 TBD - created by archiving change changes-view. Update Purpose after archive.
 ## Requirements
-### Requirement: A Changes button opens the agent's changes
-The terminal screen's title bar SHALL show a Changes button in both the
-terminal and the chat view, for every terminal. A tap SHALL open the Changes
-screen over the current view; back SHALL return to that view as it was. The
-folder read SHALL be the folder of the terminal's foreground process (the
-folder the title bar names), else the terminal's own folder.
-
-#### Scenario: From the terminal
-- **WHEN** Ezra taps Changes in an agent's terminal view and then back
-- **THEN** the Changes screen shows the agent's folder's changes, and back shows the terminal as it was
-
-#### Scenario: From the chat
-- **WHEN** Ezra taps Changes in an agent's chat and then back
-- **THEN** back shows the chat at the scroll position it had, with its draft
-
 ### Requirement: Outside a git repository the screen says so
 The Changes screen SHALL read "Not a git repository" and list nothing when
 the folder is not inside a git repository, when the desk cannot start git,
@@ -196,7 +181,7 @@ The Changes screen SHALL use exactly these texts:
 
 | Where | Text |
 |---|---|
-| Title bar button and its description | Changes / "Show the files this agent changed" |
+| Title bar menu item, shown and spoken | Changes |
 | Status words | changed, added, deleted, new, conflict, submodule, repository |
 | Loading | Reading the changes… |
 | Not a repository | Not a git repository |
@@ -219,4 +204,22 @@ The Changes screen SHALL use exactly these texts:
 #### Scenario: Texts match the table
 - **WHEN** each state of the screen is drawn in the screen tests
 - **THEN** every text shown is one of the table's
+
+### Requirement: Changes in the title bar's menu opens the agent's changes
+The terminal screen's title bar SHALL offer Changes as an item of its
+overflow menu (capability spaces, "The title bar keeps its options in one
+menu"), in both the terminal and the chat view, for every terminal. The
+title bar SHALL NOT show a separate Changes button. Choosing the item SHALL
+open the Changes screen over the current view; back SHALL return to that
+view as it was. The folder read SHALL be the folder of the terminal's
+foreground process (the folder the title bar names), else the terminal's
+own folder.
+
+#### Scenario: From the terminal
+- **WHEN** Ezra opens the title bar's menu in an agent's terminal view, chooses Changes, and then goes back
+- **THEN** the Changes screen shows the agent's folder's changes, and back shows the terminal as it was
+
+#### Scenario: From the chat
+- **WHEN** Ezra opens the title bar's menu in an agent's chat, chooses Changes, and then goes back
+- **THEN** back shows the chat at the scroll position it had, with its draft
 
