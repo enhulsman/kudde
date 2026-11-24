@@ -203,6 +203,7 @@ pub struct ChatPoll {
     /// Milliseconds per stage, for the log: "get 40 locate 50 tail 61 total 151".
     pub timings: String,
     /// The question card, from [`Chat::poll`] only.
+    #[uniffi(default = None)]
     pub question: Option<ChatQuestion>,
 }
 
@@ -861,7 +862,7 @@ impl Chat {
     /// `terminal.keys` call, and reads the screen (and the log) to confirm.
     /// Call it under the same lock as [`Chat::poll`]: it reads the log too.
     /// Blocks.
-    pub fn answer(&self, id: String, step: u32, choice: ChatChoice) -> ChatAnswer {
+    pub fn answer_question(&self, id: String, step: u32, choice: ChatChoice) -> ChatAnswer {
         let core = self.core.clone();
         core.runtime().block_on(self.answer_async(id, step, choice))
     }

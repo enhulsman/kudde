@@ -107,10 +107,10 @@ fun sheetSettle(h: Float, velocity: Float, stops: List<Float>): Int {
 
 /** The sheet stands out: lighter than the dimmed chat in Graphite, off-white in Paper. */
 @Composable
-private fun sheetColor(): Color = KuddeTheme.colors.let { if (it.isDark) it.popover else it.canvas }
+internal fun sheetColor(): Color = KuddeTheme.colors.let { if (it.isDark) it.popover else it.canvas }
 
 @Composable
-private fun boxColor(): Color = KuddeTheme.colors.let { if (it.isDark) it.canvas else it.chrome }
+internal fun boxColor(): Color = KuddeTheme.colors.let { if (it.isDark) it.canvas else it.chrome }
 
 @Composable
 internal fun ToolSheet(calls: List<ChatCall>, state: ChatState, images: ChatImageSource) {

@@ -64,6 +64,10 @@ class ChatState {
     /** Read-backs finished, so a top still in view asks for the next part. */
     var olderLoads by mutableIntStateOf(0)
     var gaugeOpen by mutableStateOf(false)
+
+    /** The question card's taps and field, and what TalkBack heard of it. */
+    val card = QuestionCard()
+    val cardHeard = CardHeard()
     val live = LiveRows()
     val announced = Announced()
     private var ids = 0L
@@ -122,11 +126,15 @@ class ChatState {
      * The send button: the draft and photos leave the box as a pending
      * bubble, to be typed as [Outgoing.typed]. Null when there is nothing to
      * send, or while a slash command's waiting line refuses sends (the draft
-     * stays and the refusal says so).
+     * stays and the refusal says so), or while a question [card] shows.
      */
-    fun send(rows: List<ChatRow>, status: String, now: Long): Outgoing? {
+    fun send(rows: List<ChatRow>, status: String, now: Long, card: Boolean = false): Outgoing? {
         val text = draft
         if (text.isBlank() && attached.isEmpty()) return null
+        if (card) {
+            refusal = Refusal(ANSWER_ABOVE_FIRST, terminal = false)
+            return null
+        }
         sendRefusal(pending, now)?.let {
             refusal = Refusal(it, terminal = true)
             return null

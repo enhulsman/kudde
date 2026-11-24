@@ -11,6 +11,8 @@ import uniffi.kudde_mobile.ChatRow
 
 /** Tool calls in a row, folded: "Ran 7 commands, read 2 files", or the one call's title. */
 fun toolLine(calls: List<ChatCall>): String {
+    // An answered question is its quiet line: "Answered: Database", "Skipped: Database".
+    calls.singleOrNull()?.takeIf { it.name == QUESTION_TOOL && it.done }?.let { return it.title }
     val running = calls.any { !it.done }
     val failed = calls.count { it.failed }
     val base = if (calls.size == 1) calls[0].title else toolKinds(calls)

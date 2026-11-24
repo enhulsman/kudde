@@ -88,6 +88,7 @@ import dev.kudde.android.ui.theme.KuddeRadius
 import dev.kudde.android.ui.theme.KuddeTheme
 import dev.kudde.android.ui.theme.KuddeType
 import uniffi.kudde_mobile.ChatCall
+import uniffi.kudde_mobile.ChatChoice
 import uniffi.kudde_mobile.ChatFound
 import uniffi.kudde_mobile.ChatHealth
 import uniffi.kudde_mobile.ChatPoll
@@ -130,6 +131,8 @@ fun ChatScreen(
     onMap: (() -> Unit)? = null,
     /** Whether the title bar's menu is open. */
     menuState: TitleBarMenuState = remember { TitleBarMenuState() },
+    /** A tap on the question card: the hub answers it. */
+    onAnswer: (ChatChoice) -> Unit = {},
 ) {
     val c = KuddeTheme.colors
     // An exited agent's conversation stays, read-only (its lookup reads None).
@@ -161,6 +164,8 @@ fun ChatScreen(
                 broken -> Bottom(BROKEN, onTerminal)
                 poll?.exited == true -> Bottom(EXITED, null)
                 else -> {
+                    // At most half the height: a taller card scrolls inside it.
+                    poll?.question?.let { q -> QuestionCard(q, state.card, onAnswer, onTerminal, Modifier.weight(1f, fill = false)) }
                     state.refusal?.let { r -> Bottom(r.text, if (r.terminal) onTerminal else null) }
                     MessageBox(state, onPick, onSend)
                 }
@@ -168,6 +173,7 @@ fun ChatScreen(
         }
         val rows = poll?.rows.orEmpty()
         sheetCalls(rows, state.sheet)?.let { calls -> ToolSheet(calls, state, images) }
+        state.card.preview?.let { o -> PreviewSheet(o) { state.card.preview = null } }
         state.viewer?.let { v -> ImageViewer(v.image, viewerImages(rows, v), images, onShow = { state.viewer = v.copy(image = it) }) { state.viewer = null } }
     }
 }
