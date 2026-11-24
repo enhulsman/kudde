@@ -267,6 +267,14 @@ button{font-family:inherit;color:inherit}
 .otile.ph{background:transparent;border:1px dashed var(--input);align-items:center;justify-content:center;color:var(--dim);font-size:13px}
 .omap{margin:4px 16px 8px;padding:12px;border-radius:12px;background:var(--canvas);border:1px solid var(--border);flex:none}
 /* First-run sign-off drafts; reuse the existing chrome, fields, buttons and dialog. */
+
+.fr-hint-wrap{position:absolute;left:12px;right:12px;top:8px;z-index:3}
+.fr-hint{background:var(--popover);border:1px solid var(--border);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:8px;font-size:14px;line-height:1.5;color:var(--muted)}
+.fr-hint b{font-weight:500;color:var(--fg);font-size:15px}
+.fr-hint p{margin:0}
+.fr-chat{flex:1;padding:14px 16px;display:flex;flex-direction:column;justify-content:flex-end;gap:12px;background:var(--bg);font-size:15px;line-height:1.5;overflow:hidden}
+.fr-chat p{margin:0;color:var(--fg)}
+.fr-chat .fr-you{color:var(--muted)}
 .fr-set{display:flex;align-items:flex-start;gap:24px;flex-wrap:wrap}
 .fr-variant{display:flex;flex-direction:column;gap:10px}
 .fr-label{font-size:13px;font-weight:500;color:#98999b}
@@ -957,6 +965,8 @@ function tabOverview(){
     ${navbar()}
   </div>`;
   return `<div style="display:flex;gap:40px">${tiles}${rows}</div>`;
+}
+
 // ---------- first-run-walkthrough: drafts for owner sign-off ----------
 const frCommand = "(\n  umask 077\n  mkdir -p ~/.ssh && chmod 700 ~/.ssh &&\n  touch ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys &&\n  cat >> ~/.ssh/authorized_keys <<'KUDDE_KEY' &&\n\nrestrict,command=\"sh -c '…'\" ecdsa-sha2-nistp256 AAAA… kudde\nKUDDE_KEY\n  ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub\n)";
 const frEscape = text => text.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
@@ -1041,6 +1051,76 @@ function frHome(theme,empty=false){
     <div class="fr-home-empty"><h2>No agents yet</h2>${frButton('New terminal',false)}</div>`,'',agentsTop(!empty));
 }
 
+
+// ---------- first-run-walkthrough: title bar hint (1.4) and the key-install choices (1.7) ----------
+// Texts are design.md "Texts": G1 to G6, R1 to R19. Names are invented.
+const frHintPhone = (theme, o, body, below) => `<div class="phone ${theme}">${sysbar()}${qbar(o)}${body}${below}${navbar()}</div>`;
+const frHintBox = (tb) => `<div class="fr-hint" role="status"><b>Move around from this bar</b>${tb
+  ? `<p>With TalkBack, the title bar's actions move around: Next terminal, Previous terminal, Next agent that needs you, Previous agent that needs you. Double tap the map for every pane of the tab.</p>`
+  : `<p>Swipe sideways for other panes in this tab. At either end it bounces; with one pane it only bounces.</p><p>Swipe up: the next agent that needs you. Down: back.</p><p>Tap the map: every pane of the tab.</p>`}
+  <button class="btn" style="align-self:flex-start">Got it</button></div>`;
+const frChatBody = () => `<div class="fr-chat"><p class="fr-you">Make the pricing table scan faster.</p><p>I moved the plan names into the first column and shortened the footnotes. The page builds without warnings.</p><p class="fr-you">Good, now the same for the docs page.</p></div>`;
+const frChatBox = () => `<div style="padding:8px 12px 10px;background:var(--chrome)"><div class="field" style="min-height:0;color:var(--dim)">Message</div></div>`;
+const frTermBody = () => `<div style="flex:1;display:flex;flex-direction:column;position:relative;background:var(--bg);overflow:hidden"><div style="position:absolute;inset:auto 0 0 0">${terminal(53, 12.2)}</div>${'' }</div>`;
+function frHint(theme, kind, tb=false, oneCell=false){
+  const base = kind === 'chat' ? {...CLAUDE, gauge:'283k'} : TERM;
+  const o = oneCell ? {...base, map:[[0,0,1,1,'mark']], mapSays:'Tab overview, terminal 1 of 1'} : base;
+  // The hint sits under the bar, over the content only: the keys and the message box stay uncovered.
+  const body = `<div style="position:relative;flex:1;display:flex;flex-direction:column;min-height:0">${kind === 'chat' ? frChatBody() : frTermBody()}<div class="fr-hint-wrap">${frHintBox(tb)}</div></div>`;
+  return frHintPhone(theme, o, body, kind === 'chat' ? frChatBox() : keysrow());
+}
+
+const frStackStyle = 'zoom:1.45';
+const frChoicesStacked = (descriptions=true) => frChoices(descriptions).replace('class="fr-choices"', 'class="fr-choices" style="flex-direction:column"');
+function frKeyChoices(theme, stacked=false){
+  const body = frBody(2, "This phone's key", `<p>Choose how to add it to workstation, signed in as dev.</p>${stacked?frChoicesStacked():frChoices(true)}<p>Both ways add only this phone's public key, limited to herdr-core. Existing keys stay in place.</p>`);
+  return frPhone(theme, stacked ? body.replace('class="fr-body"', `class="fr-body" style="${frStackStyle}"`) : body, '');
+}
+const frPwDialog = (theme) => frKeyChoices(theme).replace(/(<div class="phone [^"]+">)/, `$1<div class="scrim" style="z-index:1"></div><div class="dialog" style="z-index:2">
+    <h3>Trust this machine?</h3>
+    <p>First connection to <span style="color:var(--fg)">workstation:22</span>. If this key is not your machine's, whoever answered gets the password, and setup can still look as if it worked. Trust it only if you are sure.</p>
+    <div class="fp">ED25519<br>SHA256:q3Vb8m2N4sR7tK0yL9wE1aZ5cX6vB3nM8jH2gF4dS0p</div>
+    <p>To compare, run this at workstation:</p>
+    <div class="fp">ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub</div>
+    <p style="font-size:13px">After this, a different key stops the connection.</p>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:4px">${frButton('Cancel',false)}${frButton('Trust and continue')}</div>
+  </div>`);
+const frPwOutcomes = {
+  field: null,
+  working: ['Adding the key on workstation…', ''],
+  wrong: ['workstation did not accept the password for dev.', 'Check it and try again. Nothing was changed there.'],
+  again: ['workstation refused the password again.', 'Some machines lock an account after a few wrong tries. To be safe, choose "Add it yourself" to run the command at the machine.'],
+  none: ['workstation does not take a password over SSH.', 'Choose "Add it yourself" to run the command at the machine: it needs none.'],
+  more: ['workstation asks for more than a password, such as a code.', 'Choose "Add it yourself" to run the command at the machine.'],
+  dropped: ['The connection to workstation dropped while the key was being added.', 'kudde cannot tell whether it went in. Try again: adding it twice does no harm.'],
+  code: ['The setup on workstation ended with code 3.', 'Choose "Add it yourself" to run the command at the machine to see why.'],
+  refused: ['kudde added the key, but workstation still refuses it.', "The SSH server may read keys from another file, or refuse the home directory's permissions (StrictModes). The setup guide's check script finds out which."],
+};
+function frPassword(theme, state='field'){
+  const out = frPwOutcomes[state];
+  const showField = !['none','more','code','refused','working'].includes(state);
+  const field = showField ? `<div class="fr-field"><span>Password for dev on workstation</span><div class="field">••••••••</div></div>` : '';
+  const notice = out ? `<div class="fr-notice"${state==='working'?'':''}><b style="font-weight:500">${out[0]}</b>${out[1]?`<p>${out[1]}</p>`:''}</div>` : '';
+  const footer = state === 'working' ? frButton('Cancel', false)
+    : state === 'refused' ? frButton('Try again') + frButton('Add it yourself', false)
+    : showField ? frButton('Add the key') + frButton('Cancel', false)
+    : frButton('Add it yourself') ;
+  const sentence = state === 'field' ? `<p>kudde signs in once as dev with that account's password, adds the same key and signs out. The password is not stored.</p>` : '';
+  return frPhone(theme, frBody(2, "This phone's key", `${sentence}${notice}${field}${state==='field'?'':''}`), footer);
+}
+function frMachinesKeyChoices(theme, variant='listed'){
+  const sub = variant === 'imported' ? 'Host key not confirmed yet' : 'Phone key not accepted · retrying in 12 s';
+  const label = variant === 'previous' ? 'Phone key not accepted · last connected 3d ago' : sub;
+  return frPhone(theme, `<div class="mcard">
+      <div class="mhead"><span class="ring" style="align-self:flex-start;margin-top:9px"></span>
+        <div class="txt"><span class="name">workstation</span><span class="sub">${label}</span></div></div>
+      <div class="mrow" style="flex-direction:column;align-items:stretch;gap:10px"><div class="lab">workstation did not accept the phone key.<small>Choose how to add it, signed in as dev.</small></div>${frChoices(true)}<small style="font-size:13px;color:var(--muted)">Both ways add only this phone's public key, limited to herdr-core. Existing keys stay in place.</small></div>
+      <div class="mrow"><div class="lab">Remove machine</div></div>
+    </div>
+    <div style="padding:2px 16px 0"><button class="btn" style="width:100%">Add machine</button></div>
+    <div style="flex:1"></div>`, '', `<div class="top" style="padding-left:4px"><button class="iconbtn" style="color:var(--fg)" aria-label="Back">${ico.back}</button><h1 style="font-size:20px">Machines</h1></div>`);
+}
+
 const SCREENS = [
   ['1-home-dark','1 Agent list (graphite)',()=>home('graphite')],
   ['2-home-light','2 Agent list (paper)',()=>home('paper')],
@@ -1079,6 +1159,11 @@ const SCREENS = [
   ['first-run-alerts','First run · Alerts',()=>frBoth([['Before (AL4)',t=>frAlerts(t,'before')],['Test received (AL6)',t=>frAlerts(t,'received')],['No test alert (AL7)',t=>frAlerts(t,'missed')]])],
   ['first-run-trust','First run · Compare the fingerprint',()=>frBoth([['Trust dialog',frTrust]])],
   ['first-run-home','First run · Home',()=>frBoth([['Finish setup',frHome],['Empty after completion',t=>frHome(t,true)]])],
+  ['first-run-hint','First run · Title bar hint',()=>frBoth([['Terminal, tab of three',t=>frHint(t,'terminal')],['Chat, tab of three',t=>frHint(t,'chat')],['Terminal, one-pane tab (G2 explains the bounce)',t=>frHint(t,'terminal',false,true)],['With TalkBack (G6 in place of G2 to G4)',t=>frHint(t,'terminal',true)]])],
+  ['first-run-key-choices','First run · Key choices',()=>frBoth([['Side by side',t=>frKeyChoices(t)],['Stacked at large text',t=>frKeyChoices(t,true)]])],
+  ['first-run-password-trust','First run · Password way, trust dialog',()=>frBoth([['Trust dialog (R3 to R5)',frPwDialog]])],
+  ['first-run-password','First run · Password way',()=>frBoth([['Field (R2, R6, R7)',t=>frPassword(t,'field')],['Working (R8)',t=>frPassword(t,'working')],['Wrong password (R9)',t=>frPassword(t,'wrong')],['Refused again (R15)',t=>frPassword(t,'again')],['No password method (R10)',t=>frPassword(t,'none')],['More than a password (R11)',t=>frPassword(t,'more')],['Dropped (R12)',t=>frPassword(t,'dropped')],['Ended with a code (R14)',t=>frPassword(t,'code')],['Done but still refused (R16)',t=>frPassword(t,'refused')]])],
+  ['machines-key-choices','Machines · Key choices on a rejected-key card',()=>frBoth([['Listed machine',t=>frMachinesKeyChoices(t)],['Imported, host key to confirm',t=>frMachinesKeyChoices(t,'imported')],['Previously connected',t=>frMachinesKeyChoices(t,'previous')]])],
 ];
 const params = new URLSearchParams(location.search);
 const want = params.get('only') || params.get('s');
