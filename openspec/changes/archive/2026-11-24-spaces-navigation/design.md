@@ -372,15 +372,19 @@ last screen in a tile, can be a later issue.
   holds the name, the line and the four steps; Back, the map, the gauge,
   the switch and the menu button stay focus stops of their own. That node
   is "the title bar has its focus" in the spec.
-- The result is spoken with `announceForAccessibility`, from the action's
-  `TitleBarStep` (D4): the new terminal's name and place after `Moved`;
-  after `End`, "No more terminals in this tab" for a sideways action and
-  "No more agents need you" for an action through the agents that need the
-  person; after `Refused`, "Not moved: the compose text is kept". The last
-  two texts are the owner's answer to decision 9 (proposal).
-- TalkBack cannot be driven over adb, and a UI dump pauses it. So merged
-  semantics are tested in Robolectric (as `ReadOnceTest` does), and the
-  owner listens once on a phone.
+- A successful TalkBack step puts the destination title first in the title
+  bar's accessibility traversal and makes its new text available immediately.
+  Once placed, the destination title requests accessibility focus once.
+  TalkBack reads that title. Send an explicit announcement only after
+  `End` or `Refused` (D4). Say "No
+  more terminals in this tab" at a tab end, "No more agents need you" at
+  the end of the attention queue, or "Not moved: the compose text is kept"
+  if a step action reaches the app while the compose sheet holds text.
+  The title-bar actions are unavailable from behind the focused sheet.
+- Robolectric checks the merged reader tree and the app's announcements.
+  `scripts/talkback-phone.py` keeps TalkBack running, drives its real Actions
+  menu on a staged phone, and counts distinct speech utterance IDs. The
+  ordinary UI dump pauses accessibility services and is unsuitable here.
 - Tap targets are 48 dp; the map in the title bar is a button with the
   spoken name "Tab overview, terminal 2 of 3".
 

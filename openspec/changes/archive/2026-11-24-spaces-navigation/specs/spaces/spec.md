@@ -662,13 +662,19 @@ of another tab, which the sideways swipe does not reach, SHALL be reachable
 the same way. With a screen reader on, the title bar SHALL offer the actions
 "Next terminal", "Previous terminal", "Next agent that needs you" and
 "Previous agent that needs you", which do what the four swipes do (the
-first two inside the open tab, as the sideways swipe); after one of them
-the app SHALL say once: the new terminal's name and place; "No more
-terminals in this tab" when a sideways action opened nothing; "No more
-agents need you" when an action through the agents that need the person
-opened nothing; or "Not moved: the compose text is kept" when any of the
-four was refused because the compose sheet holds text. The switch, the tab
-lines, the maps and the tiles SHALL be at least 48 dp high and wide to the
+first two inside the open tab, as the sideways swipe). After a move, the
+app SHALL say once the new terminal's name, place and position in its tab
+("zsh, website / build · workstation, terminal 2 of 2"; a terminal in no
+tab has no position), and the title SHALL be spoken with that same text, so
+a step between two panes of the same name is heard as a move and is not
+read a second time when the screen reader's focus returns to the title.
+When no move occurs, the app SHALL announce once: "No more terminals in
+this tab" at the end of a tab, or "No more agents need you" at the end of
+the attention queue. While Compose holds focus, its background
+title-bar actions are unavailable. If a title-bar step action reaches the
+app while the compose sheet holds text, it SHALL refuse the move and say
+"Not moved: the compose text is kept" once. The switch, the tab lines, the
+maps and the tiles SHALL be at least 48 dp high and wide to the
 touch and SHALL have spoken names; the switch SHALL say which view is
 chosen. All of it SHALL hold at the largest font size, with text that is
 never clipped in height; a name in one line MAY end in an ellipsis where
@@ -682,7 +688,12 @@ the width runs out.
 #### Scenario: A screen reader steps
 - **GIVEN** a screen reader is on and the title bar has its focus
 - **WHEN** the person chooses the action "Next terminal"
-- **THEN** the next stop of the open tab opens and the app says its name and place once
+- **THEN** the next stop of the open tab opens and its name, place and position are heard once
+
+#### Scenario: Two panes of the same name
+- **GIVEN** a screen reader is on and both panes of a tab are shells named "zsh"
+- **WHEN** the person chooses "Next terminal" from the first, and the screen reader's focus returns to the title
+- **THEN** "zsh, website / build · workstation, terminal 2 of 2" is heard once, and the title reads the same text when focused
 
 #### Scenario: A screen reader at the end
 - **GIVEN** a screen reader is on and the last stop of its tab is open, with another tab after it
@@ -694,9 +705,9 @@ the width runs out.
 - **WHEN** the person chooses the action "Next agent that needs you"
 - **THEN** nothing opens and the app says "No more agents need you"
 
-#### Scenario: A screen reader is refused while a draft waits
+#### Scenario: A step action delivered while a draft waits is refused
 - **GIVEN** a screen reader is on and the compose sheet holds text
-- **WHEN** the person chooses any of the four actions
+- **WHEN** any of the four title-bar step actions is delivered to the app
 - **THEN** nothing opens, the text is kept, and the app says "Not moved: the compose text is kept"
 
 #### Scenario: A space is read once
