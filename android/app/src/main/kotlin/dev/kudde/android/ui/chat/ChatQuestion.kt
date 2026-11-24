@@ -1,16 +1,23 @@
 package dev.kudde.android.ui.chat
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -18,6 +25,7 @@ import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
+import dev.kudde.android.R
 import uniffi.kudde_mobile.ChatAnswer
 import uniffi.kudde_mobile.ChatAsk
 import uniffi.kudde_mobile.ChatChoice
@@ -44,7 +52,6 @@ const val QUESTION_CHANGED = "The question changed. Nothing was sent."
 const val NOT_CONFIRMED = "Could not confirm the answer arrived. Check the terminal."
 const val OPEN_TERMINAL = "Open the terminal"
 const val NOT_CONNECTED = "Not connected. Nothing was sent."
-const val ANSWER_ABOVE_FIRST = "Answer the question above first"
 
 /** The longest own answer, in characters. */
 const val OTHER_MAX = 2000
@@ -60,12 +67,16 @@ fun canSendOther(text: String) = text.isNotBlank() && text.length <= OTHER_MAX
 
 fun otherProblem(text: String): String? = if (text.length > OTHER_MAX) TOO_LONG else null
 
-/** What TalkBack reads for option [i] (from 0) of [of]: one stop. */
-fun optionSpoken(i: Int, of: Int, o: ChatOption): String = listOfNotNull(
+/**
+ * What TalkBack reads for option [i] (from 0) of [of]: one stop; [checked]
+ * for a multi-select option, null for a single choice.
+ */
+fun optionSpoken(i: Int, of: Int, o: ChatOption, checked: Boolean? = null): String = listOfNotNull(
     "Option ${i + 1} of $of",
     o.label,
     o.description.takeIf { it.isNotBlank() },
     "Preview available".takeIf { o.preview != null },
+    checked?.let { if (it) "checked" else "not checked" },
 ).joinToString(", ")
 
 /** Why nothing was sent, or that it was not confirmed, and whether the terminal helps. */
@@ -101,6 +112,14 @@ class QuestionCard {
     var otherText by mutableStateOf("")
     var preview by mutableStateOf<ChatOption?>(null)
 
+    /** A multi-select question's ticked options. */
+    var ticked by mutableStateOf<Set<Int>>(emptySet())
+        private set
+
+    fun toggle(i: Int) {
+        if (!busy) ticked = if (i in ticked) ticked - i else ticked + i
+    }
+
     /** Buttons are disabled: an answer is on its way or arrived for this step. */
     val busy: Boolean get() = sending || done
 
@@ -116,6 +135,7 @@ class QuestionCard {
         otherOpen = false
         otherText = ""
         preview = null
+        ticked = emptySet()
     }
 
     /** A tap: false while an answer is on its way. */
@@ -172,9 +192,9 @@ class CardHeard {
 }
 
 /**
- * The card at the bottom of the chat; it scrolls inside its own area when
- * taller. What it shows and how it reads is here; how it looks is all in
- * ChatQuestionLook.kt (the look is being redesigned).
+ * The card at the bottom of the chat, in the message box's place; it scrolls
+ * inside its own area when taller. What it shows and how it reads is here;
+ * how it looks is all in ChatQuestionLook.kt.
  */
 @Composable
 fun QuestionCard(
@@ -183,90 +203,122 @@ fun QuestionCard(
     onAnswer: (ChatChoice) -> Unit,
     onTerminal: () -> Unit,
     modifier: Modifier = Modifier,
+    focusOther: Boolean = true,
 ) {
-    CardSurface(modifier) {
-        val ask = q.questions.getOrNull(q.step.toInt())
-        when {
-            !q.readable -> {
-                for (t in q.texts) BasicText(t, style = QuestionLook.plainText())
-                CardButton(OPEN_TERMINAL, enabled = true, onClick = onTerminal)
+    val ask = q.questions.getOrNull(q.step.toInt()).takeIf { q.readable && !q.review }
+    fun answer(choice: ChatChoice) {
+        if (card.start(choice)) onAnswer(choice)
+    }
+    // Back closes the own-words field (and its keyboard), keeping the card.
+    BackHandler(enabled = card.otherOpen) { card.otherOpen = false }
+    CardSurface(
+        modifier,
+        body = {
+            if (!q.readable) for (t in q.texts) QuestionTitle(t)
+            if (ask != null) {
+                if (q.questions.size > 1) StepLine(stepLine(q.step.toInt() + 1, q.questions.size))
+                QuestionTitle(ask.text)
+                if (ask.multi && ask.answerable) Hint(CHOOSE_ANY)
             }
-            q.review -> CardRow {
-                CardButton(SEND_ANSWERS, enabled = !card.busy, solid = true) { if (card.start(ChatChoice.Submit)) onAnswer(ChatChoice.Submit) }
-                CardButton(SKIP, enabled = !card.busy) { if (card.start(ChatChoice.Skip)) onAnswer(ChatChoice.Skip) }
-            }
-            ask == null -> CardButton(OPEN_TERMINAL, enabled = true, onClick = onTerminal)
-            else -> Ask(q, ask, card, onAnswer, onTerminal)
-        }
-        card.problem?.let { p ->
-            BasicText(p.text, style = QuestionLook.problemText())
-            if (p.terminal) CardButton(SHOW_TERMINAL, enabled = true, onClick = onTerminal)
-        }
-    }
-}
-
-@Composable
-private fun Ask(q: ChatQuestion, ask: ChatAsk, card: QuestionCard, onAnswer: (ChatChoice) -> Unit, onTerminal: () -> Unit) {
-    if (q.questions.size > 1) {
-        BasicText(stepLine(q.step.toInt() + 1, q.questions.size), style = QuestionLook.stepText())
-    }
-    BasicText(ask.text, style = QuestionLook.questionText())
-    if (!ask.answerable) {
-        // Multi-select until its keys are confirmed: the options as plain text.
-        for ((i, o) in ask.options.withIndex()) OptionText(i, o)
-        CardButton(OPEN_TERMINAL, enabled = true, onClick = onTerminal)
-        return
-    }
-    for ((i, o) in ask.options.withIndex()) {
-        val spoken = optionSpoken(i, ask.options.size, o)
-        val chosen = card.chosen == i
-        val enabled = !card.busy
-        val pick = { if (card.start(ChatChoice.Pick(i.toUInt()))) onAnswer(ChatChoice.Pick(i.toUInt())) }
-        Column {
-            Box(
-                Modifier.optionSurface(chosen)
-                    .clickable(enabled = enabled) { pick() }
-                    .clearAndSetSemantics {
-                        contentDescription = spoken
-                        role = Role.Button
-                        if (chosen) selected = true
-                        if (!enabled) disabled()
-                        onClick { pick(); true }
-                    }
-                    .optionPadding(),
-            ) { OptionText(i, o) }
-            if (o.preview != null) PreviewButtonPlace { CardButton(PREVIEW, enabled = true) { card.preview = o } }
-        }
-    }
-    if (card.otherOpen) Other(card, onAnswer)
-    CardRow {
-        if (!card.otherOpen) CardButton(SOMETHING_ELSE, enabled = !card.busy) { card.otherOpen = true }
-        CardButton(SKIP, enabled = !card.busy) { if (card.start(ChatChoice.Skip)) onAnswer(ChatChoice.Skip) }
-    }
-}
-
-/** The own-words field: "Type your answer" and Send, enabled for 1 to 2000 characters. */
-@Composable
-private fun Other(card: QuestionCard, onAnswer: (ChatChoice) -> Unit) {
-    val text = card.otherText
-    OtherLayout(
-        field = {
-            OtherField(empty = text.isEmpty()) { style, cursor ->
-                BasicTextField(
-                    text, { card.otherText = it },
-                    textStyle = style,
-                    cursorBrush = cursor,
-                    maxLines = 6,
-                    modifier = Modifier.fillMaxWidth(),
+            card.problem?.let { p -> Notice(p.text, if (p.terminal) onTerminal else null) }
+            if (ask != null) Options(ask, card, focusOther, ::answer)
+        },
+        footer = {
+            when {
+                q.review -> Footer(
+                    left = {},
+                    right = {
+                        SolidButton(SEND_ANSWERS, enabled = !card.busy) { answer(ChatChoice.Submit) }
+                        OutlineButton(SKIP, enabled = !card.busy) { answer(ChatChoice.Skip) }
+                    },
+                )
+                ask == null || !ask.answerable -> Footer(left = {}, right = { OutlineButton(OPEN_TERMINAL, enabled = true, onClick = onTerminal) })
+                ask.multi -> Footer(
+                    left = { CountText(pluralSelected(card.ticked.size)) },
+                    right = {
+                        OutlineButton(SKIP, enabled = !card.busy) { answer(ChatChoice.Skip) }
+                        SendCircle(enabled = !card.busy && card.ticked.isNotEmpty()) {
+                            answer(ChatChoice.Multi(card.ticked.sorted().map { it.toUInt() }))
+                        }
+                    },
+                )
+                else -> Footer(
+                    left = { if (card.otherOpen) Other(card, focusOther, ::answer) else SomethingElse(enabled = !card.busy) { card.otherOpen = true } },
+                    right = { OutlineButton(SKIP, enabled = !card.busy) { answer(ChatChoice.Skip) } },
+                    below = otherProblem(card.otherText).takeIf { card.otherOpen },
                 )
             }
         },
-        problem = otherProblem(text),
+    )
+}
+
+@Composable
+private fun pluralSelected(n: Int): String = stringResource(R.string.chat_question_selected, n)
+
+/** The options: tappable rows for a single choice, ticks for several, plain rows when the card cannot answer. */
+@Composable
+private fun Options(ask: ChatAsk, card: QuestionCard, focusOther: Boolean, answer: (ChatChoice) -> Unit) {
+    val n = ask.options.size
+    for ((i, o) in ask.options.withIndex()) {
+        val enabled = !card.busy && ask.answerable
+        val checked = if (ask.multi) i in card.ticked else null
+        val chosen = !ask.multi && card.chosen == i
+        val act = {
+            if (ask.multi) card.toggle(i) else answer(ChatChoice.Pick(i.toUInt()))
+        }
+        val spoken = optionSpoken(i, n, o, checked.takeIf { ask.answerable })
+        OptionRow(
+            first = i == 0,
+            chosen = chosen,
+            lead = { if (ask.multi) CheckBox(checked == true) else Keycap(i + 1) },
+            label = o.label,
+            description = o.description,
+            // One stop per option: its number, label, description and state.
+            click = if (!ask.answerable) Modifier.clearAndSetSemantics { contentDescription = spoken } else Modifier
+                .clickable(enabled = enabled) { act() }
+                .clearAndSetSemantics {
+                    contentDescription = spoken
+                    role = Role.Button
+                    if (chosen) selected = true
+                    if (!enabled) disabled()
+                    onClick { act(); true }
+                },
+            trailing = if (o.preview != null && ask.answerable) ({ PreviewPill { card.preview = o } }) else null,
+        )
+    }
+    if (ask.multi && ask.answerable) {
+        if (card.otherOpen) OtherRow { Other(card, focusOther, answer) } else SomethingElseRow(enabled = !card.busy) { card.otherOpen = true }
+    }
+}
+
+/**
+ * The own-words field: it takes the focus (and the keyboard) when it opens;
+ * Send gives both back. Send is enabled for 1 to 2000 characters.
+ */
+@Composable
+private fun RowScope.Other(card: QuestionCard, takeFocus: Boolean, answer: (ChatChoice) -> Unit) {
+    val text = card.otherText
+    val focus = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
+    LaunchedEffect(Unit) { if (takeFocus) focus.requestFocus() }
+    DisposableEffect(Unit) { onDispose { keyboard?.hide() } }
+    OtherField(
+        empty = text.isEmpty(),
         send = {
-            CardButton(SEND, enabled = !card.busy && canSendOther(text), solid = true) {
-                val choice = ChatChoice.Other(text)
-                if (card.start(choice)) onAnswer(choice)
+            SendCircle(enabled = !card.busy && canSendOther(text), small = true) {
+                focusManager.clearFocus()
+                keyboard?.hide()
+                answer(ChatChoice.Other(text))
             }
         },
-    )
+    ) { style, cursor ->
+        BasicTextField(
+            text, { card.otherText = it },
+            textStyle = style,
+            cursorBrush = cursor,
+            maxLines = 6,
+            modifier = Modifier.fillMaxWidth().focusRequester(focus),
+        )
+    }
 }

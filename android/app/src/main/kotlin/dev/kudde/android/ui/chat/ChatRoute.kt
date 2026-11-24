@@ -199,7 +199,7 @@ fun ChatRoute(
         onPick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
         onSend = {
             val poll = state.poll
-            val out = state.send(poll?.rows.orEmpty(), poll?.status.orEmpty(), SystemClock.uptimeMillis(), card = poll?.question != null)
+            val out = state.send(poll?.rows.orEmpty(), poll?.status.orEmpty(), SystemClock.uptimeMillis())
             val chat = visit.chat
             if (out != null) {
                 if (chat == null) {
