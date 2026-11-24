@@ -263,6 +263,7 @@
     <string name="title_bar_next_needs_you">Next agent that needs you</string>
     <string name="title_bar_previous_needs_you">Previous agent that needs you</string>
     <string name="title_bar_moved">%1$s, %2$s</string>
+    <string name="title_bar_spoken_position">%1$s, terminal %2$d of %3$d</string>
     <string name="title_bar_tab_end">No more terminals in this tab</string>
     <string name="title_bar_none_need_you">No more agents need you</string>
     <string name="title_bar_step_refused">Not moved: the compose text is kept</string>

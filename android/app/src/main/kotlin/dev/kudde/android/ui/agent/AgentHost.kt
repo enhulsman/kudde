@@ -8,6 +8,7 @@ import dev.kudde.android.ui.terminal.TerminalRenderer
 import dev.kudde.android.ui.terminal.TerminalScreen
 import dev.kudde.android.ui.terminal.phoneGrid
 import dev.kudde.android.ui.terminal.terminalActions
+import dev.kudde.android.ui.terminal.spokenTitle
 import dev.kudde.android.ui.terminal.terminalUi
 import dev.kudde.android.ui.terminal.TerminalReopen
 import android.widget.Toast
@@ -229,7 +230,7 @@ fun AgentHost(
                 },
                 onWatchView = { app.terminalZoom[key] = it.zoom },
                 // Read after a step: the terminal it opened, as its title bar will show it.
-                openHeader = { home.openKey?.let { terminalUi(app.hubHost.snapshot.value, it, res).header } },
+                openTitle = { home.openKey?.let { spokenTitle(terminalUi(app.hubHost.snapshot.value, it, res), res) } },
             )
         }
         ChatPolling(

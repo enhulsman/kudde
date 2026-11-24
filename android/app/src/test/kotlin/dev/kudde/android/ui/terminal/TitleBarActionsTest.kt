@@ -38,6 +38,7 @@ import java.util.concurrent.Executor
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -105,7 +106,7 @@ class TitleBarActionsTest {
         onSwipe = home::step,
         onTab = home::tab,
         onPhoneGrid = {},
-        openHeader = { home.openKey?.let { terminalUi(hubHost.snapshot.value, it, res).header } },
+        openTitle = { home.openKey?.let { spokenTitle(terminalUi(hubHost.snapshot.value, it, res), res) } },
         announce = { heard += it },
     )
 
@@ -130,7 +131,10 @@ class TitleBarActionsTest {
     }
 
     private fun header(address: String) = terminalUi(hub, key(address), res).header
-    private fun spoken(address: String) = header(address).let { "${it.name}, ${it.lineTwo}" }
+    // Name, place and position in the tab: two panes of one name still sound like a move.
+    private fun spoken(address: String) = terminalUi(hub, key(address), res).let { ui ->
+        "${ui.header.name}, ${ui.header.lineTwo}" + (ui.map?.let { ", terminal ${it.index} of ${it.count}" } ?: "")
+    }
 
     private val poll = ChatPoll(
         found = ChatFound.FOUND, answered = true, agent = "claude", title = "Upload retry fix", version = "2.1.325", status = "idle",
@@ -194,8 +198,8 @@ class TitleBarActionsTest {
     private fun assertOneTitleNode(address: String, ownStops: List<List<String>>) {
         val title = titleNode()
         assertEquals(four, title.actionNames())
-        assertEquals("the name and its line, nothing else", listOf(header(address).name, header(address).lineTwo), title.texts())
-        assertEquals(emptyList<String>(), title.descriptions())
+        assertEquals("spoken once, as the step announcement says it", listOf(spoken(address)), title.descriptions())
+        assertEquals("the name and its line are not read again after it", emptyList<String>(), title.texts())
         for (stop in ownStops) {
             val node = nodes().singleOrNull { (it.texts() == stop || it.descriptions() == stop) && it.id != title.id }
             assertNotNull("$stop is not a focus stop of its own", node)
@@ -233,6 +237,24 @@ class TitleBarActionsTest {
         assertEquals(key("a"), home.openKey)
         assertEquals(spoken("a"), heard.last())
         assertEquals(3, heard.size)
+    }
+
+    @Test
+    fun aStepBetweenTwoPanesOfOneNameIsHeardAsAMove() {
+        // Two shells named alike: without the position both titles sound the same, and
+        // TalkBack, finding its old title unchanged, focused it again and read it twice.
+        val alike = hub.copy(agents = hub.agents.map { if (it.address == "a" || it.address == "b") it.copy(name = "zsh") else it })
+        listener.onSnapshot(alike)
+        home.onSnapshot(alike)
+        home.open(key("a"))
+        showTerminal()
+        val before = titleNode().descriptions()
+        choose("Next terminal")
+        assertEquals(key("b"), home.openKey)
+        val line = terminalUi(alike, key("b"), res).header.lineTwo
+        assertEquals(listOf("zsh, $line, terminal 2 of 2"), heard)
+        assertEquals(listOf("zsh, $line, terminal 2 of 2"), titleNode().descriptions())
+        assertNotEquals("the title changed, so the reader cannot take it for the old one", before, titleNode().descriptions())
     }
 
     @Test
