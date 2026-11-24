@@ -1,5 +1,7 @@
 package dev.kudde.android
 
+import android.app.KeyguardManager
+import android.content.Context
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -12,6 +14,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
@@ -19,13 +24,18 @@ import dev.kudde.android.ui.agents.AgentsHome
 import dev.kudde.android.ui.agents.AgentsRoute
 import dev.kudde.android.ui.flows.MachineFlows
 import dev.kudde.android.ui.flows.Screen
+import dev.kudde.android.ui.flows.LockNoticeStub
 import dev.kudde.android.ui.flows.SetupScreen
+import dev.kudde.android.ui.flows.WelcomeStub
 import dev.kudde.android.ui.hostkey.HostKeyChangedActions
 import dev.kudde.android.ui.hostkey.HostKeyChangedScreen
 import dev.kudde.android.ui.hostkey.TrustDialog
 import dev.kudde.android.ui.hostkey.hostKeyChange
 import dev.kudde.android.ui.machines.MachinesRoute
 import dev.kudde.android.ui.phonekey.PhoneKeyRoute
+import dev.kudde.android.ui.setup.PrefsSetupProgress
+import dev.kudde.android.ui.setup.StringSecretField
+import dev.kudde.android.ui.setup.UniffiPasswordPorts
 import dev.kudde.android.ui.theme.KuddeTheme
 import org.unifiedpush.android.connector.UnifiedPush
 
@@ -54,7 +64,14 @@ class MainActivity : ComponentActivity() {
  */
 @Composable
 private fun Root(app: KuddeApp) {
-    val flows = rememberSaveable(saver = MachineFlows.saver(app.hubHost)) { MachineFlows(app.hubHost) }
+    val context = LocalContext.current
+    val progress = remember { PrefsSetupProgress(context.getSharedPreferences(PrefsSetupProgress.FILE, Context.MODE_PRIVATE)) }
+    val ports = remember { UniffiPasswordPorts(app.keyManager, ContextCompat.getMainExecutor(context)) }
+    val field = remember { StringSecretField() }
+    val secure = { context.getSystemService(KeyguardManager::class.java).isDeviceSecure }
+    val flows = rememberSaveable(saver = MachineFlows.saver(app.hubHost, progress, ports, field, secure)) {
+        MachineFlows(app.hubHost, progress, ports, field, secure)
+    }
     val isForeground = { app.foreground.isForeground }
     val home = rememberSaveable(saver = AgentsHome.saver(app.hubHost, isForeground = isForeground)) { AgentsHome(app.hubHost, isForeground = isForeground) }
     // Back in the foreground with an agent's sheet open: a finish it shows is now seen.
@@ -82,7 +99,7 @@ private fun Root(app: KuddeApp) {
     }
     // The export/import notice answers the picker just closed; it does not follow the person to other screens.
     LaunchedEffect(flows.screen) { if (flows.screen != Screen.Machines) app.transfer.dismiss() }
-    BackHandler(enabled = flows.screen != Screen.Agents || flows.trusting != null || flows.confirmingForget || flows.removing != null) {
+    BackHandler(enabled = flows.screen != Screen.Welcome && (flows.screen != Screen.Agents || flows.trusting != null || flows.confirmingForget || flows.removing != null)) {
         flows.back()
     }
     Box {
@@ -90,6 +107,8 @@ private fun Root(app: KuddeApp) {
             // AgentsRoute's own BackHandler closes its sheet before this one leaves the app.
             Screen.Agents -> AgentsRoute(app, flows, home)
             Screen.Machines -> MachinesRoute(app, flows, onBack = { flows.back() })
+            Screen.Welcome -> WelcomeStub(onStart = flows::startFirstSetup)
+            Screen.LockNotice -> LockNoticeStub(onContinue = flows::lockNoticeContinue, onBack = { flows.back() })
             Screen.Setup -> SetupScreen(flows.setupStep, onBack = { flows.back() })
             // onSnapshot returns to Machines once the machine no longer shows a changed key.
             Screen.HostKeyChanged -> hostKeyChange(snapshot, flows.machine)?.let { change ->

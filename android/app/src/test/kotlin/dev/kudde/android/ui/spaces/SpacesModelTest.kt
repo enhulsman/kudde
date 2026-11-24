@@ -126,7 +126,7 @@ class SpacesModelTest {
 
     @Test
     fun unreachableKeepsLayoutAndAsOfRows() {
-        val s = sample().let { it.copy(machines = it.machines.map { m -> m.copy(state = MachineState.Unreachable("offline"), lastConnectedMs = 100u) }) }
+        val s = sample().let { it.copy(machines = it.machines.map { m -> m.copy(state = MachineState.Unreachable(uniffi.kudde_mobile.ReachKind.OTHER, "offline"), lastConnectedMs = 100u) }) }
         val existing = rows(s, "as of 14:05"); val model = ui(s, existing)
         assertEquals(listOf("website", "api"), model.headers().map { it.name })
         assertTrue(model.agents().all { it.row.asOf == "as of 14:05" })

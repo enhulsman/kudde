@@ -762,14 +762,19 @@ class MachineFlowsTest {
         flows.back()
         assertEquals("remove workstation", hub.calls.last())
         assertEquals(Screen.Machines, flows.screen)
-        for (state in listOf(unconfirmed, MachineState.Connected("1.0"))) {
-            hub.calls.clear()
-            publish(machine("workstation", state))
-            flows.openSetup("workstation")
-            flows.back()
-            assertEquals(Screen.Machines, flows.screen)
-            assertTrue(hub.calls.isEmpty())
-        }
+        // Step 2 goes back to step 1 (the machine stays listed); step 3 goes home.
+        hub.calls.clear()
+        publish(machine("workstation", unconfirmed))
+        flows.openSetup("workstation")
+        flows.back()
+        assertEquals(Screen.Setup, flows.screen)
+        assertEquals(1, flows.setupStep)
+        assertTrue(hub.calls.isEmpty())
+        publish(machine("workstation", MachineState.Connected("1.0")))
+        flows.openSetup("workstation")
+        flows.back()
+        assertEquals(Screen.Agents, flows.screen)
+        assertTrue(hub.calls.isEmpty())
     }
 
     private fun restore(): MachineFlows {

@@ -15,6 +15,16 @@ import dev.kudde.android.ui.hostkey.HostKeyPrompt
 import dev.kudde.android.ui.hostkey.hostKeyChange
 import dev.kudde.android.ui.hostkey.hostKeyPrompt
 import dev.kudde.android.ui.machines.MachinesActions
+import dev.kudde.android.ui.setup.KeyChoice
+import dev.kudde.android.ui.setup.MemorySetupProgress
+import dev.kudde.android.ui.setup.PasswordPanel
+import dev.kudde.android.ui.setup.PasswordPorts
+import dev.kudde.android.ui.setup.PasswordSetup
+import dev.kudde.android.ui.setup.SecretField
+import dev.kudde.android.ui.setup.SetupCheckpoint
+import dev.kudde.android.ui.setup.SetupPhase
+import dev.kudde.android.ui.setup.SetupProgress
+import dev.kudde.android.ui.setup.StringSecretField
 import uniffi.kudde_mobile.HubException
 import uniffi.kudde_mobile.HubInterface
 import uniffi.kudde_mobile.HubSnapshot
@@ -23,6 +33,12 @@ import uniffi.kudde_mobile.ReachKind
 
 /** The app's screens; switched by state, without a navigation library. */
 enum class Screen {
+    /** First start: before home, Machines or any alert, until a real machine connects. */
+    Welcome,
+
+    /** A phone without a screen lock, after the welcome and before step 1. */
+    LockNotice,
+
     /** The start screen: every agent, the ones that need you first (renders 1 and 2). */
     Agents,
     Machines,
@@ -51,9 +67,26 @@ enum class Screen {
  * Removing a machine asks first ([askRemove]); only the confirm's Remove
  * calls the hub, and a refusal is kept in [error] for the Machines screen.
  */
-class MachineFlows(private val hubHost: HubHost) {
+class MachineFlows(
+    private val hubHost: HubHost,
+    private val progress: SetupProgress = MemorySetupProgress(SetupPhase.COMPLETED),
+    private val ports: PasswordPorts = PasswordPorts.None,
+    field: SecretField = StringSecretField(),
+    private val isDeviceSecure: () -> Boolean = { true },
+) {
     var screen by mutableStateOf(Screen.Agents)
         private set
+
+    /** The password way's state, with the field that is never saved. */
+    val password = PasswordSetup(ports, field)
+
+    /** The key-install detail open within step 2 (the two choices show when null). */
+    var keyDetail by mutableStateOf<KeyChoice?>(null)
+        private set
+
+    /** First setup is not finished: the welcome, the lock notice and setup are all there is. */
+    private val firstSetup: Boolean get() = progress.phase != SetupPhase.COMPLETED
+
 
     /** The machine [Screen.HostKeyChanged] or [Screen.Setup] is about (none for the Phone key row). */
     var machine by mutableStateOf<String?>(null)
@@ -78,6 +111,7 @@ class MachineFlows(private val hubHost: HubHost) {
 
     fun changeInput(value: MachineInput) {
         input = if (nameLocked) value.copy(name = machine.orEmpty()) else value
+        persist()
     }
 
     /** The machine whose trust dialog is open, over whichever screen is showing. */
@@ -115,28 +149,155 @@ class MachineFlows(private val hubHost: HubHost) {
     )
 
     /** The Agents home's Machines button and machine notices. */
-    fun openMachines() = show(Screen.Machines, null)
+    fun openMachines() {
+        if (firstSetup) return
+        show(Screen.Machines, null)
+    }
 
     /** A tapped alert: the Agents home, where its terminal opens; closes any dialog. */
     fun openAgents() {
+        if (firstSetup) return
         trusting = null
         show(Screen.Agents, null)
     }
 
     /** Start a fresh visit; back from step 1 returns to its caller. */
     fun openAddMachine() {
-        setupOrigin = screen.takeIf { it == Screen.Machines } ?: Screen.Agents
+        if (firstSetup) return
+        beginStepOne(screen.takeIf { it == Screen.Machines } ?: Screen.Agents, MachineInput())
+    }
+
+    private fun beginStepOne(origin: Screen, fields: MachineInput) {
+        setupOrigin = origin
         show(Screen.Setup, null)
         setupStep = 1
-        input = MachineInput()
+        input = fields
         addedThisVisit = false
         reachedThisVisit = false
+        persist()
+    }
+
+    /** The welcome's one main action: the lock notice if the phone has none, else step 1, resuming kept fields. */
+    fun startFirstSetup() {
+        if (screen != Screen.Welcome) return
+        progress.phase = SetupPhase.IN_PROGRESS
+        if (!isDeviceSecure()) {
+            show(Screen.LockNotice, null)
+            return
+        }
+        enterFirstSetup()
+    }
+
+    /** The lock notice's return from Android's settings: continues only once a lock exists. */
+    fun lockNoticeContinue() {
+        if (screen != Screen.LockNotice || !isDeviceSecure()) return
+        enterFirstSetup()
+    }
+
+    private fun enterFirstSetup() {
+        val kept = progress.checkpoint
+        if (kept != null) restoreCheckpoint(kept) else beginStepOne(Screen.Agents, MachineInput())
+        persist()
+    }
+
+    /** Every start before a real connection: the welcome, or the step the person left. */
+    private fun resumeFirstSetup() {
+        val kept = progress.checkpoint
+        if (progress.phase == SetupPhase.IN_PROGRESS && kept != null) {
+            restoreCheckpoint(kept)
+        } else {
+            screen = Screen.Welcome
+        }
+    }
+
+    private fun restoreCheckpoint(kept: SetupCheckpoint) {
+        screen = Screen.Setup
+        machine = kept.machine?.takeIf { name -> current().machines.any { it.name == name } }
+        setupStep = kept.step.coerceIn(1, 3)
+        input = MachineInput(kept.name, kept.host, kept.port, kept.user)
+        addedThisVisit = kept.added
+        reachedThisVisit = kept.reached
+        setupOrigin = runCatching { Screen.valueOf(kept.origin) }.getOrDefault(Screen.Agents)
+        password.newVisit()
+        keyDetail = kept.choice
+        if (kept.choice == KeyChoice.PASSWORD && setupStep == 2) chooseKey(KeyChoice.PASSWORD)
+    }
+
+    /** An update with no record: completed only by a machine that has actually connected. */
+    private fun inferCompletion(snapshot: HubSnapshot) {
+        if (progress.phase == SetupPhase.UNSET && snapshot.machines.any { it.lastConnectedMs != null }) {
+            progress.phase = SetupPhase.COMPLETED
+            progress.checkpoint = null
+            if (screen == Screen.Welcome) screen = Screen.Agents
+        }
+    }
+
+    /** Only steps 1 and 2 are kept: step 3 means connected, and step 4 is never resumed. */
+    private fun persist() {
+        if (screen != Screen.Setup) return
+        if (setupStep >= 3) {
+            progress.checkpoint = null
+            return
+        }
+        progress.checkpoint = SetupCheckpoint(
+            machine = machine, step = setupStep, choice = keyDetail, origin = setupOrigin.name,
+            name = input.name, host = input.host, port = input.port, user = input.user,
+            added = addedThisVisit, reached = reachedThisVisit,
+        )
+    }
+
+    /** Step 3's "Continue"; step 4 is reached nowhere else. */
+    fun continueToAlerts() {
+        if (screen == Screen.Setup && setupStep == 3) setupStep = 4
+    }
+
+    /** One of step 2's two choices, from the step itself. */
+    fun chooseKey(choice: KeyChoice) {
+        val name = machine ?: return
+        if (screen != Screen.Setup || setupStep != 2) return
+        // After "still refused" the password is not offered again in this visit.
+        if (choice == KeyChoice.PASSWORD && password.unavailable) return
+        password.close()
+        keyDetail = choice
+        if (choice == KeyChoice.MANUAL) {
+            persist()
+            return
+        }
+        val m = current().machines.find { it.name == name } ?: return
+        when {
+            hostKeyPrompt(current(), name) != null -> compareFingerprint()
+            m.hostKey != null -> probe(m.hostKey!!)
+        }
+        persist()
+    }
+
+    /** A Machines card's choice for a listed machine: opens step 2 with that detail. */
+    fun openKeyChoice(name: String, choice: KeyChoice) {
+        openSetup(name, atLeast = 2)
+        if (screen == Screen.Setup && setupStep == 2) chooseKey(choice)
+    }
+
+    private fun probe(pinned: String) {
+        val m = current().machines.find { it.name == machine } ?: return
+        password.open(m.host, m.port.toInt(), m.user, pinned, onChangedKey = ::retry)
+    }
+
+    /** "Add the key": the field is emptied before the call starts. */
+    fun addKey() {
+        val m = current().machines.find { it.name == machine }?.takeIf { it.hostKey != null } ?: return
+        if (keyDetail != KeyChoice.PASSWORD) return
+        password.addKey(
+            m.host, m.port.toInt(), m.user, m.hostKey!!,
+            onDone = ::retry,
+            onChangedKey = ::retry,
+        )
     }
 
     /** Resume a listed machine. Card desk actions explicitly open step 2. */
     fun openSetup(name: String, atLeast: Int = 1) {
         val m = current().machines.find { it.name == name } ?: return
-        setupOrigin = screen.takeIf { it == Screen.Agents } ?: Screen.Machines
+        setupOrigin = if (firstSetup) Screen.Agents else screen.takeIf { it == Screen.Agents } ?: Screen.Machines
+        password.newVisit()
         show(Screen.Setup, name)
         setupStep = when {
             m.state is MachineState.Connected -> 3
@@ -147,15 +308,18 @@ class MachineFlows(private val hubHost: HubHost) {
         input = MachineInput(name, m.host, m.port.toString(), m.user)
         addedThisVisit = false
         reachedThisVisit = setupStep >= 2
-        if (m.state is MachineState.HostKeyMismatch) show(Screen.HostKeyChanged, name)
+        if (m.state is MachineState.HostKeyMismatch) show(Screen.HostKeyChanged, name) else persist()
     }
 
     /** The only deliberate backward step; preserves this visit's ownership. */
     fun changeAddress() {
         if (screen != Screen.Setup || machine == null) return
         setupStep = 1
+        keyDetail = null
+        password.close()
         trusting = null
         waitingFor = null
+        persist()
     }
 
     fun retry() {
@@ -165,6 +329,8 @@ class MachineFlows(private val hubHost: HubHost) {
     /** The hub owns grace. Neither deadlines nor the number of snapshots matter. */
     fun failure(snapshot: HubSnapshot): MachineState? {
         val m = snapshot.machines.find { it.name == machine } ?: return null
+        // The key not being accepted yet is what the password way fixes: its panel says so.
+        if (m.state == MachineState.KeyRejected && keyDetail == KeyChoice.PASSWORD) return null
         return when (val state = m.state) {
             is MachineState.Unreachable -> if (
                 state.kind == ReachKind.CORE_STARTUP_CLOSED && m.startupRetryPending
@@ -177,6 +343,8 @@ class MachineFlows(private val hubHost: HubHost) {
 
     private fun show(next: Screen, about: String?) {
         screen = next
+        keyDetail = null
+        password.close()
         machine = about
         waitingFor = null
         confirmingForget = false
@@ -205,13 +373,21 @@ class MachineFlows(private val hubHost: HubHost) {
 
     /** Follow settlements forward, closing dialogs whose keys are no longer presented. */
     fun onSnapshot(snapshot: HubSnapshot) {
+        inferCompletion(snapshot)
         if (screen == Screen.Setup) {
             snapshot.machines.find { it.name == machine }?.let { m ->
                 when (m.state) {
                     is MachineState.Connected -> {
-                        setupStep = 3
+                        if (setupStep < 3) {
+                            setupStep = 3
+                            keyDetail = null
+                            password.close()
+                        }
                         reachedThisVisit = true
                         waitingFor = null
+                        // A real connection at step 3 completes first setup.
+                        progress.phase = SetupPhase.COMPLETED
+                        progress.checkpoint = null
                     }
                     is MachineState.HostKeyMismatch -> show(Screen.HostKeyChanged, m.name)
                     is MachineState.HostKeyUnconfirmed -> {
@@ -220,6 +396,7 @@ class MachineFlows(private val hubHost: HubHost) {
                         waitingFor = null
                     }
                     else -> {
+                        if (m.state == MachineState.KeyRejected) password.phoneKeyStillRefused()
                         // A confirmed pin also proves that the machine was reached,
                         // including before its first successful core connection.
                         if (m.hostKey != null) {
@@ -230,6 +407,7 @@ class MachineFlows(private val hubHost: HubHost) {
                     }
                 }
             }
+            persist()
         }
         trusting?.let { name ->
             if (hostKeyPrompt(snapshot, name) == null) {
@@ -283,6 +461,7 @@ class MachineFlows(private val hubHost: HubHost) {
         if (call { it.confirmHostKey(prompt.machine, prompt.fingerprint) }) {
             trusting = null
             waitingFor = null
+            if (keyDetail == KeyChoice.PASSWORD && screen == Screen.Setup) probe(prompt.fingerprint)
         }
     }
 
@@ -290,6 +469,11 @@ class MachineFlows(private val hubHost: HubHost) {
     fun cancelTrust() {
         trusting = null
         error = null
+        // A password choice that was waiting on this confirm has nothing to show.
+        if (keyDetail == KeyChoice.PASSWORD && password.panel == PasswordPanel.Hidden) {
+            keyDetail = null
+            persist()
+        }
     }
 
     /** "Forget this machine's key": opens the second confirm; calls nothing. */
@@ -331,7 +515,7 @@ class MachineFlows(private val hubHost: HubHost) {
     fun remove() {
         val name = removing ?: return
         removing = null
-        call { it.removeMachine(name) }
+        if (call { it.removeMachine(name) } && progress.checkpoint?.machine == name) progress.checkpoint = null
     }
 
     /** System back: closes a dialog first, then returns to Machines, then to the Agents home; false there. */
@@ -349,17 +533,13 @@ class MachineFlows(private val hubHost: HubHost) {
                 cancelRemove()
                 true
             }
-            screen == Screen.Setup -> {
-                if (setupStep == 1) {
-                    val m = current().machines.find { it.name == machine }
-                    if (addedThisVisit && !reachedThisVisit && m?.hostKey == null && m?.lastConnectedMs == null) {
-                        val name = machine
-                        if (name != null && !call { it.removeMachine(name) }) return true
-                    }
-                    show(setupOrigin, null)
-                } else show(Screen.Machines, null)
+            screen == Screen.Welcome -> false
+            screen == Screen.LockNotice -> {
+                progress.phase = SetupPhase.WELCOME
+                show(Screen.Welcome, null)
                 true
             }
+            screen == Screen.Setup -> backInSetup()
             screen == Screen.Machines -> {
                 show(Screen.Agents, null)
                 true
@@ -370,6 +550,44 @@ class MachineFlows(private val hubHost: HubHost) {
             }
             else -> false
         }
+    }
+
+    /** Back inside setup: a key detail to its two choices, else one step back (design D6). */
+    private fun backInSetup(): Boolean {
+        if (keyDetail != null) {
+            keyDetail = null
+            password.close()
+            persist()
+            return true
+        }
+        when (setupStep) {
+            4 -> setupStep = 3
+            3 -> show(Screen.Agents, null)
+            2 -> {
+                setupStep = 1
+                persist()
+            }
+            else -> {
+                var kept = machine
+                val m = current().machines.find { it.name == machine }
+                if (addedThisVisit && !reachedThisVisit && m?.hostKey == null && m?.lastConnectedMs == null) {
+                    val name = machine
+                    if (name != null) {
+                        if (!call { it.removeMachine(name) }) return true
+                        kept = null
+                    }
+                }
+                machine = kept
+                persist()
+                if (firstSetup) {
+                    progress.phase = SetupPhase.WELCOME
+                    show(Screen.Welcome, null)
+                } else {
+                    show(setupOrigin, null)
+                }
+            }
+        }
+        return true
     }
 
     /** Runs a hub call; on failure keeps the reason in [error] and returns false. */
@@ -392,18 +610,30 @@ class MachineFlows(private val hubHost: HubHost) {
         }
     }
 
+    init {
+        inferCompletion(current())
+        if (firstSetup) resumeFirstSetup()
+    }
+
     companion object {
         /** Keeps the flow across rotation and process death (the error is not kept). */
-        fun saver(hubHost: HubHost): Saver<MachineFlows, Any> = listSaver(
+        fun saver(
+            hubHost: HubHost,
+            progress: SetupProgress = MemorySetupProgress(SetupPhase.COMPLETED),
+            ports: PasswordPorts = PasswordPorts.None,
+            field: SecretField = StringSecretField(),
+            isDeviceSecure: () -> Boolean = { true },
+        ): Saver<MachineFlows, Any> = listSaver(
             save = {
+                // No password, no password state: the detail's name only, never its text.
                 listOf(
                     it.screen.name, it.machine, it.waitingFor, it.trusting, it.confirmingForget, it.removing,
                     it.setupStep, it.addedThisVisit, it.reachedThisVisit, it.setupOrigin.name,
-                    it.input.name, it.input.host, it.input.port, it.input.user,
+                    it.input.name, it.input.host, it.input.port, it.input.user, it.keyDetail?.name,
                 )
             },
             restore = { saved ->
-                MachineFlows(hubHost).apply {
+                MachineFlows(hubHost, progress, ports, field, isDeviceSecure).apply {
                     screen = Screen.valueOf(saved[0] as String)
                     machine = saved[1] as String?
                     waitingFor = saved[2] as String?
@@ -415,6 +645,12 @@ class MachineFlows(private val hubHost: HubHost) {
                     reachedThisVisit = saved[8] as Boolean
                     setupOrigin = Screen.valueOf(saved[9] as String)
                     input = MachineInput(saved[10] as String, saved[11] as String, saved[12] as String, saved[13] as String)
+                    // Step 4 is never resumed: the home opens, and the card holds the alerts state.
+                    if (screen == Screen.Setup && setupStep == 4) screen = Screen.Agents
+                    val detail = (saved[14] as String?)?.let { KeyChoice.valueOf(it) }
+                    keyDetail = detail
+                    // The password detail comes back at its confirm or probe, with an empty field.
+                    if (screen == Screen.Setup && setupStep == 2 && detail == KeyChoice.PASSWORD) chooseKey(KeyChoice.PASSWORD)
                 }
             },
         )
