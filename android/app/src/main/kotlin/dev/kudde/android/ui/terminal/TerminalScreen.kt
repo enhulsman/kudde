@@ -9,6 +9,7 @@ import uniffi.kudde_mobile.DeskPaneView
 import uniffi.kudde_mobile.HubSnapshot
 import uniffi.kudde_mobile.TerminalViewInterface
 import android.content.Context
+import android.content.res.Resources
 import android.provider.Settings
 import android.view.HapticFeedbackConstants
 import android.widget.Toast
@@ -64,6 +65,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -144,6 +146,18 @@ data class TerminalHeader(
  */
 data class TitleMap(val cells: List<MapCell>, val index: Int, val count: Int, val spaceId: String, val tabId: String)
 
+/**
+ * The title as the screen reader says it: name, place and, in a tab, the position
+ * ("zsh, website / build · workstation, terminal 2 of 2"). Two panes of one name still
+ * sound different, so a step between them is heard as a move (spaces spec, design D9).
+ */
+fun spokenTitle(header: TerminalHeader, map: TitleMap?, res: Resources): String {
+    val named = res.getString(R.string.title_bar_moved, header.name, header.lineTwo)
+    return map?.let { res.getString(R.string.title_bar_spoken_position, named, it.index, it.count) } ?: named
+}
+
+fun spokenTitle(ui: TerminalUi, res: Resources): String = spokenTitle(ui.header, ui.map, res)
+
 /** [map]: null in a tab of one pane and for a terminal in no pane. */
 data class TerminalUi(val key: AgentKey, val header: TerminalHeader, val queue: QueueStrip?, val map: TitleMap? = null)
 
@@ -161,8 +175,8 @@ class TerminalActions(
     val onTab: (next: Boolean) -> Boolean = { false },
     /** True while a step must be refused: the compose sheet holds text (design D4). */
     val stepRefused: () -> Boolean = { false },
-    /** The open terminal's header after a step, for the screen reader's announcement (design D9). */
-    val openHeader: () -> TerminalHeader? = { null },
+    /** The open terminal's spoken title after a step, for the screen reader's announcement (design D9). */
+    val openTitle: () -> String? = { null },
     /** Speaks a screen-reader announcement; null: the view's announceForAccessibility. */
     val announce: ((String) -> Unit)? = null,
 )
@@ -398,7 +412,7 @@ internal fun TitleBar(
             )
             play(step)
             val said = when (step) {
-                TitleBarStep.Moved -> actions.openHeader()?.let { context.getString(R.string.title_bar_moved, it.name, it.lineTwo) }
+                TitleBarStep.Moved -> actions.openTitle()
                 is TitleBarStep.End -> if (sideways) tabEnd else noneNeedYou
                 TitleBarStep.Refused -> refusedText
                 null -> null
@@ -461,7 +475,7 @@ internal fun TitleBar(
         // exactly as it did without motion.
         val fade = if (titleOpacity.value < 1f) Modifier.graphicsLayer { alpha = titleOpacity.value } else Modifier
         ProgramMark(shownHeader.icon, Modifier.padding(start = 6.dp, end = 12.dp).then(fade), size = 20.dp)
-        NameAndGauge(shownHeader, stepActions, gauge, Modifier.weight(1f).then(fade))
+        NameAndGauge(shownHeader, map, stepActions, gauge, Modifier.weight(1f).then(fade))
         Spacer(Modifier.width(6.dp))
         map?.let { TitleMapButton(it, onMap) }
         switch?.invoke()
@@ -477,12 +491,15 @@ internal fun TitleBar(
 @Composable
 private fun NameAndGauge(
     header: TerminalHeader,
+    map: TitleMap?,
     stepActions: List<CustomAccessibilityAction>,
     gauge: (@Composable () -> Unit)?,
     modifier: Modifier,
 ) {
     val c = KuddeTheme.colors
     val measurer = rememberTextMeasurer()
+    // Read through state inside the slot: the subcomposition does not recompose when only the position changes.
+    val spoken = rememberUpdatedState(spokenTitle(header, map, LocalContext.current.resources))
     SubcomposeLayout(modifier) { constraints ->
         val room = constraints.maxWidth
         val gap = 6.dp.roundToPx()
@@ -496,8 +513,14 @@ private fun NameAndGauge(
         val fit = titleBarFit(room, gaugeWidth, eight, width(name.take(1) + "…"))
         val column = subcompose("name") {
             // One node for the name, its line and the four steps; Back and the trailing controls stay their own.
+            val said = spoken.value
             Column(
-                Modifier.semantics(mergeDescendants = true) { customActions = stepActions },
+                // One stop that says only this, as the step announcement says it, position included
+                // (design D9); the name and line below are not read a second time.
+                Modifier.clearAndSetSemantics {
+                    customActions = stepActions
+                    contentDescription = said
+                },
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 BasicText(header.name, style = KuddeType.terminalTitle.copy(color = c.fg), maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -1162,7 +1185,7 @@ internal fun terminalActions(
     onTab: (next: Boolean) -> Boolean,
     onPhoneGrid: (GridSize) -> Unit,
     onWatchView: (WatchView) -> Unit = {},
-    openHeader: () -> TerminalHeader? = { null },
+    openTitle: () -> String? = { null },
     announce: ((String) -> Unit)? = null,
 ) = TerminalActions(
     onBack = onBack,
@@ -1172,6 +1195,6 @@ internal fun terminalActions(
     onWatchView = onWatchView,
     onTab = onTab,
     stepRefused = { screen.composeText.isNotEmpty() },
-    openHeader = openHeader,
+    openTitle = openTitle,
     announce = announce,
 )

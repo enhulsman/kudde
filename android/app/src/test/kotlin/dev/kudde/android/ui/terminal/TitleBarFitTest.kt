@@ -130,7 +130,7 @@ class TitleBarFitTest {
             }
             for (b in fixed) assertTrue("$b whole and 48 dp", b.width >= min && b.height >= min && b.left >= 0 && b.right <= width)
             for ((a, b) in fixed.zipWithNext()) assertTrue("$a and $b overlap", a.right <= b.left)
-            val title = nodes.single { it.texts().contains(TitleBarFixtures.pricingHeader.name) }.boundsInWindow
+            val title = nodes.single { node -> node.descriptions().any { it.startsWith(TitleBarFixtures.pricingHeader.name + ",") } }.boundsInWindow
             assertTrue("the name sits between Back and the map", title.left >= fixed[0].right && title.right <= fixed[1].left)
         } finally {
             recreated.pause().stop().destroy()
