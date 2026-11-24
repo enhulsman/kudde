@@ -1,38 +1,16 @@
 package dev.kudde.android.ui.chat
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -40,16 +18,6 @@ import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
-import dev.kudde.android.ui.terminal.LineIcon
-import dev.kudde.android.ui.terminal.LineIconImage
-import dev.kudde.android.ui.theme.KuddeBorder
-import dev.kudde.android.ui.theme.KuddeRadius
-import dev.kudde.android.ui.theme.KuddeScrim
-import dev.kudde.android.ui.theme.KuddeTheme
-import dev.kudde.android.ui.theme.KuddeType
 import uniffi.kudde_mobile.ChatAnswer
 import uniffi.kudde_mobile.ChatAsk
 import uniffi.kudde_mobile.ChatChoice
@@ -75,6 +43,7 @@ const val ALREADY_ANSWERED = "Already answered at the desk. Nothing was sent."
 const val QUESTION_CHANGED = "The question changed. Nothing was sent."
 const val NOT_CONFIRMED = "Could not confirm the answer arrived. Check the terminal."
 const val OPEN_TERMINAL = "Open the terminal"
+const val NOT_CONNECTED = "Not connected. Nothing was sent."
 const val ANSWER_ABOVE_FIRST = "Answer the question above first"
 
 /** The longest own answer, in characters. */
@@ -107,7 +76,9 @@ fun problemOf(a: ChatAnswer): CardProblem? = when (a) {
     ChatAnswer.AlreadyAnswered -> CardProblem(ALREADY_ANSWERED, terminal = false)
     ChatAnswer.Changed -> CardProblem(QUESTION_CHANGED, terminal = false)
     ChatAnswer.Unconfirmed -> CardProblem(NOT_CONFIRMED, terminal = true)
-    is ChatAnswer.Failed -> CardProblem(a.reason, terminal = false)
+    ChatAnswer.NotConnected -> CardProblem(NOT_CONNECTED, terminal = false)
+    // A check that could not be made: the terminal is where to look (owner, 2026-11-24).
+    is ChatAnswer.Failed -> CardProblem(NOT_CONFIRMED, terminal = true)
 }
 
 /**
@@ -166,7 +137,8 @@ class QuestionCard {
 
 /**
  * What TalkBack hears of the card, each once: the card's arrival with its
- * question, a step change, and a refusal when it appears.
+ * question, a step change ("Send answers" for the last), and a refusal when
+ * it appears.
  */
 class CardHeard {
     private var id: String? = null
@@ -184,8 +156,9 @@ class CardHeard {
         val at = q.step to q.review
         if (q.id != id) {
             out += "$QUESTION_FROM_AGENT. ${shownText(q)}"
-        } else if (at != step && !q.review) {
-            out += stepLine(q.step.toInt() + 1, q.questions.size)
+        } else if (at != step) {
+            // The last step is heard as its button (owner, 2026-11-24).
+            out += if (q.review) SEND_ANSWERS else stepLine(q.step.toInt() + 1, q.questions.size)
         }
         id = q.id
         step = at
@@ -198,7 +171,11 @@ class CardHeard {
         q.questions.getOrNull(q.step.toInt())?.text ?: q.questions.firstOrNull()?.text ?: q.texts.firstOrNull().orEmpty()
 }
 
-/** The card at the bottom of the chat; it scrolls inside its own area when taller. */
+/**
+ * The card at the bottom of the chat; it scrolls inside its own area when
+ * taller. What it shows and how it reads is here; how it looks is all in
+ * ChatQuestionLook.kt (the look is being redesigned).
+ */
 @Composable
 fun QuestionCard(
     q: ChatQuestion,
@@ -207,49 +184,33 @@ fun QuestionCard(
     onTerminal: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val c = KuddeTheme.colors
-    val shape = RoundedCornerShape(KuddeRadius.card)
-    Box(
-        modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 6.dp)
-            .clip(shape)
-            .background(c.popover)
-            .border(KuddeBorder.thin, c.border, shape)
-            .drawBehind { drawRect(c.blocked, size = size.copy(width = KuddeBorder.signature.toPx())) },
-    ) {
-        Column(
-            Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(start = 15.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            val ask = q.questions.getOrNull(q.step.toInt())
-            when {
-                !q.readable -> {
-                    for (t in q.texts) BasicText(t, style = KuddeType.body.copy(color = c.fg))
-                    CardButton(OPEN_TERMINAL, enabled = true, onClick = onTerminal)
-                }
-                q.review -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    CardButton(SEND_ANSWERS, enabled = !card.busy, solid = true) { if (card.start(ChatChoice.Submit)) onAnswer(ChatChoice.Submit) }
-                    CardButton(SKIP, enabled = !card.busy) { if (card.start(ChatChoice.Skip)) onAnswer(ChatChoice.Skip) }
-                }
-                ask == null -> CardButton(OPEN_TERMINAL, enabled = true, onClick = onTerminal)
-                else -> Ask(q, ask, card, onAnswer, onTerminal)
+    CardSurface(modifier) {
+        val ask = q.questions.getOrNull(q.step.toInt())
+        when {
+            !q.readable -> {
+                for (t in q.texts) BasicText(t, style = QuestionLook.plainText())
+                CardButton(OPEN_TERMINAL, enabled = true, onClick = onTerminal)
             }
-            card.problem?.let { p ->
-                BasicText(p.text, style = KuddeType.secondary.copy(color = c.fg))
-                if (p.terminal) CardButton(SHOW_TERMINAL, enabled = true, onClick = onTerminal)
+            q.review -> CardRow {
+                CardButton(SEND_ANSWERS, enabled = !card.busy, solid = true) { if (card.start(ChatChoice.Submit)) onAnswer(ChatChoice.Submit) }
+                CardButton(SKIP, enabled = !card.busy) { if (card.start(ChatChoice.Skip)) onAnswer(ChatChoice.Skip) }
             }
+            ask == null -> CardButton(OPEN_TERMINAL, enabled = true, onClick = onTerminal)
+            else -> Ask(q, ask, card, onAnswer, onTerminal)
+        }
+        card.problem?.let { p ->
+            BasicText(p.text, style = QuestionLook.problemText())
+            if (p.terminal) CardButton(SHOW_TERMINAL, enabled = true, onClick = onTerminal)
         }
     }
 }
 
 @Composable
 private fun Ask(q: ChatQuestion, ask: ChatAsk, card: QuestionCard, onAnswer: (ChatChoice) -> Unit, onTerminal: () -> Unit) {
-    val c = KuddeTheme.colors
     if (q.questions.size > 1) {
-        BasicText(stepLine(q.step.toInt() + 1, q.questions.size), style = KuddeType.secondary.copy(color = c.dimText))
+        BasicText(stepLine(q.step.toInt() + 1, q.questions.size), style = QuestionLook.stepText())
     }
-    BasicText(ask.text, style = KuddeType.body.copy(color = c.fg, fontWeight = FontWeight.Medium))
+    BasicText(ask.text, style = QuestionLook.questionText())
     if (!ask.answerable) {
         // Multi-select until its keys are confirmed: the options as plain text.
         for ((i, o) in ask.options.withIndex()) OptionText(i, o)
@@ -260,124 +221,52 @@ private fun Ask(q: ChatQuestion, ask: ChatAsk, card: QuestionCard, onAnswer: (Ch
         val spoken = optionSpoken(i, ask.options.size, o)
         val chosen = card.chosen == i
         val enabled = !card.busy
+        val pick = { if (card.start(ChatChoice.Pick(i.toUInt()))) onAnswer(ChatChoice.Pick(i.toUInt())) }
         Column {
             Box(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(KuddeRadius.row))
-                    .background(if (chosen) c.selected else c.raised)
-                    .clickable(enabled = enabled) { if (card.start(ChatChoice.Pick(i.toUInt()))) onAnswer(ChatChoice.Pick(i.toUInt())) }
+                Modifier.optionSurface(chosen)
+                    .clickable(enabled = enabled) { pick() }
                     .clearAndSetSemantics {
                         contentDescription = spoken
                         role = Role.Button
                         if (chosen) selected = true
                         if (!enabled) disabled()
-                        onClick { if (card.start(ChatChoice.Pick(i.toUInt()))) onAnswer(ChatChoice.Pick(i.toUInt())); true }
+                        onClick { pick(); true }
                     }
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                    .optionPadding(),
             ) { OptionText(i, o) }
-            if (o.preview != null) {
-                Box(Modifier.padding(top = 4.dp)) { CardButton(PREVIEW, enabled = true) { card.preview = o } }
-            }
+            if (o.preview != null) PreviewButtonPlace { CardButton(PREVIEW, enabled = true) { card.preview = o } }
         }
     }
     if (card.otherOpen) Other(card, onAnswer)
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    CardRow {
         if (!card.otherOpen) CardButton(SOMETHING_ELSE, enabled = !card.busy) { card.otherOpen = true }
         CardButton(SKIP, enabled = !card.busy) { if (card.start(ChatChoice.Skip)) onAnswer(ChatChoice.Skip) }
-    }
-}
-
-/** "N." and the label, the description beneath; never cut. */
-@Composable
-private fun OptionText(i: Int, o: ChatOption) {
-    val c = KuddeTheme.colors
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        BasicText("${i + 1}.", style = KuddeType.body.copy(color = c.muted), modifier = Modifier.widthIn(min = 18.dp))
-        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            BasicText(o.label, style = KuddeType.body.copy(color = c.fg))
-            if (o.description.isNotBlank()) BasicText(o.description, style = KuddeType.secondary.copy(color = c.dimText))
-        }
     }
 }
 
 /** The own-words field: "Type your answer" and Send, enabled for 1 to 2000 characters. */
 @Composable
 private fun Other(card: QuestionCard, onAnswer: (ChatChoice) -> Unit) {
-    val c = KuddeTheme.colors
     val text = card.otherText
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(KuddeRadius.field)).background(c.input).padding(horizontal = 12.dp, vertical = 10.dp)) {
-            if (text.isEmpty()) BasicText(TYPE_YOUR_ANSWER, style = KuddeType.body.copy(color = c.dimText))
-            BasicTextField(
-                text, { card.otherText = it },
-                textStyle = KuddeType.body.copy(color = c.fg),
-                cursorBrush = SolidColor(c.fg),
-                maxLines = 6,
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
-        otherProblem(text)?.let { BasicText(it, style = KuddeType.secondary.copy(color = c.blocked)) }
-        CardButton(SEND, enabled = !card.busy && canSendOther(text), solid = true) {
-            val choice = ChatChoice.Other(text)
-            if (card.start(choice)) onAnswer(choice)
-        }
-    }
-}
-
-/** A pill button of the card; [solid] for the step's main action. */
-@Composable
-private fun CardButton(label: String, enabled: Boolean, solid: Boolean = false, onClick: () -> Unit) {
-    val c = KuddeTheme.colors
-    val bg = when {
-        !enabled -> c.hover
-        solid -> c.solid
-        else -> c.raised
-    }
-    val fg = when {
-        !enabled -> c.dimText
-        solid -> c.solidFg
-        else -> c.fg
-    }
-    BasicText(
-        label,
-        style = KuddeType.pill.copy(color = fg, textAlign = TextAlign.Center),
-        modifier = Modifier.widthIn(min = 48.dp).clip(RoundedCornerShape(KuddeRadius.chip)).background(bg)
-            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 9.dp),
+    OtherLayout(
+        field = {
+            OtherField(empty = text.isEmpty()) { style, cursor ->
+                BasicTextField(
+                    text, { card.otherText = it },
+                    textStyle = style,
+                    cursorBrush = cursor,
+                    maxLines = 6,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        problem = otherProblem(text),
+        send = {
+            CardButton(SEND, enabled = !card.busy && canSendOther(text), solid = true) {
+                val choice = ChatChoice.Other(text)
+                if (card.start(choice)) onAnswer(choice)
+            }
+        },
     )
-}
-
-/** An option's preview in a sheet, in the chat's code box: wrapped, never sideways. */
-@Composable
-fun PreviewSheet(o: ChatOption, onClose: () -> Unit) {
-    val c = KuddeTheme.colors
-    Box(Modifier.fillMaxSize()) {
-        Box(Modifier.fillMaxSize().background(KuddeScrim).clickable(remember { MutableInteractionSource() }, null, onClick = onClose))
-        Column(
-            Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(0.62f)
-                .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)).background(sheetColor())
-                .clickable(remember { MutableInteractionSource() }, null) {},
-        ) {
-            Box(Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 6.dp), contentAlignment = Alignment.Center) {
-                Box(Modifier.size(width = 36.dp, height = 4.dp).clip(CircleShape).background(c.dim))
-            }
-            Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
-                Box(Modifier.align(Alignment.CenterStart).size(44.dp).clip(CircleShape).clickable(onClick = onClose), contentAlignment = Alignment.Center) {
-                    LineIconImage(LineIcon.Close, c.fg, 22.dp)
-                }
-                BasicText(
-                    previewTitle(o.label),
-                    style = KuddeType.settingRow.copy(color = c.fg, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center),
-                    modifier = Modifier.align(Alignment.Center).padding(horizontal = 52.dp),
-                )
-            }
-            Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).navigationBarsPadding().padding(horizontal = 24.dp, vertical = 8.dp)) {
-                BasicText(
-                    o.preview.orEmpty(),
-                    style = KuddeType.cardMsg.copy(color = c.termFg),
-                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(KuddeRadius.row)).background(boxColor()).padding(14.dp),
-                )
-                Spacer(Modifier.height(24.dp))
-            }
-        }
-    }
 }

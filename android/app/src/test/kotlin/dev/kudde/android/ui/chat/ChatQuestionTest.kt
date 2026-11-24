@@ -171,6 +171,10 @@ class ChatQuestionTest {
         assertEquals(CardProblem(QUESTION_CHANGED, terminal = false), problemOf(ChatAnswer.Changed))
         assertEquals(CardProblem(NOT_CONFIRMED, terminal = true), problemOf(ChatAnswer.Unconfirmed))
         assertNull(problemOf(ChatAnswer.Done))
+        // Owner, 2026-11-24: no connection says so; any other failure points at the terminal.
+        assertEquals(CardProblem(NOT_CONNECTED, terminal = false), problemOf(ChatAnswer.NotConnected))
+        assertEquals("Not connected. Nothing was sent.", NOT_CONNECTED)
+        assertEquals(CardProblem(NOT_CONFIRMED, terminal = true), problemOf(ChatAnswer.Failed("The desk did not answer")))
         assertEquals("Already answered at the desk. Nothing was sent.", ALREADY_ANSWERED)
         assertEquals("The question changed. Nothing was sent.", QUESTION_CHANGED)
         assertEquals("Could not confirm the answer arrived. Check the terminal.", NOT_CONFIRMED)
@@ -404,6 +408,9 @@ class ChatQuestionTest {
         assertEquals(emptyList<String>(), heard.next(q.copy(step = 1u), null))
         assertEquals(listOf(ALREADY_ANSWERED), heard.next(q.copy(step = 1u), ALREADY_ANSWERED))
         assertEquals(emptyList<String>(), heard.next(q.copy(step = 1u), ALREADY_ANSWERED))
+        // The last step is heard as its button (owner, 2026-11-24), once.
+        assertEquals(listOf(SEND_ANSWERS), heard.next(q.copy(step = 3u, review = true), ALREADY_ANSWERED))
+        assertEquals(emptyList<String>(), heard.next(q.copy(step = 3u, review = true), ALREADY_ANSWERED))
         assertEquals(emptyList<String>(), heard.next(null, null))
         assertEquals(
             "a new call is a new card",
