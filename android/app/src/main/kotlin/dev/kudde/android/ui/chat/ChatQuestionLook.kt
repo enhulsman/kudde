@@ -41,7 +41,10 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -167,8 +170,8 @@ internal fun OptionRow(
         Row(
             Modifier.weight(1f).heightIn(min = TOUCH).then(click)
                 .padding(start = ROW_START, end = if (trailing == null) ROW_END else 8.dp, top = KuddeSpacing.s8, bottom = KuddeSpacing.s8),
-            // A label alone sits level with its keycap; with a description, both start at the top.
-            verticalAlignment = if (description.isBlank()) Alignment.CenterVertically else Alignment.Top,
+            // The keycap or tick box sits in the middle of the whole row, however many lines (as Claude's app).
+            verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(GAP),
         ) {
             lead()
@@ -270,6 +273,7 @@ internal fun Footer(
     below: String? = null,
     fieldOpen: Boolean = false,
     fullRule: Boolean = false,
+    endsWithCircle: Boolean = false,
 ) {
     val c = KuddeTheme.colors
     Column(
@@ -281,7 +285,8 @@ internal fun Footer(
     ) {
         Row(
             Modifier.fillMaxWidth().heightIn(min = 50.dp)
-                .padding(start = if (fieldOpen) INSET - FIELD_INSET else INSET, end = 8.dp, top = KuddeSpacing.s4, bottom = KuddeSpacing.s4),
+                // The last button's drawn edge on the inset: a circle draws 8 dp inside its 48 dp target.
+                .padding(start = if (fieldOpen) INSET - FIELD_INSET else INSET, end = if (endsWithCircle) INSET - 8.dp else INSET, top = KuddeSpacing.s4, bottom = KuddeSpacing.s4),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(KuddeSpacing.s6),
         ) {
@@ -333,23 +338,59 @@ internal fun OtherRow(content: @Composable RowScope.() -> Unit) {
  * [send] centred at its end.
  */
 @Composable
-internal fun RowScope.OtherField(empty: Boolean, focused: Boolean, send: @Composable () -> Unit, input: @Composable (TextStyle, Brush) -> Unit) {
+internal fun RowScope.OtherField(
+    empty: Boolean,
+    focused: Boolean,
+    lead: @Composable () -> Unit,
+    send: (@Composable () -> Unit)?,
+    input: @Composable (TextStyle, Brush) -> Unit,
+) {
     val c = KuddeTheme.colors
     val shape = RoundedCornerShape(KuddeRadius.field)
     Row(
         Modifier.weight(1f).heightIn(min = TOUCH).clip(shape).background(c.hover)
             .then(if (focused) Modifier.border(KuddeBorder.thin, c.border, shape) else Modifier)
-            .padding(start = FIELD_INSET),
+            .padding(start = FIELD_INSET, end = if (send == null) KuddeSpacing.s8 else 0.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(GAP),
     ) {
-        Box(Modifier.size(SLOT), contentAlignment = Alignment.Center) { LineIconImage(LineIcon.Pen, c.muted, 14.dp) }
+        Box(Modifier.size(SLOT), contentAlignment = Alignment.Center) { lead() }
         Box(Modifier.weight(1f).padding(vertical = KuddeSpacing.s8)) {
             val style = KuddeType.rowName.copy(lineHeight = 20.sp)
             if (empty) BasicText(TYPE_YOUR_ANSWER, style = style.copy(color = c.dimText))
             input(style.copy(color = c.fg), SolidColor(c.fg))
         }
-        send()
+        send?.invoke()
+    }
+}
+
+/** The own-words field's lead on a single-choice question. */
+@Composable
+internal fun Pencil() {
+    LineIconImage(LineIcon.Pen, KuddeTheme.colors.muted, 14.dp)
+}
+
+/**
+ * A multi-select question's typed answer once its field is closed: a ticked
+ * row with the text, read as one stop; a tap opens the field again.
+ */
+@Composable
+internal fun TypedRow(text: String, enabled: Boolean, spoken: String, onClick: () -> Unit) {
+    val c = KuddeTheme.colors
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = TOUCH).drawBehind { hairline(c.border) }
+            .clickable(enabled = enabled, onClick = onClick)
+            .clearAndSetSemantics {
+                contentDescription = spoken
+                role = Role.Button
+                onClick { onClick(); true }
+            }
+            .padding(start = ROW_START, end = ROW_END, top = KuddeSpacing.s8, bottom = KuddeSpacing.s8),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(GAP),
+    ) {
+        Box(Modifier.size(SLOT), contentAlignment = Alignment.Center) { CheckBox(true) }
+        BasicText(text, style = KuddeType.rowName.copy(color = c.fg, lineHeight = 20.sp))
     }
 }
 

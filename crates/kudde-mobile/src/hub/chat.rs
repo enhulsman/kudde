@@ -117,9 +117,11 @@ pub enum ChatChoice {
     Skip,
     /// "Send answers" on the review step.
     Submit,
-    /// A multi-select question's ticked options.
+    /// A multi-select question's ticked options, and the person's own words,
+    /// which join them (owner, 2026-11-25).
     Multi {
         indices: Vec<u32>,
+        text: Option<String>,
     },
 }
 
@@ -250,6 +252,9 @@ pub struct Chat {
     sent_to: Mutex<Option<send::Target>>,
     /// The question call and where its dialog was last seen.
     step: Mutex<Option<(String, Progress)>>,
+    /// Multi-select answers may be sent: shut until the phone check confirms
+    /// their keys ([`question::MULTI_CONFIRMED`]).
+    multi_ok: std::sync::atomic::AtomicBool,
 }
 
 impl Chat {
@@ -264,6 +269,7 @@ impl Chat {
             events: tokio::sync::Mutex::new(None),
             sent_to: Mutex::new(None),
             step: Mutex::new(None),
+            multi_ok: std::sync::atomic::AtomicBool::new(question::MULTI_CONFIRMED),
         }
     }
 }
@@ -968,6 +974,8 @@ impl Chat {
     ) -> ChatAnswer {
         let failed = |r: &str| ChatAnswer::Failed { reason: r.into() };
         let step = step as usize;
+        // The person's own words, typed into the dialog's free row.
+        let mut typed: Option<String> = None;
         let answer = match &choice {
             ChatChoice::Pick { index } => Answer::Option(*index as usize),
             ChatChoice::Other { text } if text.trim().is_empty() => {
@@ -976,13 +984,25 @@ impl Chat {
             ChatChoice::Other { text } if text.chars().count() > TEXT_MAX => {
                 return failed("Too long: 2000 characters at most");
             }
-            ChatChoice::Other { .. } => Answer::Other,
+            ChatChoice::Other { text } => {
+                typed = Some(text.clone());
+                Answer::Other
+            }
             ChatChoice::Skip => Answer::Skip,
             ChatChoice::Submit => Answer::Submit,
-            ChatChoice::Multi { .. } if !question::MULTI_CONFIRMED => {
+            ChatChoice::Multi { .. }
+                if !self.multi_ok.load(std::sync::atomic::Ordering::Relaxed) =>
+            {
                 return failed("Open the terminal");
             }
-            ChatChoice::Multi { indices } => {
+            ChatChoice::Multi { indices, text } => {
+                typed = text.clone().filter(|t| !t.trim().is_empty());
+                if typed.as_ref().is_some_and(|t| t.chars().count() > TEXT_MAX) {
+                    return failed("Too long: 2000 characters at most");
+                }
+                if indices.is_empty() && typed.is_none() {
+                    return failed("Nothing to send");
+                }
                 Answer::Multi(indices.iter().map(|i| *i as usize).collect())
             }
         };
@@ -1005,12 +1025,20 @@ impl Chat {
                 }
             }
         };
-        let planned = match answer {
+        // The keys before the typed text, and those after it (multi-select's submit).
+        let planned = match &answer {
             Answer::Submit if qs.len() < 2 => None,
-            Answer::Submit | Answer::Skip => question::plan(&qs[0], &answer),
-            _ => qs.get(step).and_then(|q| question::plan(q, &answer)),
+            Answer::Submit | Answer::Skip => question::plan(&qs[0], &answer).map(|k| (k, vec![])),
+            Answer::Multi(ticked) if typed.is_some() => qs
+                .get(step)
+                .and_then(|q| question::plan_multi(q, ticked, true))
+                .map(|m| (m.before, m.after)),
+            _ => qs
+                .get(step)
+                .and_then(|q| question::plan(q, &answer))
+                .map(|k| (k, vec![])),
         };
-        let Some(keys) = planned else {
+        let Some((keys, after)) = planned else {
             return ChatAnswer::Changed;
         };
         let Some(conn) = self.core.live_conn(&self.machine) else {
@@ -1041,21 +1069,38 @@ impl Chat {
         if pressed.is_err() {
             return ChatAnswer::Unconfirmed;
         }
-        if let ChatChoice::Other { text } = &choice {
+        if let Some(text) = &typed {
             // The free-text row is focused while the question still shows;
             // the text and its Enter go into it (design D6).
             match self.screen(&c).await {
                 Ok(s) if question::progress(&s, &qs) == Progress::Question(step) => {}
                 _ => return ChatAnswer::Unconfirmed,
             }
-            let typed = c
+            let sent = c
                 .call_timeout(
                     "terminal.send",
                     json!({"terminal": self.address, "text": text, "force": true}),
                     KEYS_WAIT,
                 )
                 .await;
-            if typed.is_err() {
+            if sent.is_err() {
+                return ChatAnswer::Unconfirmed;
+            }
+        }
+        if !after.is_empty() {
+            // Multi-select with own words: still on the question, then submit.
+            match self.screen(&c).await {
+                Ok(s) if question::progress(&s, &qs) == Progress::Question(step) => {}
+                _ => return ChatAnswer::Unconfirmed,
+            }
+            let pressed = c
+                .call_timeout(
+                    "terminal.keys",
+                    json!({"terminal": self.address, "keys": after}),
+                    KEYS_WAIT,
+                )
+                .await;
+            if pressed.is_err() {
                 return ChatAnswer::Unconfirmed;
             }
         }
@@ -1112,6 +1157,12 @@ impl Chat {
         let end = chunk.next;
         st.take_read(Ok(chunk), Instant::now());
         end
+    }
+
+    #[cfg(test)]
+    pub(crate) fn allow_multi_for_test(&self) {
+        self.multi_ok
+            .store(true, std::sync::atomic::Ordering::Relaxed);
     }
 
     #[cfg(test)]

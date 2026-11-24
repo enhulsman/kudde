@@ -117,6 +117,15 @@ class QuestionCard {
     var ticked by mutableStateOf<Set<Int>>(emptySet())
         private set
 
+    /** The typed answer, when there is one to send. */
+    val typedAnswer: String? get() = otherText.takeIf { it.isNotBlank() }
+
+    /** Ticks plus the typed answer: the multi-select count. */
+    val chosenCount: Int get() = ticked.size + (if (typedAnswer != null) 1 else 0)
+
+    /** The multi-select Send: something chosen, and the typed answer within its limit. */
+    val canSendMulti: Boolean get() = chosenCount > 0 && otherText.length <= OTHER_MAX
+
     fun toggle(i: Int) {
         if (!busy) ticked = if (i in ticked) ticked - i else ticked + i
     }
@@ -236,13 +245,16 @@ fun QuestionCard(
                 ask == null || !ask.answerable -> Footer(left = {}, right = { OutlineButton(OPEN_TERMINAL, enabled = true, onClick = onTerminal) })
                 ask.multi -> Footer(
                     fullRule = true,
-                    left = { CountText(pluralSelected(card.ticked.size)) },
+                    endsWithCircle = true,
+                    left = { CountText(pluralSelected(card.chosenCount)) },
                     right = {
                         OutlineButton(SKIP, enabled = !card.busy) { answer(ChatChoice.Skip) }
-                        SendCircle(enabled = !card.busy && card.ticked.isNotEmpty()) {
-                            answer(ChatChoice.Multi(card.ticked.sorted().map { it.toUInt() }))
+                        // The one send: the ticks and the typed answer together (owner, 2026-11-25).
+                        SendCircle(enabled = !card.busy && card.canSendMulti) {
+                            answer(ChatChoice.Multi(card.ticked.sorted().map { it.toUInt() }, card.typedAnswer))
                         }
                     },
+                    below = otherProblem(card.otherText),
                 )
                 else -> Footer(
                     left = { if (card.otherOpen) Other(card, focusOther, ::answer) else SomethingElse(enabled = !card.busy) { card.otherOpen = true } },
@@ -290,7 +302,16 @@ private fun Options(ask: ChatAsk, card: QuestionCard, focusOther: Boolean, answe
         )
     }
     if (ask.multi && ask.answerable) {
-        if (card.otherOpen) OtherRow { Other(card, focusOther, answer) } else SomethingElseRow(enabled = !card.busy) { card.otherOpen = true }
+        // The typed answer is one more ticked row; the footer's Send takes it with the ticks.
+        when {
+            card.otherOpen -> OtherRow { Other(card, focusOther, answer, multi = true) }
+            card.typedAnswer != null -> TypedRow(
+                card.otherText,
+                enabled = !card.busy,
+                spoken = listOf(SOMETHING_ELSE, card.otherText, "checked").joinToString(", "),
+            ) { card.otherOpen = true }
+            else -> SomethingElseRow(enabled = !card.busy) { card.otherOpen = true }
+        }
     }
 }
 
@@ -299,7 +320,7 @@ private fun Options(ask: ChatAsk, card: QuestionCard, focusOther: Boolean, answe
  * Send gives both back. Send is enabled for 1 to 2000 characters.
  */
 @Composable
-private fun RowScope.Other(card: QuestionCard, takeFocus: Boolean, answer: (ChatChoice) -> Unit) {
+private fun RowScope.Other(card: QuestionCard, takeFocus: Boolean, answer: (ChatChoice) -> Unit, multi: Boolean = false) {
     val text = card.otherText
     val focus = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
@@ -310,13 +331,15 @@ private fun RowScope.Other(card: QuestionCard, takeFocus: Boolean, answer: (Chat
     OtherField(
         empty = text.isEmpty(),
         focused = focused,
-        send = {
+        lead = { if (multi) CheckBox(text.isNotBlank()) else Pencil() },
+        // On multi-select the footer's one Send takes the text with the ticks.
+        send = if (multi) null else ({
             SendCircle(enabled = !card.busy && canSendOther(text), small = true) {
                 focusManager.clearFocus()
                 keyboard?.hide()
                 answer(ChatChoice.Other(text))
             }
-        },
+        }),
     ) { style, cursor ->
         BasicTextField(
             text, { card.otherText = it },

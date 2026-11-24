@@ -130,4 +130,18 @@ class ChatQuestionScreenshotTest {
         )
         capture("short-multi", one(ask)) { ChatState().apply { card.toggle(0) } }
     }
+
+    // A typed answer joins the ticks on multi-select (owner, 2026-11-25): a ticked row with its text.
+    @Test
+    fun multiSelectTyped() {
+        val ask = ChatAsk(
+            text = "Which fruits would you put in a fruit salad?", header = "Fruit", multi = true, answerable = true,
+            options = listOf(
+                ChatOption("Apple", "Crisp, and keeps its shape.", null),
+                ChatOption("Banana", "Soft and sweet; goes brown quickly.", null),
+                ChatOption("Mango", "Juicy; takes some work to cut.", null),
+            ),
+        )
+        capture("multi-typed", one(ask)) { ChatState().apply { card.toggle(0); card.toggle(2); card.otherText = "Berries" } }
+    }
 }

@@ -653,3 +653,56 @@ mod steps {
         assert_eq!(moved_on(&Answer::Skip, 0, Progress::Gone), Moved::AskLog);
     }
 }
+
+// ---- multi-select with a typed answer (owner, 2026-11-25): it joins the ticks
+// and goes out with the one send; low confidence until the phone check.
+
+mod multi_text {
+    use super::*;
+    use kudde_chat::question::{MultiPlan, plan_multi};
+
+    fn three() -> Question {
+        let mut v = q("Which fruits?", "Fruit", &["Apple", "Banana", "Mango"]);
+        v["multiSelect"] = json!(true);
+        readable(json!([v])).remove(0)
+    }
+
+    #[test]
+    fn ticks_then_the_free_row_then_submit() {
+        assert_eq!(
+            plan_multi(&three(), &[2, 0], true),
+            Some(MultiPlan {
+                before: keys(&["1", "enter", "3", "enter", "4"]),
+                after: keys(&["5", "enter"]),
+            })
+        );
+    }
+
+    #[test]
+    fn a_typed_answer_alone_is_enough() {
+        assert_eq!(
+            plan_multi(&three(), &[], true),
+            Some(MultiPlan {
+                before: keys(&["4"]),
+                after: keys(&["5", "enter"]),
+            })
+        );
+    }
+
+    #[test]
+    fn without_text_it_is_the_plain_multi_plan() {
+        let q = three();
+        let plain = question::plan(&q, &Answer::Multi(vec![0, 2])).unwrap();
+        let m = plan_multi(&q, &[0, 2], false).unwrap();
+        assert_eq!([m.before, m.after].concat(), plain);
+        assert_eq!(plan_multi(&q, &[], false), None);
+        assert_eq!(plan_multi(&q, &[3], true), None);
+    }
+
+    #[test]
+    fn own_words_on_a_multi_select_question_go_with_the_ticks_only() {
+        assert_eq!(question::plan(&three(), &Answer::Other), None);
+        let single = readable(json!([database()])).remove(0);
+        assert_eq!(plan_multi(&single, &[0], true), None);
+    }
+}
