@@ -20,6 +20,11 @@ It is not made by the herdr project.
 </p>
 <p align="center"><sub>Agents on a desktop ("workstation") and a Raspberry Pi in one list, one as a chat, one as its live terminal, and the alert it sent.</sub></p>
 
+<p align="center">
+  <img src="docs/screenshots/spaces.png" width="260" alt="Spaces view with tabs and agents in desk order">
+  <img src="docs/screenshots/tab-overview.png" width="260" alt="Tab overview with terminal previews">
+</p>
+
 **Status:** 1.0. Complete for what it sets out to do, used daily by its
 author, tested on a few phones, built on herdr-core 0.1.x.
 
