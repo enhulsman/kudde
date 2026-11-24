@@ -135,8 +135,11 @@ pub enum ChatAnswer {
     /// Keys went (or may have): "Could not confirm the answer arrived. Check
     /// the terminal." Never sent again.
     Unconfirmed,
-    /// Nothing was sent: not connected, a call failed, or an answer the card
-    /// should not have offered.
+    /// "Not connected. Nothing was sent."
+    NotConnected,
+    /// Nothing was sent: a check's call failed, or an answer the card should
+    /// not have offered. The card says "Could not confirm the answer
+    /// arrived. Check the terminal." (owner, 2026-11-24).
     Failed { reason: String },
 }
 
@@ -1011,7 +1014,7 @@ impl Chat {
             return ChatAnswer::Changed;
         };
         let Some(conn) = self.core.live_conn(&self.machine) else {
-            return failed("Not connected");
+            return ChatAnswer::NotConnected;
         };
         let c = conn.client;
         match self.check(&c).await {

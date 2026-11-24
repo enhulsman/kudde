@@ -242,7 +242,7 @@ fun ChatRoute(
             val q = state.poll?.question
             val chat = visit.chat
             if (q == null || chat == null) {
-                state.card.finished(ChatAnswer.Failed("Not connected"))
+                state.card.finished(ChatAnswer.NotConnected)
             } else {
                 app.chatScope.launch {
                     // Under the poll's lock: the answer reads the log too.

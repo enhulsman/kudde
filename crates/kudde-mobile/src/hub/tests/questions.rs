@@ -550,3 +550,17 @@ async fn an_unreadable_call_shows_its_text_only_and_multi_select_is_not_answerab
     assert!(q.questions[0].multi);
     assert!(!q.questions[0].answerable);
 }
+
+#[tokio::test(start_paused = true)]
+async fn no_connection_sends_nothing_and_says_so() {
+    let r = rig("q-offline");
+    let chat = Arc::new(Chat::new(r.hub.clone(), WS.into(), ADDR.into()));
+    chat.seed(
+        LOG,
+        SESSION,
+        PID,
+        &tail(0, &[ask_line("toolu_01", json!([database()]))]),
+    );
+    let got = spawn_answer(&chat, "toolu_01", 0, ChatChoice::Pick { index: 0 });
+    assert_eq!(got.await.unwrap(), ChatAnswer::NotConnected);
+}
