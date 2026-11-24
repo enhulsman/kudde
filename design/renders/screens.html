@@ -1101,9 +1101,9 @@ function frPassword(theme, state='field'){
   const showField = !['none','more','code','refused','working'].includes(state);
   const field = showField ? `<div class="fr-field"><span>Password for dev on workstation</span><div class="field">••••••••</div></div>` : '';
   const notice = out ? `<div class="fr-notice"${state==='working'?'':''}><b style="font-weight:500">${out[0]}</b>${out[1]?`<p>${out[1]}</p>`:''}</div>` : '';
-  const footer = state === 'working' ? frButton('Cancel', false)
+  const footer = state === 'working' ? frButton('Add it yourself', false) + frButton('Cancel', false)
     : state === 'refused' ? frButton('Try again') + frButton('Add it yourself', false)
-    : showField ? frButton('Add the key') + frButton('Cancel', false)
+    : showField ? frButton('Add the key') + frButton('Add it yourself', false) + frButton('Cancel', false)
     : frButton('Add it yourself') ;
   const sentence = state === 'field' ? `<p>kudde signs in once as dev with that account's password, adds the same key and signs out. The password is not stored.</p>` : '';
   return frPhone(theme, frBody(2, "This phone's key", `${sentence}${notice}${field}${state==='field'?'':''}`), footer);
