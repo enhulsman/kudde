@@ -20,9 +20,9 @@ use tokio::time::Instant;
 mod changes;
 mod desk;
 mod desk_timing;
+mod first_run;
 mod questions;
 mod screen;
-mod first_run;
 mod starting;
 #[cfg(feature = "vt")]
 mod term;
