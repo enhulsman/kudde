@@ -61,6 +61,8 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.contentDescription
@@ -178,8 +180,10 @@ fun ChatScreen(
                         }
                     }
                     if (q != null) {
-                        // At most half the height: a taller card scrolls inside it.
-                        QuestionCard(q, state.card, onAnswer, onTerminal, Modifier.weight(1f, fill = false), focusOther)
+                        // As tall as its content, at most half the screen (a taller card scrolls
+                        // inside it); the messages take the rest, so the card sits on the bottom.
+                        val half = LocalConfiguration.current.screenHeightDp.dp / 2
+                        QuestionCard(q, state.card, onAnswer, onTerminal, Modifier.heightIn(max = half), focusOther)
                     } else {
                         state.refusal?.let { r -> Bottom(r.text, if (r.terminal) onTerminal else null) }
                         MessageBox(state, onPick, onSend)
