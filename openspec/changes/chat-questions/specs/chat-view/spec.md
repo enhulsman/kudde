@@ -38,7 +38,10 @@ order: `terminal.get` shows the same target and the status still `blocked`;
 runs of spaces folded) and the first label of each of its options; then one
 `terminal.keys` call carries the whole key list of the step. For a single
 choice option N the list SHALL be the digit N and Enter; it SHALL NOT count
-arrow presses. If either check fails nothing SHALL be sent. The card SHALL
+arrow presses. If either check fails nothing SHALL be sent: a status that is
+no longer `blocked` says "Already answered at the desk. Nothing was sent.",
+and another agent, process or session in front (or none) or a screen without
+the question says "The question changed. Nothing was sent." The card SHALL
 show a tapped option as chosen and its buttons as disabled from the tap
 until the step ends. After the keys, the app SHALL read the screen again; the
 step is done when the dialog shows its next question or step, or is gone
@@ -67,6 +70,10 @@ call to learn the answer.
 #### Scenario: No reply to the keys
 - **WHEN** the connection drops while the keys are being sent
 - **THEN** the card says "Could not confirm the answer arrived. Check the terminal." and the keys are not sent again
+
+#### Scenario: Another session in front
+- **WHEN** Ezra taps an option and the agent in front is now in another session
+- **THEN** no keys are sent and the card says "The question changed. Nothing was sent."
 
 #### Scenario: No connection
 - **WHEN** Ezra taps an option while the machine is not connected

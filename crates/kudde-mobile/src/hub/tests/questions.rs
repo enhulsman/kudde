@@ -564,3 +564,20 @@ async fn no_connection_sends_nothing_and_says_so() {
     let got = spawn_answer(&chat, "toolu_01", 0, ChatChoice::Pick { index: 0 });
     assert_eq!(got.await.unwrap(), ChatAnswer::NotConnected);
 }
+
+#[tokio::test(start_paused = true)]
+async fn no_agent_in_front_any_more_sends_nothing() {
+    let mut r = rig("q-exited");
+    let (mut core, chat, _) = with_log(&mut r, &[ask_line("toolu_01", json!([database()]))]).await;
+    let got = spawn_answer(&chat, "toolu_01", 0, ChatChoice::Pick { index: 0 });
+    let req = core.expect("terminal.get").await;
+    // The agent exited and the shell is in front: no lookup, no screen, no keys.
+    core.reply(
+        &req,
+        json!({"address": ADDR, "state": "live", "status": null,
+               "foreground": {"pid": 77, "name": "zsh", "argv": ["-zsh"]}}),
+    )
+    .await;
+    assert_eq!(got.await.unwrap(), ChatAnswer::Changed);
+    core.nothing_more().await;
+}
