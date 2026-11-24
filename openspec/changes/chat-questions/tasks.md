@@ -6,11 +6,11 @@
 
 ## 2. Tests first (Rust, `crates/kudde-chat`)
 Fixtures are invented JSONL with the shapes in `design.md` section A.
-- [ ] 2.1 Parse: single, multi-question (4), multi-select, option preview, unknown option fields, label at 71 and description at 698 characters, no questions, option without a label, more than four questions.
-- [ ] 2.2 Pending state: a call with no result is pending; a result closes it; `is_error` marks it declined; a result text in either known wording is not parsed; a call with no result at the end of the log stays pending.
-- [ ] 2.3 Key plan (pure): option N gives digit N and Enter; the free row; Skip is Esc; Send answers is Enter; multi-select shape; never an arrow; never a digit above 9.
-- [ ] 2.4 Screen match: the question text found through box characters and folded spaces; a different question not found; an option label missing; a wrapped question; two similar questions in one call.
-- [ ] 2.5 Progress read from the screen: next question, review step, gone.
+- [x] 2.1 Parse: single, multi-question (4), multi-select, option preview, unknown option fields, label at 71 and description at 698 characters, no questions, option without a label, more than four questions.
+- [x] 2.2 Pending state: a call with no result is pending; a result closes it; `is_error` marks it declined; a result text in either known wording is not parsed; a call with no result at the end of the log stays pending.
+- [x] 2.3 Key plan (pure): option N gives digit N and Enter; the free row; Skip is Esc; Send answers is Enter; multi-select shape; never an arrow; never a digit above 9.
+- [x] 2.4 Screen match: the question text found through box characters and folded spaces; a different question not found; an option label missing; a wrapped question; two similar questions in one call.
+- [x] 2.5 Progress read from the screen: next question, review step, gone.
 
 ## 3. Build (Rust)
 - [ ] 3.1 Expose the pending question and its state through the chat's bridge; reuse the send target.

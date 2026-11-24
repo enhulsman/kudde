@@ -6,6 +6,7 @@
 
 pub mod image;
 pub mod locate;
+pub mod question;
 pub mod send;
 pub mod tail;
 
@@ -168,6 +169,8 @@ pub struct Parser {
     queue: VecDeque<String>,
     codex_calls: HashMap<String, ImageCall>,
     image_reasons: std::collections::BTreeMap<u64, String>,
+    /// Claude Code: its AskUserQuestion calls, in the log's order.
+    asks: Vec<question::Asked>,
 }
 
 #[derive(Default)]
@@ -261,6 +264,7 @@ impl Parser {
             queue: VecDeque::new(),
             codex_calls: HashMap::new(),
             image_reasons: std::collections::BTreeMap::new(),
+            asks: Vec::new(),
         }
     }
 
@@ -338,6 +342,27 @@ impl Parser {
 
     pub fn gauge(&self) -> Option<Gauge> {
         self.gauge
+    }
+
+    /// The question the agent waits on (chat-questions design D1, first
+    /// witness): the latest AskUserQuestion call, when it has no result and
+    /// nothing but tool calls came after it. A call left open before a new
+    /// message (a session that went on without it) is not pending.
+    pub fn question(&self) -> Option<&question::Asked> {
+        let a = self.asks.last()?;
+        if a.state != question::State::Pending {
+            return None;
+        }
+        let (row, _) = *self.calls.get(&a.id)?;
+        self.items[row + 1..]
+            .iter()
+            .all(|i| matches!(i, Item::Tools { .. }))
+            .then_some(a)
+    }
+
+    /// The AskUserQuestion call with this id.
+    pub fn asked(&self, id: &str) -> Option<&question::Asked> {
+        self.asks.iter().find(|a| a.id == id)
     }
 
     /// The agent started working while the chat was open (design D6).
@@ -466,7 +491,15 @@ impl Parser {
         if own {
             self.agent_wrote();
         }
-        if matches!(self.items.last(), Some(Item::Tools { .. })) {
+        // A question call is a row of its own: it becomes the quiet
+        // "Answered" line, and the calls around it stay folded apart.
+        let folds = match self.items.last() {
+            Some(Item::Tools { calls }) => {
+                call.name != question::TOOL && calls.last().is_none_or(|c| c.name != question::TOOL)
+            }
+            _ => false,
+        };
+        if folds {
             self.touch(self.items.len() - 1);
         } else {
             self.new_row(Item::Tools { calls: Vec::new() });
@@ -687,6 +720,13 @@ impl Parser {
                     let name = b["name"].as_str().unwrap_or("tool").to_owned();
                     let input = &b["input"];
                     let (title, shown) = self.claude_tool_title(&name, input);
+                    if let (question::TOOL, Some(id)) = (name.as_str(), b["id"].as_str()) {
+                        self.asks.push(question::Asked {
+                            id: id.to_owned(),
+                            shape: question::read_input(input),
+                            state: question::State::Pending,
+                        });
+                    }
                     self.add_call(
                         b["id"].as_str().map(str::to_owned),
                         ToolCall {
@@ -901,11 +941,25 @@ impl Parser {
                         .map(claude_image)
                         .collect();
                     let failed = b["is_error"] == true;
-                    if let Some(call) = b["tool_use_id"].as_str().and_then(|id| self.call_mut(id)) {
+                    let id = b["tool_use_id"].as_str().unwrap_or("");
+                    // The result's text is never read for the answer (design A).
+                    let asked = self.asks.iter_mut().find(|a| a.id == id).map(|a| {
+                        a.state = if failed {
+                            question::State::Declined
+                        } else {
+                            question::State::Answered
+                        };
+                        a.headers()
+                    });
+                    if let Some(call) = self.call_mut(id) {
                         call.output = out;
                         call.failed = failed;
                         call.done = true;
                         call.images = shots;
+                        if let Some(h) = asked.filter(|h| !h.is_empty()) {
+                            let word = if failed { "Skipped" } else { "Answered" };
+                            call.title = format!("{word}: {h}");
+                        }
                     }
                 }
                 _ => self.unknown += 1,
