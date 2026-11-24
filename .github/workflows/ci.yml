@@ -154,10 +154,23 @@ jobs:
 
       - run: cargo install cargo-ndk --version 4.1.2 --locked
 
+      # Gradle's downloads (Robolectric's android-all jar among them) come from
+      # main's newest cache even when a pull request changes the build files,
+      # so a run fetches only what is new instead of everything from Maven
+      # Central, which answers busy runners with 429. Saved from main only.
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: gradle-deps
+        with:
+          path: |
+            ~/.gradle/caches/modules-2
+            ~/.gradle/wrapper/dists
+          key: gradle-deps-${{ runner.os }}-${{ hashFiles('android/**/*.gradle.kts', 'android/gradle/libs.versions.toml', 'android/gradle/verification-metadata.xml', 'android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: gradle-deps-${{ runner.os }}-
+
       - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
         with:
-          # The open-source provider; the default one is proprietary.
-          cache-provider: basic
+          # Downloads are cached by the step above, which also restores on a miss.
+          cache-disabled: true
 
       - name: libghostty-vt for both Android ABIs (Zig pinned by checksum in the script)
         run: |
@@ -167,6 +180,19 @@ jobs:
       - name: Unit tests and debug APK (builds the Rust core through scripts/build-rust-android.sh)
         working-directory: android
         run: ./gradlew :app:testDebugUnitTest :app:verifyRoborazziDebug :app:assembleDebug
+
+      - name: Stop Gradle before saving its downloads
+        if: ${{ !cancelled() && github.ref == 'refs/heads/main' && steps.gradle-deps.outputs.cache-hit != 'true' }}
+        working-directory: android
+        run: ./gradlew --stop
+
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: ${{ !cancelled() && github.ref == 'refs/heads/main' && steps.gradle-deps.outputs.cache-hit != 'true' }}
+        with:
+          path: |
+            ~/.gradle/caches/modules-2
+            ~/.gradle/wrapper/dists
+          key: ${{ steps.gradle-deps.outputs.cache-primary-key }}
 
   # The release builds kudde-push for aarch64 on an arm runner: prove it builds.
   push-aarch64:
