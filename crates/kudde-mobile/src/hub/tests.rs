@@ -457,7 +457,7 @@ async fn needing_the_fingerprint_waits_for_the_prompt_then_retry() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn failures_retry_after_1_s_backing_off_to_30_s() {
+async fn failures_retry_after_1_s_backing_off_to_10_s() {
     let mut rig = rig("backoff");
     rig.add_trusted(WS, WS_KEY);
     rig.dialer.fail(WS, Some(Fail::Unreachable));
@@ -468,12 +468,12 @@ async fn failures_retry_after_1_s_backing_off_to_30_s() {
     assert_eq!(view(&s, WS).last_connected_ms, None, "never connected");
     // Half a second past the seventh retry, so the test never races it.
     tokio::time::sleep(Duration::from_millis(
-        (1 + 2 + 4 + 8 + 16 + 30 + 30) * 1000 + 500,
+        (1 + 2 + 4 + 8 + 10 + 10 + 10) * 1000 + 500,
     ))
     .await;
     let dials = rig.dialer.dials(WS);
     let gaps: Vec<u64> = dials.windows(2).map(|w| (w[1] - w[0]).as_secs()).collect();
-    assert_eq!(gaps, [1, 2, 4, 8, 16, 30, 30]);
+    assert_eq!(gaps, [1, 2, 4, 8, 10, 10, 10]);
 }
 
 /// How far ahead of the wall clock the next attempt is, in ms; None when the
@@ -502,7 +502,7 @@ async fn each_backoff_step_says_when_the_next_attempt_is() {
     rig.dialer.fail(WS, Some(Fail::Unreachable));
     let dialer = rig.dialer.clone();
     rig.hub.resume();
-    for (attempt, secs) in [1, 2, 4, 8, 16, 30, 30].into_iter().enumerate() {
+    for (attempt, secs) in [1, 2, 4, 8, 10, 10, 10].into_iter().enumerate() {
         let s = rig
             .until("the next failure", |s| {
                 dialer.dials(WS).len() == attempt + 1
@@ -532,12 +532,12 @@ async fn each_backoff_step_says_when_the_next_attempt_is() {
     assert_eq!(view(&s, WS).next_retry_ms, None, "absent while connected");
 
     // A dropped connection retries too; it lasted under 10 s, so the backoff
-    // goes on from where it was: 30 s.
+    // goes on from where it was: 10 s.
     drop(core);
     let s = rig
         .until_state(WS, |st| matches!(st, MachineState::Unreachable { .. }))
         .await;
-    assert_ahead(retry_in_ms(&s, WS), 30);
+    assert_ahead(retry_in_ms(&s, WS), 10);
 }
 
 #[tokio::test(start_paused = true)]
@@ -936,7 +936,7 @@ async fn a_lasting_connection_resets_the_backoff() {
     rig.add_trusted(WS, WS_KEY);
     rig.dialer.fail(WS, Some(Fail::Unreachable));
     rig.hub.resume();
-    // Fail long enough to reach the 30 s step.
+    // Fail long enough to reach the 10 s step.
     tokio::time::sleep(Duration::from_secs(1 + 2 + 4 + 8 + 16 + 1)).await;
     rig.dialer.fail(WS, None);
     let mut core = rig.core().await;
@@ -1016,6 +1016,35 @@ async fn a_rejected_key_is_named_and_retried() {
     let mut core = rig.core().await;
     core.connect("0.1.15", vec![]).await;
     rig.until_state(SRV, connected).await;
+}
+
+/// Coming back to the app does not wait out a backoff: every machine that is
+/// retrying on its own dials at once, and the backoff starts over. One that
+/// waits for the person (a host key) still waits.
+#[tokio::test(start_paused = true)]
+async fn a_return_to_the_app_retries_a_waiting_machine_now() {
+    let mut rig = rig("foreground-retry");
+    rig.add_trusted(WS, WS_KEY);
+    rig.hub.add_machine(SRV, SRV, 22, "dev").unwrap();
+    rig.dialer.fail(WS, Some(Fail::Unreachable));
+    rig.hub.resume();
+    // Dials at 0, 1, 3, 7 and 15 s: now waiting out the 10 s step.
+    tokio::time::sleep(Duration::from_secs(1 + 2 + 4 + 8 + 1)).await;
+    assert_eq!(rig.dialer.dials(WS).len(), 5);
+    rig.dialer.fail(WS, None);
+    let back = Instant::now();
+    rig.hub.foreground();
+    let mut core = rig.core().await;
+    assert_eq!((Instant::now() - back).as_secs(), 0, "no wait on the return");
+    core.connect("0.1.15", vec![]).await;
+    rig.until_state(WS, connected).await;
+    assert_eq!(rig.dialer.dials(SRV).len(), 1, "the host key still waits");
+
+    // The backoff started over: a quick drop retries after 1 s.
+    let dropped = Instant::now();
+    drop(core);
+    rig.core().await;
+    assert_eq!((Instant::now() - dropped).as_secs(), 1);
 }
 
 /// Network off can only change in Android settings, which puts the app in the
