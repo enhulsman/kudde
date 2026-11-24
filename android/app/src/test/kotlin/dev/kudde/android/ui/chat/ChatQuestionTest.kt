@@ -267,6 +267,63 @@ class ChatQuestionTest {
         assertNotNull(node(SOMETHING_ELSE))
     }
 
+    // Owner, 2026-11-25: on multi-select a typed answer joins the ticks and goes with the footer's one Send.
+    private val fruit = ChatAsk(
+        text = "Which fruits would you put in a fruit salad?", header = "Fruit", multi = true, answerable = true,
+        options = listOf(ChatOption("Apple", "Crisp.", null), ChatOption("Banana", "Soft.", null), ChatOption("Mango", "Juicy.", null)),
+    )
+
+    @Test
+    fun aTypedAnswerJoinsTheTicksAndGoesWithTheOneSend() {
+        val s = show(poll(question(fruit), rows))
+        tap("Option 1 of 3, Apple, Crisp., not checked")
+        tap(SOMETHING_ELSE)
+        assertEquals("the field has no send of its own", 1, semanticsNodes().count { SEND in it.descriptions() })
+        s.card.otherText = "Berries"
+        idle()
+        assertTrue(shows("2 selected"))
+        tap(SEND)
+        assertEquals(listOf<ChatChoice>(ChatChoice.Multi(listOf(0u), "Berries")), answers)
+    }
+
+    @Test
+    fun aTypedAnswerAloneCanBeSentAndStaysTickedAfterBack() {
+        val s = show(poll(question(fruit), rows))
+        tap(SOMETHING_ELSE)
+        s.card.otherText = "Berries"
+        idle()
+        assertTrue(shows("1 selected"))
+        controller!!.get().onBackPressedDispatcher.onBackPressed()
+        idle()
+        assertFalse(focused())
+        assertNotNull("the typed row reads as ticked", node("Something else, Berries, checked"))
+        assertTrue(shows("1 selected"))
+        tap(SEND)
+        assertEquals(listOf<ChatChoice>(ChatChoice.Multi(emptyList(), "Berries")), answers)
+    }
+
+    @Test
+    fun aTooLongTypedAnswerHoldsTheOneSend() {
+        val s = show(poll(question(fruit), rows))
+        tap("Option 1 of 3, Apple, Crisp., not checked")
+        tap(SOMETHING_ELSE)
+        s.card.otherText = "x".repeat(2001)
+        idle()
+        assertTrue(shows(TOO_LONG))
+        assertTrue(node(SEND)!!.config.contains(SemanticsProperties.Disabled))
+    }
+
+    @Test
+    fun aKeycapSitsInTheMiddleOfItsRow() {
+        val ask = database.copy(options = listOf(ChatOption("SQLite", "One file.\nNo server.\nEnough for one desk.", null), ChatOption("Postgres", "", null)))
+        show(poll(question(ask), rows))
+        for ((n, spoken) in listOf("1" to "Option 1 of 2, SQLite", "2" to "Option 2 of 2, Postgres")) {
+            val row = semanticsNodes().first { it.descriptions().any { d -> d.startsWith(spoken) } }.boundsInRoot
+            val cap = unmergedSemanticsNodes().first { it.texts() == listOf(n) }.boundsInRoot
+            assertEquals("keycap $n centred on its row", row.center.y, cap.center.y, 1.5f)
+        }
+    }
+
     @Test
     fun aMultiSelectQuestionTicksAndSendsOnceConfirmed() {
         val ask = database.copy(
@@ -282,7 +339,7 @@ class ChatQuestionTest {
         assertTrue(shows("2 selected"))
         assertNotNull(node("Option 1 of 3, SQLite (Recommended), One file, no server., checked"))
         tap(SEND)
-        assertEquals(listOf<ChatChoice>(ChatChoice.Multi(listOf(0u, 2u))), answers)
+        assertEquals(listOf<ChatChoice>(ChatChoice.Multi(listOf(0u, 2u), null)), answers)
     }
 
     @Test

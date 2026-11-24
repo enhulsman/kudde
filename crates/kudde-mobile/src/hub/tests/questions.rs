@@ -444,6 +444,7 @@ async fn multi_select_is_not_sent_until_confirmed() {
         0,
         ChatChoice::Multi {
             indices: vec![0, 1],
+            text: None,
         },
     );
     assert!(matches!(got.await.unwrap(), ChatAnswer::Failed { .. }));
@@ -579,5 +580,128 @@ async fn no_agent_in_front_any_more_sends_nothing() {
     )
     .await;
     assert_eq!(got.await.unwrap(), ChatAnswer::Changed);
+    core.nothing_more().await;
+}
+
+// Owner, 2026-11-25: on a multi-select question a typed answer joins the
+// ticks and goes out with the one send. The production gate stays shut until
+// the phone check; these tests open it.
+
+fn multi_database() -> Value {
+    let mut v = database();
+    v["multiSelect"] = json!(true);
+    v
+}
+
+#[tokio::test(start_paused = true)]
+async fn ticks_alone_go_as_one_keys_call() {
+    let mut r = rig("q-multi-ticks");
+    let (mut core, chat, end) =
+        with_log(&mut r, &[ask_line("toolu_01", json!([multi_database()]))]).await;
+    chat.allow_multi_for_test();
+    let got = spawn_answer(
+        &chat,
+        "toolu_01",
+        0,
+        ChatChoice::Multi {
+            indices: vec![1, 0],
+            text: None,
+        },
+    );
+    core.serves_check("blocked").await;
+    core.serves_screen(DIALOG).await;
+    let k = core
+        .takes_keys(&["1", "enter", "2", "enter", "4", "enter"])
+        .await;
+    core.reply(&k, json!({"turn": 3})).await;
+    core.serves_screen(PROMPT).await;
+    core.serves_log(end, &[result_line("toolu_01", false)])
+        .await;
+    assert_eq!(got.await.unwrap(), ChatAnswer::Done);
+    core.nothing_more().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_typed_answer_goes_out_with_the_ticks() {
+    let mut r = rig("q-multi-text");
+    let (mut core, chat, end) =
+        with_log(&mut r, &[ask_line("toolu_01", json!([multi_database()]))]).await;
+    chat.allow_multi_for_test();
+    let got = spawn_answer(
+        &chat,
+        "toolu_01",
+        0,
+        ChatChoice::Multi {
+            indices: vec![0],
+            text: Some("Berries".into()),
+        },
+    );
+    core.serves_check("blocked").await;
+    core.serves_screen(DIALOG).await;
+    let k = core.takes_keys(&["1", "enter", "3"]).await;
+    core.reply(&k, json!({"turn": 3})).await;
+    core.serves_screen(DIALOG).await;
+    let send = core.expect("terminal.send").await;
+    assert_eq!(send["params"]["text"], "Berries");
+    assert_eq!(send["params"]["force"], true);
+    core.reply(&send, json!({"turn": 3, "status": "blocked"}))
+        .await;
+    core.serves_screen(DIALOG).await;
+    let k = core.takes_keys(&["4", "enter"]).await;
+    core.reply(&k, json!({"turn": 3})).await;
+    core.serves_screen(PROMPT).await;
+    core.serves_log(end, &[result_line("toolu_01", false)])
+        .await;
+    assert_eq!(got.await.unwrap(), ChatAnswer::Done);
+    core.nothing_more().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_typed_answer_over_the_limit_or_nothing_at_all_sends_nothing() {
+    let mut r = rig("q-multi-empty");
+    let (mut core, chat, _) =
+        with_log(&mut r, &[ask_line("toolu_01", json!([multi_database()]))]).await;
+    chat.allow_multi_for_test();
+    for choice in [
+        ChatChoice::Multi {
+            indices: vec![],
+            text: None,
+        },
+        ChatChoice::Multi {
+            indices: vec![],
+            text: Some("  ".into()),
+        },
+        ChatChoice::Multi {
+            indices: vec![0],
+            text: Some("x".repeat(2001)),
+        },
+    ] {
+        let got = spawn_answer(&chat, "toolu_01", 0, choice);
+        assert!(matches!(got.await.unwrap(), ChatAnswer::Failed { .. }));
+    }
+    core.nothing_more().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn the_screen_leaving_the_question_before_the_text_stops_it() {
+    let mut r = rig("q-multi-moved");
+    let (mut core, chat, _) =
+        with_log(&mut r, &[ask_line("toolu_01", json!([multi_database()]))]).await;
+    chat.allow_multi_for_test();
+    let got = spawn_answer(
+        &chat,
+        "toolu_01",
+        0,
+        ChatChoice::Multi {
+            indices: vec![0],
+            text: Some("Berries".into()),
+        },
+    );
+    core.serves_check("blocked").await;
+    core.serves_screen(DIALOG).await;
+    let k = core.takes_keys(&["1", "enter", "3"]).await;
+    core.reply(&k, json!({"turn": 3})).await;
+    core.serves_screen(PROMPT).await;
+    assert_eq!(got.await.unwrap(), ChatAnswer::Unconfirmed);
     core.nothing_more().await;
 }

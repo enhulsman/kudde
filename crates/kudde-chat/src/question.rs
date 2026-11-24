@@ -146,8 +146,10 @@ pub fn plan(q: &Question, answer: &Answer) -> Option<Vec<String>> {
     match answer {
         Answer::Option(i) if !q.multi && *i < n => Some(vec![digit(i + 1)?, "enter".into()]),
         Answer::Option(_) => None,
-        // The free-text row follows the options.
-        Answer::Other => Some(vec![digit(n + 1)?]),
+        // The free-text row follows the options. On a multi-select question
+        // own words go with the ticks ([plan_multi]).
+        Answer::Other if !q.multi => Some(vec![digit(n + 1)?]),
+        Answer::Other => None,
         Answer::Skip => Some(vec!["esc".into()]),
         Answer::Submit => Some(vec!["enter".into()]),
         // Low confidence (design section B): each ticked option is focused
@@ -171,6 +173,43 @@ pub fn plan(q: &Question, answer: &Answer) -> Option<Vec<String>> {
         }
         Answer::Multi(_) => None,
     }
+}
+
+/// A multi-select answer in two key runs around the typed text: the ticks
+/// and the free row's digit [before] it, the submit row [after] it. The
+/// text goes between them through `terminal.send` (paste and Enter, which
+/// takes it as one more answer). Owner, 2026-11-25: a typed answer joins
+/// the ticks and goes out with the one send. Low confidence (design section
+/// B): confirmed by the phone check.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MultiPlan {
+    pub before: Vec<String>,
+    pub after: Vec<String>,
+}
+
+/// The keys for ticking `ticked` on a multi-select question, with a typed
+/// answer when `text`; none for a single-choice question, an option out of
+/// range, or nothing at all to send.
+pub fn plan_multi(q: &Question, ticked: &[usize], text: bool) -> Option<MultiPlan> {
+    let n = q.options.len();
+    if !q.multi || (ticked.is_empty() && !text) || ticked.iter().any(|i| *i >= n) {
+        return None;
+    }
+    let mut ticked = ticked.to_vec();
+    ticked.sort_unstable();
+    ticked.dedup();
+    let mut before = Vec::new();
+    for i in ticked {
+        before.push(digit(i + 1)?);
+        before.push("enter".into());
+    }
+    if text {
+        before.push(digit(n + 1)?);
+    }
+    Some(MultiPlan {
+        before,
+        after: vec![digit(n + 2)?, "enter".into()],
+    })
 }
 
 /// Whether the multi-select keys are confirmed on a real terminal; until
