@@ -4,6 +4,7 @@ mod hub;
 pub mod keys_row;
 mod link;
 mod machines;
+mod password_setup;
 mod ssh;
 mod synthetic;
 #[cfg(feature = "vt")]
@@ -11,11 +12,15 @@ mod term;
 #[cfg(feature = "vt")]
 mod vt;
 
+pub use password_setup::{
+    ProbeOutcome, SetupLimits, SetupOutcome, SetupPassword, probe_password_methods,
+    setup_with_password, setup_with_password_limits,
+};
 #[cfg(feature = "spike")]
 pub use ssh::ssh_run_spike;
 pub use ssh::{
     REMOTE_COMMAND, ReachKind, SignError, SshError, SshRun, SshSigner, authorized_keys_line,
-    setup_command, ssh_public_key_line,
+    host_key_fingerprint_command, setup_command, ssh_public_key_line,
 };
 
 pub use hub::push::{AlertsRegistration, AlertsView, PushRegistration, PushStatusView};

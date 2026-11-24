@@ -167,6 +167,19 @@ pub fn authorized_keys_line(spki_der: Vec<u8>, comment: String) -> Result<String
     ))
 }
 
+/// The one line that prints the fingerprint of the machine's host key of
+/// `algorithm` (as `ssh-keygen -l` names it: "ED25519", "ECDSA", "RSA"); any
+/// other type loops over every host key file.
+#[uniffi::export]
+pub fn host_key_fingerprint_command(algorithm: String) -> String {
+    match algorithm.as_str() {
+        "ED25519" => "ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub".into(),
+        "ECDSA" => "ssh-keygen -lf /etc/ssh/ssh_host_ecdsa_key.pub".into(),
+        "RSA" => "ssh-keygen -lf /etc/ssh/ssh_host_rsa_key.pub".into(),
+        _ => "for key_file in /etc/ssh/ssh_host_*_key.pub; do ssh-keygen -lf \"$key_file\" || exit 1; done".into(),
+    }
+}
+
 /// A POSIX shell command that installs the restricted phone key, then optionally
 /// prints the presented host key's fingerprint. `None` installs only the key.
 #[uniffi::export]
@@ -200,12 +213,7 @@ pub fn setup_command(
     );
     if let Some(algorithm) = host_key_algorithm {
         command.push_str("  ");
-        command.push_str(match algorithm.as_str() {
-            "ED25519" => "ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub",
-            "ECDSA" => "ssh-keygen -lf /etc/ssh/ssh_host_ecdsa_key.pub",
-            "RSA" => "ssh-keygen -lf /etc/ssh/ssh_host_rsa_key.pub",
-            _ => "for key_file in /etc/ssh/ssh_host_*_key.pub; do ssh-keygen -lf \"$key_file\" || exit 1; done",
-        });
+        command.push_str(&host_key_fingerprint_command(algorithm));
         command.push('\n');
     }
     command.push(')');
@@ -496,10 +504,10 @@ async fn exec(
 }
 
 pub(crate) struct HostKeyCheck {
-    pinned: Option<String>,
-    accept_unpinned: bool,
+    pub(crate) pinned: Option<String>,
+    pub(crate) accept_unpinned: bool,
     /// The fingerprint and type of the key the machine presented.
-    presented: Arc<Mutex<Option<(String, String)>>>,
+    pub(crate) presented: Arc<Mutex<Option<(String, String)>>>,
 }
 
 impl client::Handler for HostKeyCheck {
