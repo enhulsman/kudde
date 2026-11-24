@@ -15,6 +15,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
@@ -234,6 +235,7 @@ fun QuestionCard(
                 )
                 ask == null || !ask.answerable -> Footer(left = {}, right = { OutlineButton(OPEN_TERMINAL, enabled = true, onClick = onTerminal) })
                 ask.multi -> Footer(
+                    fullRule = true,
                     left = { CountText(pluralSelected(card.ticked.size)) },
                     right = {
                         OutlineButton(SKIP, enabled = !card.busy) { answer(ChatChoice.Skip) }
@@ -246,6 +248,7 @@ fun QuestionCard(
                     left = { if (card.otherOpen) Other(card, focusOther, ::answer) else SomethingElse(enabled = !card.busy) { card.otherOpen = true } },
                     right = { OutlineButton(SKIP, enabled = !card.busy) { answer(ChatChoice.Skip) } },
                     below = otherProblem(card.otherText).takeIf { card.otherOpen },
+                    fieldOpen = card.otherOpen,
                 )
             }
         },
@@ -301,10 +304,12 @@ private fun RowScope.Other(card: QuestionCard, takeFocus: Boolean, answer: (Chat
     val focus = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
+    var focused by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { if (takeFocus) focus.requestFocus() }
     DisposableEffect(Unit) { onDispose { keyboard?.hide() } }
     OtherField(
         empty = text.isEmpty(),
+        focused = focused,
         send = {
             SendCircle(enabled = !card.busy && canSendOther(text), small = true) {
                 focusManager.clearFocus()
@@ -318,7 +323,7 @@ private fun RowScope.Other(card: QuestionCard, takeFocus: Boolean, answer: (Chat
             textStyle = style,
             cursorBrush = cursor,
             maxLines = 6,
-            modifier = Modifier.fillMaxWidth().focusRequester(focus),
+            modifier = Modifier.fillMaxWidth().focusRequester(focus).onFocusChanged { focused = it.isFocused },
         )
     }
 }

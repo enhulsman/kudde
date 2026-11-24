@@ -18,9 +18,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -55,6 +55,7 @@ import dev.kudde.android.ui.terminal.LineIconImage
 import dev.kudde.android.ui.theme.KuddeBorder
 import dev.kudde.android.ui.theme.KuddeRadius
 import dev.kudde.android.ui.theme.KuddeScrim
+import dev.kudde.android.ui.theme.KuddeSpacing
 import dev.kudde.android.ui.theme.KuddeTheme
 import dev.kudde.android.ui.theme.KuddeType
 import uniffi.kudde_mobile.ChatOption
@@ -66,11 +67,21 @@ import uniffi.kudde_mobile.ChatOption
 // are the theme's tokens only. ChatQuestion.kt decides what shows and how it
 // reads.
 
-/** Where the hairline between options starts: the row's start padding, the keycap and the gap. */
-private val HAIRLINE_START = 58.dp
-private val ROW_START = 16.dp
-private val ROW_END = 18.dp
-private val TEXT_START = 18.dp
+/** One inset for the whole card: rows, title, hairlines and footer line up on it (spacing pass, 042). */
+private val INSET = 14.dp
+private val ROW_START = INSET
+private val ROW_END = INSET
+private val TEXT_START = INSET
+
+/** The keycap, tick box and pencil all sit in one slot, then one gap to the text. */
+private val SLOT = 24.dp
+private val GAP = 10.dp
+
+/** Every tappable thing is at least this tall and wide, whatever it draws. */
+private val TOUCH = 48.dp
+
+/** The own-words field reaches this far left of the slot, so the pencil keeps its x when it opens. */
+private val FIELD_INSET = 6.dp
 
 /** The panel: popover in graphite, canvas in paper, under a 1 dp border; the body scrolls, the footer stays. */
 @Composable
@@ -80,12 +91,12 @@ internal fun CardSurface(modifier: Modifier, body: @Composable ColumnScope.() ->
     Column(
         modifier
             .fillMaxWidth()
-            .padding(start = 12.dp, end = 12.dp, top = 6.dp, bottom = 12.dp)
+            .padding(start = 12.dp, end = 12.dp, top = 6.dp, bottom = KuddeSpacing.s12)
             .clip(shape)
             .background(if (c.isDark) c.popover else c.canvas)
             .border(KuddeBorder.thin, c.border, shape),
     ) {
-        Column(Modifier.fillMaxWidth().weight(1f, fill = false).verticalScroll(rememberScrollState()).padding(top = 16.dp), content = body)
+        Column(Modifier.fillMaxWidth().weight(1f, fill = false).verticalScroll(rememberScrollState()).padding(top = KuddeSpacing.s12), content = body)
         footer()
     }
 }
@@ -100,13 +111,13 @@ internal fun QuestionTitle(text: String) {
     BasicText(
         text,
         style = KuddeType.subScreenTitle.copy(color = KuddeTheme.colors.fg, fontWeight = FontWeight.Medium, lineHeight = 27.sp, letterSpacing = (-0.01).em),
-        modifier = Modifier.padding(start = TEXT_START, end = TEXT_START, bottom = 12.dp),
+        modifier = Modifier.padding(start = TEXT_START, end = TEXT_START, bottom = KuddeSpacing.s8),
     )
 }
 
 @Composable
 internal fun Hint(text: String) {
-    BasicText(text, style = KuddeType.secondary.copy(color = KuddeTheme.colors.muted), modifier = Modifier.offset(y = (-6).dp).padding(start = TEXT_START, end = TEXT_START, bottom = 4.dp))
+    BasicText(text, style = KuddeType.secondary.copy(color = KuddeTheme.colors.muted), modifier = Modifier.padding(start = TEXT_START, end = TEXT_START, bottom = KuddeSpacing.s4))
 }
 
 /** Why nothing was sent: a quiet strip with a hollow ring, and the way to the terminal where it helps. */
@@ -114,7 +125,7 @@ internal fun Hint(text: String) {
 internal fun Notice(text: String, onTerminal: (() -> Unit)?) {
     val c = KuddeTheme.colors
     Row(
-        Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 12.dp).heightIn(min = 36.dp)
+        Modifier.fillMaxWidth().padding(start = INSET, end = INSET, bottom = KuddeSpacing.s8).heightIn(min = 36.dp)
             .clip(RoundedCornerShape(KuddeRadius.notice)).background(c.hover).padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -125,7 +136,7 @@ internal fun Notice(text: String, onTerminal: (() -> Unit)?) {
             BasicText(
                 SHOW_TERMINAL,
                 style = KuddeType.pill.copy(color = c.fg),
-                modifier = Modifier.clip(RoundedCornerShape(KuddeRadius.key)).clickable(role = Role.Button, onClick = onTerminal).padding(horizontal = 6.dp, vertical = 4.dp),
+                modifier = Modifier.heightIn(min = TOUCH).clickable(role = Role.Button, onClick = onTerminal).wrapContentHeight().padding(horizontal = 6.dp),
             )
         }
     }
@@ -154,28 +165,31 @@ internal fun OptionRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Row(
-            Modifier.weight(1f).then(click)
-                .padding(start = ROW_START, end = if (trailing == null) ROW_END else 8.dp, top = 12.dp, bottom = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            Modifier.weight(1f).heightIn(min = TOUCH).then(click)
+                .padding(start = ROW_START, end = if (trailing == null) ROW_END else 8.dp, top = KuddeSpacing.s8, bottom = KuddeSpacing.s8),
+            // A label alone sits level with its keycap; with a description, both start at the top.
+            verticalAlignment = if (description.isBlank()) Alignment.CenterVertically else Alignment.Top,
+            horizontalArrangement = Arrangement.spacedBy(GAP),
         ) {
             lead()
             OptionBody(label, description)
         }
-        if (trailing != null) Box(Modifier.padding(end = 12.dp)) { trailing() }
+        // The pill's own 2 dp touch margin plus this puts its edge on the card's inset.
+        if (trailing != null) Box(Modifier.padding(end = INSET - 2.dp)) { trailing() }
     }
 }
 
 private fun androidx.compose.ui.graphics.drawscope.DrawScope.hairline(color: Color) {
     val y = 0.5.dp.toPx()
-    drawLine(color, Offset(HAIRLINE_START.toPx(), y), Offset(size.width - ROW_END.toPx(), y), KuddeBorder.thin.toPx())
+    drawLine(color, Offset(INSET.toPx(), y), Offset(size.width - INSET.toPx(), y), KuddeBorder.thin.toPx())
 }
 
 @Composable
 private fun OptionBody(label: String, description: String) {
     val c = KuddeTheme.colors
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        BasicText(label, style = KuddeType.rowName.copy(color = c.fg, lineHeight = 21.sp))
-        if (description.isNotBlank()) BasicText(description, style = KuddeType.secondary.copy(color = c.muted, lineHeight = 19.sp))
+        BasicText(label, style = KuddeType.rowName.copy(color = c.fg, lineHeight = 20.sp))
+        if (description.isNotBlank()) BasicText(description, style = KuddeType.secondary.copy(color = c.muted, lineHeight = 18.sp))
     }
 }
 
@@ -185,7 +199,7 @@ internal fun Keycap(n: Int) {
     val c = KuddeTheme.colors
     val shape = RoundedCornerShape(KuddeRadius.key)
     Box(
-        Modifier.offset(y = (-2).dp).size(28.dp).clip(shape)
+        Modifier.size(SLOT).clip(shape)
             .background(if (c.isDark) c.selected else c.popover)
             .then(if (c.isDark) Modifier else Modifier.border(KuddeBorder.thin, c.border, shape)),
         contentAlignment = Alignment.Center,
@@ -198,7 +212,7 @@ internal fun Keycap(n: Int) {
 @Composable
 private fun OutlineKey(icon: LineIcon) {
     val c = KuddeTheme.colors
-    Box(Modifier.size(28.dp).border(KuddeBorder.thin, c.input, RoundedCornerShape(KuddeRadius.key)), contentAlignment = Alignment.Center) {
+    Box(Modifier.size(SLOT).border(KuddeBorder.thin, c.input, RoundedCornerShape(KuddeRadius.key)), contentAlignment = Alignment.Center) {
         LineIconImage(icon, c.muted, 14.dp)
     }
 }
@@ -209,7 +223,7 @@ internal fun CheckBox(on: Boolean) {
     val c = KuddeTheme.colors
     val shape = RoundedCornerShape(KuddeRadius.pill)
     Box(
-        Modifier.padding(start = 4.dp, end = 4.dp, top = 2.dp).size(20.dp).clip(shape)
+        Modifier.padding(2.dp).size(20.dp).clip(shape)
             .then(if (on) Modifier.background(c.solid) else Modifier.border(KuddeBorder.thin, c.muted, shape)),
         contentAlignment = Alignment.Center,
     ) {
@@ -231,35 +245,50 @@ internal fun CheckBox(on: Boolean) {
 @Composable
 internal fun PreviewPill(onClick: () -> Unit) {
     val c = KuddeTheme.colors
-    Row(
-        Modifier.height(32.dp).clip(RoundedCornerShape(KuddeRadius.key)).background(c.hover)
-            .clickable(role = Role.Button, onClick = onClick).padding(horizontal = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        LineIconImage(LineIcon.Eye, c.muted, 14.dp)
-        BasicText(PREVIEW, style = KuddeType.pill.copy(color = c.muted))
+    Box(Modifier.heightIn(min = TOUCH).clickable(role = Role.Button, onClick = onClick).padding(horizontal = 2.dp), contentAlignment = Alignment.Center) {
+        Row(
+            Modifier.height(32.dp).clip(RoundedCornerShape(KuddeRadius.key)).background(c.hover).padding(horizontal = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            LineIconImage(LineIcon.Eye, c.muted, 14.dp)
+            BasicText(PREVIEW, style = KuddeType.pill.copy(color = c.muted))
+        }
     }
 }
 
-/** The footer: a hairline above, [left] taking the room, [right] its buttons; [below] a line under it. */
+/**
+ * The footer: a line above (on the card's inset, full width over the
+ * multi-select bar when [fullRule]), [left] taking the room, [right] its
+ * buttons; [below] a line under it. [fieldOpen]: the own-words field sits on
+ * the left, reaching [FIELD_INSET] past the inset so its pencil stays put.
+ */
 @Composable
-internal fun Footer(left: @Composable RowScope.() -> Unit, right: @Composable RowScope.() -> Unit, below: String? = null) {
+internal fun Footer(
+    left: @Composable RowScope.() -> Unit,
+    right: @Composable RowScope.() -> Unit,
+    below: String? = null,
+    fieldOpen: Boolean = false,
+    fullRule: Boolean = false,
+) {
     val c = KuddeTheme.colors
     Column(
         Modifier.fillMaxWidth().drawBehind {
-            drawLine(c.border, Offset(0f, 0.5.dp.toPx()), Offset(size.width, 0.5.dp.toPx()), KuddeBorder.thin.toPx())
+            val y = 0.5.dp.toPx()
+            val inset = if (fullRule) 0f else INSET.toPx()
+            drawLine(c.border, Offset(inset, y), Offset(size.width - inset, y), KuddeBorder.thin.toPx())
         },
     ) {
         Row(
-            Modifier.fillMaxWidth().heightIn(min = 58.dp).padding(start = 16.dp, end = 10.dp, top = 8.dp, bottom = 8.dp),
+            Modifier.fillMaxWidth().heightIn(min = 50.dp)
+                .padding(start = if (fieldOpen) INSET - FIELD_INSET else INSET, end = 8.dp, top = KuddeSpacing.s4, bottom = KuddeSpacing.s4),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(KuddeSpacing.s6),
         ) {
             Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, content = left)
             right()
         }
-        below?.let { BasicText(it, style = KuddeType.secondary.copy(color = c.blocked), modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 10.dp)) }
+        below?.let { BasicText(it, style = KuddeType.secondary.copy(color = c.blocked), modifier = Modifier.padding(start = INSET, end = INSET, bottom = KuddeSpacing.s8)) }
     }
 }
 
@@ -268,12 +297,12 @@ internal fun Footer(left: @Composable RowScope.() -> Unit, right: @Composable Ro
 internal fun SomethingElse(enabled: Boolean, onClick: () -> Unit) {
     val c = KuddeTheme.colors
     Row(
-        Modifier.clip(RoundedCornerShape(KuddeRadius.button)).clickable(enabled = enabled, role = Role.Button, onClick = onClick).padding(vertical = 6.dp),
+        Modifier.heightIn(min = TOUCH).clip(RoundedCornerShape(KuddeRadius.button)).clickable(enabled = enabled, role = Role.Button, onClick = onClick).padding(end = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        horizontalArrangement = Arrangement.spacedBy(GAP),
     ) {
         OutlineKey(LineIcon.Pen)
-        BasicText(SOMETHING_ELSE, style = KuddeType.rowName.copy(color = if (enabled) c.muted else c.dim))
+        BasicText(SOMETHING_ELSE, style = KuddeType.rowName.copy(color = if (enabled) c.muted else c.dim, lineHeight = 20.sp))
     }
 }
 
@@ -282,36 +311,43 @@ internal fun SomethingElse(enabled: Boolean, onClick: () -> Unit) {
 internal fun SomethingElseRow(enabled: Boolean, onClick: () -> Unit) {
     val c = KuddeTheme.colors
     Row(
-        Modifier.fillMaxWidth().drawBehind { hairline(c.border) }
-            .clickable(enabled = enabled, role = Role.Button, onClick = onClick).padding(start = ROW_START, end = ROW_END, top = 12.dp, bottom = 12.dp),
+        Modifier.fillMaxWidth().heightIn(min = TOUCH).drawBehind { hairline(c.border) }
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick).padding(start = ROW_START, end = ROW_END, top = KuddeSpacing.s8, bottom = KuddeSpacing.s8),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        horizontalArrangement = Arrangement.spacedBy(GAP),
     ) {
         OutlineKey(LineIcon.Pen)
-        BasicText(SOMETHING_ELSE, style = KuddeType.rowName.copy(color = c.muted))
+        BasicText(SOMETHING_ELSE, style = KuddeType.rowName.copy(color = c.muted, lineHeight = 20.sp))
     }
 }
 
 /** Where the own-words field sits as a row of a multi-select question. */
 @Composable
 internal fun OtherRow(content: @Composable RowScope.() -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(start = ROW_START, end = ROW_END, top = 8.dp, bottom = 12.dp), content = content)
+    Row(Modifier.fillMaxWidth().padding(start = ROW_START - FIELD_INSET, end = ROW_END, top = KuddeSpacing.s4, bottom = KuddeSpacing.s8), content = content)
 }
 
-/** The own-words field: the page's ground under a ring, the hint while empty, [send] at its end. */
+/**
+ * The own-words field: a tinted row, a quiet 1 dp line only while focused,
+ * the pencil and the text at the x they had closed, the hint while empty,
+ * [send] centred at its end.
+ */
 @Composable
-internal fun RowScope.OtherField(empty: Boolean, send: @Composable () -> Unit, input: @Composable (TextStyle, Brush) -> Unit) {
+internal fun RowScope.OtherField(empty: Boolean, focused: Boolean, send: @Composable () -> Unit, input: @Composable (TextStyle, Brush) -> Unit) {
     val c = KuddeTheme.colors
     val shape = RoundedCornerShape(KuddeRadius.field)
     Row(
-        Modifier.weight(1f).heightIn(min = 44.dp).clip(shape).background(if (c.isDark) c.bg else c.popover)
-            .border(KuddeBorder.thin, c.ring, shape).padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+        Modifier.weight(1f).heightIn(min = TOUCH).clip(shape).background(c.hover)
+            .then(if (focused) Modifier.border(KuddeBorder.thin, c.border, shape) else Modifier)
+            .padding(start = FIELD_INSET),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(GAP),
     ) {
-        Box(Modifier.weight(1f)) {
-            if (empty) BasicText(TYPE_YOUR_ANSWER, style = KuddeType.rowName.copy(color = c.dimText))
-            input(KuddeType.rowName.copy(color = c.fg), SolidColor(c.fg))
+        Box(Modifier.size(SLOT), contentAlignment = Alignment.Center) { LineIconImage(LineIcon.Pen, c.muted, 14.dp) }
+        Box(Modifier.weight(1f).padding(vertical = KuddeSpacing.s8)) {
+            val style = KuddeType.rowName.copy(lineHeight = 20.sp)
+            if (empty) BasicText(TYPE_YOUR_ANSWER, style = style.copy(color = c.dimText))
+            input(style.copy(color = c.fg), SolidColor(c.fg))
         }
         send()
     }
@@ -322,12 +358,10 @@ internal fun RowScope.OtherField(empty: Boolean, send: @Composable () -> Unit, i
 internal fun OutlineButton(label: String, enabled: Boolean, onClick: () -> Unit) {
     val c = KuddeTheme.colors
     val shape = RoundedCornerShape(KuddeRadius.button)
-    Box(
-        Modifier.height(40.dp).clip(shape).border(KuddeBorder.thin, c.input, shape)
-            .clickable(enabled = enabled, role = Role.Button, onClick = onClick).padding(horizontal = 16.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        BasicText(label, style = KuddeType.settingRow.copy(color = if (enabled) c.fg else c.dim, fontWeight = FontWeight.Medium, textAlign = TextAlign.Center))
+    Box(Modifier.heightIn(min = TOUCH).clickable(enabled = enabled, role = Role.Button, onClick = onClick), contentAlignment = Alignment.Center) {
+        Box(Modifier.height(32.dp).border(KuddeBorder.thin, c.input, shape).padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
+            BasicText(label, style = KuddeType.settingRow.copy(color = if (enabled) c.fg else c.dim, fontWeight = FontWeight.Medium, textAlign = TextAlign.Center))
+        }
     }
 }
 
@@ -335,26 +369,31 @@ internal fun OutlineButton(label: String, enabled: Boolean, onClick: () -> Unit)
 @Composable
 internal fun SolidButton(label: String, enabled: Boolean, onClick: () -> Unit) {
     val c = KuddeTheme.colors
-    Box(
-        Modifier.height(40.dp).clip(RoundedCornerShape(KuddeRadius.button)).background(if (enabled) c.solid else c.selected)
-            .clickable(enabled = enabled, role = Role.Button, onClick = onClick).padding(horizontal = 16.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        BasicText(label, style = KuddeType.settingRow.copy(color = if (enabled) c.solidFg else c.dim, fontWeight = FontWeight.Medium))
+    Box(Modifier.heightIn(min = TOUCH).clickable(enabled = enabled, role = Role.Button, onClick = onClick), contentAlignment = Alignment.Center) {
+        Box(
+            Modifier.height(32.dp).clip(RoundedCornerShape(KuddeRadius.button)).background(if (enabled) c.solid else c.selected).padding(horizontal = 12.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            BasicText(label, style = KuddeType.settingRow.copy(color = if (enabled) c.solidFg else c.dim, fontWeight = FontWeight.Medium))
+        }
     }
 }
 
-/** The send arrow in a solid circle, spoken "Send"; [small] inside the own-words field. */
+/**
+ * The send arrow in a solid circle, spoken "Send", in a 48 dp touch target;
+ * 32 dp in the footer, 28 dp ([small]) inside the own-words field.
+ */
 @Composable
 internal fun SendCircle(enabled: Boolean, small: Boolean = false, onClick: () -> Unit) {
     val c = KuddeTheme.colors
-    val size: Dp = if (small) 36.dp else 40.dp
+    val size: Dp = if (small) 28.dp else 32.dp
     Box(
-        Modifier.size(size).clip(CircleShape).background(if (enabled) c.solid else c.selected)
-            .clickable(enabled = enabled, role = Role.Button, onClick = onClick).semantics { contentDescription = SEND },
+        Modifier.size(TOUCH).clickable(enabled = enabled, role = Role.Button, onClick = onClick).semantics { contentDescription = SEND },
         contentAlignment = Alignment.Center,
     ) {
-        BasicText("↑", style = KuddeType.terminalTitle.copy(color = if (enabled) c.solidFg else c.dim))
+        Box(Modifier.size(size).clip(CircleShape).background(if (enabled) c.solid else c.selected), contentAlignment = Alignment.Center) {
+            BasicText("↑", style = KuddeType.settingRow.copy(color = if (enabled) c.solidFg else c.dim, fontWeight = FontWeight.SemiBold))
+        }
     }
 }
 

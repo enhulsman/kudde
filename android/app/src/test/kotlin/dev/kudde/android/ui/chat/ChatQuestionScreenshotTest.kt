@@ -117,4 +117,17 @@ class ChatQuestionScreenshotTest {
             card.otherText = "Use Postgres, but through Docker"
         }
     }
+
+    // Short cards on the tallest fixture screen (412 x 915 dp): the card sits on the bottom, 12 dp above the edge.
+    @Test
+    fun shortSingleChoice() = capture("short", one(login))
+
+    @Test
+    fun shortMultiSelect() {
+        val ask = ChatAsk(
+            text = "Which checks should run first?", header = "Checks", multi = true, answerable = true,
+            options = listOf(ChatOption("Unit tests", "", null), ChatOption("Lint", "", null), ChatOption("Type check", "", null)),
+        )
+        capture("short-multi", one(ask)) { ChatState().apply { card.toggle(0) } }
+    }
 }
