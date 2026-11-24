@@ -127,7 +127,13 @@ not repeat the keys.
 goes through `terminal.send` with `force: true` (the core refuses a blocked
 program otherwise; the text lands in the focused row), then Enter is part of
 that send; Skip is `[esc]`; the last step's Send answers is `[enter]` on the
-Submit row after the screen shows "Submit answers". Multi-select toggles then
+Submit row after the screen shows "Submit answers". Multi-select with a
+typed answer (owner, 2026-11-25: it joins the ticks and goes out with the
+one send): the toggles and `[digit(n+1)]` in one `terminal.keys`, the text
+through `terminal.send` with `force` (its Enter takes it as one more
+answer), then `[digit(n+2), enter]` for the submit row, with a screen check
+before the text and before the submit (low confidence, phone check).
+Multi-select toggles then
 submits (low confidence, shape fixed by the phone check). Digits above 9 are
 never planned (options are at most 4 plus the free row). The plan never counts
 arrows from the top.
