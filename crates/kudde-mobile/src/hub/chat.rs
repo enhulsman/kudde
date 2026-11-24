@@ -11,6 +11,7 @@ use super::chat_core::{ChatCore, Kind, Read, Row, Term};
 use base64::Engine;
 use herdr_proto::rpc::{CallError, Client, Stream, StreamItem};
 use kudde_chat::locate::{self, Lookup};
+use kudde_chat::question::{self, Answer, Moved, Progress, Shape, State};
 use kudde_chat::send::{self, Refusal, Seen};
 use kudde_chat::{Agent, Health, Image, Item, image, tail};
 use serde_json::{Value, json};
@@ -62,6 +63,91 @@ pub struct ChatRow {
     pub images: Vec<ChatImage>,
     pub calls: Vec<ChatCall>,
 }
+
+/// One option of a question card (chat-questions).
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct ChatOption {
+    pub label: String,
+    pub description: String,
+    pub preview: Option<String>,
+}
+
+/// One question of a call, as the log holds it, never cut.
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct ChatAsk {
+    pub text: String,
+    pub header: String,
+    pub multi: bool,
+    /// The card can take its answer; false for a multi-select question until
+    /// its keys are confirmed (the card says "Open the terminal").
+    pub answerable: bool,
+    pub options: Vec<ChatOption>,
+}
+
+/// The question the agent waits on (design D1): shown as a card while the
+/// log holds the call with no result, the status is blocked and the agent
+/// and session are the ones shown.
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct ChatQuestion {
+    /// The call's id, passed back with an answer.
+    pub id: String,
+    /// False: a shape the card cannot take; it shows [`ChatQuestion::texts`]
+    /// with "Open the terminal".
+    pub readable: bool,
+    pub questions: Vec<ChatAsk>,
+    pub texts: Vec<String>,
+    /// The question the screen shows (0-based); the count of questions on
+    /// the review step.
+    pub step: u32,
+    /// The dialog shows its review step ("Submit answers").
+    pub review: bool,
+}
+
+/// What a tap on the card answers.
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Enum)]
+pub enum ChatChoice {
+    /// The option at this index (0-based).
+    Pick {
+        index: u32,
+    },
+    /// "Something else": the person's own words.
+    Other {
+        text: String,
+    },
+    Skip,
+    /// "Send answers" on the review step.
+    Submit,
+    /// A multi-select question's ticked options.
+    Multi {
+        indices: Vec<u32>,
+    },
+}
+
+/// What became of an answer, for the card.
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Enum)]
+pub enum ChatAnswer {
+    /// The screen moved on, or the dialog closed and the log holds the result.
+    Done,
+    /// "Already answered at the desk. Nothing was sent."
+    AlreadyAnswered,
+    /// "The question changed. Nothing was sent."
+    Changed,
+    /// Keys went (or may have): "Could not confirm the answer arrived. Check
+    /// the terminal." Never sent again.
+    Unconfirmed,
+    /// Nothing was sent: not connected, a call failed, or an answer the card
+    /// should not have offered.
+    Failed { reason: String },
+}
+
+/// The free-text answer's limit, in characters (spec).
+pub(crate) const TEXT_MAX: usize = 2000;
+/// How often the screen is looked at after a step before it is unconfirmed,
+/// and the wait between looks.
+const CONFIRM_TRIES: usize = 6;
+const CONFIRM_GAP: Duration = Duration::from_millis(500);
+/// `terminal.keys` and `terminal.send` wait for ~3 s of quiet at the desk.
+const KEYS_WAIT: Duration = Duration::from_secs(20);
 
 /// The lookup result (spec: the lookup's four results).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
@@ -116,6 +202,8 @@ pub struct ChatPoll {
     pub queued: Vec<String>,
     /// Milliseconds per stage, for the log: "get 40 locate 50 tail 61 total 151".
     pub timings: String,
+    /// The question card, from [`Chat::poll`] only.
+    pub question: Option<ChatQuestion>,
 }
 
 /// Why a send typed nothing; the draft stays.
@@ -156,6 +244,8 @@ pub struct Chat {
     events: tokio::sync::Mutex<Option<Stream>>,
     /// What the last message was typed into, for [`Chat::enter_again`].
     sent_to: Mutex<Option<send::Target>>,
+    /// The question call and where its dialog was last seen.
+    step: Mutex<Option<(String, Progress)>>,
 }
 
 impl Chat {
@@ -169,6 +259,7 @@ impl Chat {
             files: Mutex::new(HashMap::new()),
             events: tokio::sync::Mutex::new(None),
             sent_to: Mutex::new(None),
+            step: Mutex::new(None),
         }
     }
 }
@@ -276,6 +367,47 @@ fn chat_row(r: &Row, session: &str) -> ChatRow {
                 .collect(),
             ..row("tools", "")
         },
+    }
+}
+
+/// The card's record of `asked`, the dialog at `at`.
+fn chat_question(asked: &question::Asked, at: Progress) -> ChatQuestion {
+    let (readable, questions, texts) = match &asked.shape {
+        Shape::Readable(qs) => (
+            true,
+            qs.iter()
+                .map(|q| ChatAsk {
+                    text: q.text.clone(),
+                    header: q.header.clone(),
+                    multi: q.multi,
+                    answerable: !q.multi || question::MULTI_CONFIRMED,
+                    options: q
+                        .options
+                        .iter()
+                        .map(|o| ChatOption {
+                            label: o.label.clone(),
+                            description: o.description.clone(),
+                            preview: o.preview.clone(),
+                        })
+                        .collect(),
+                })
+                .collect::<Vec<_>>(),
+            vec![],
+        ),
+        Shape::Unreadable { texts } => (false, vec![], texts.clone()),
+    };
+    let (step, review) = match at {
+        Progress::Question(i) => (i.min(questions.len().saturating_sub(1)) as u32, false),
+        Progress::Review => (questions.len() as u32, true),
+        Progress::Gone => (0, false),
+    };
+    ChatQuestion {
+        id: asked.id.clone(),
+        readable,
+        questions,
+        texts,
+        step,
+        review,
     }
 }
 
@@ -495,7 +627,7 @@ impl Chat {
             let began = Instant::now();
             let mut times = Times::default();
             let Some(conn) = self.core.live_conn(&self.machine) else {
-                return self.view("", false, Times("not connected".into()));
+                return self.view("", false, Times("not connected".into()), None);
             };
             let c = conn.client;
             let Ok(t) = c
@@ -503,7 +635,7 @@ impl Chat {
                 .await
                 .map(|t| term_of(&t))
             else {
-                return self.view("", false, times);
+                return self.view("", false, times, None);
             };
             self.state.lock().unwrap().watch_see(&t);
             if self.state.lock().unwrap().needs_watch(&t, event) {
@@ -528,7 +660,7 @@ impl Chat {
             }
             times.mark("total", began);
             let status = t.status.clone().unwrap_or_default();
-            self.view(&status, may_send(&t), times)
+            self.view(&status, may_send(&t), times, None)
         })
     }
 
@@ -536,7 +668,7 @@ impl Chat {
     /// (design D12); `None` before the first lookup.
     pub fn held(&self) -> Option<ChatPoll> {
         self.state.lock().unwrap().lookup()?;
-        Some(self.view("", false, Times::default()))
+        Some(self.view("", false, Times::default(), None))
     }
 
     /// Reads the part of the log before the oldest row held and parses it
@@ -558,7 +690,7 @@ impl Chat {
                 }
             }
             times.mark("older", began);
-            self.view("", false, times)
+            self.view("", false, times, None)
         })
     }
 
@@ -724,6 +856,16 @@ impl Chat {
         })
     }
 
+    /// Answers the question card's call `id` at question `step` (design D2):
+    /// checks the terminal and its screen, presses the step's keys in one
+    /// `terminal.keys` call, and reads the screen (and the log) to confirm.
+    /// Call it under the same lock as [`Chat::poll`]: it reads the log too.
+    /// Blocks.
+    pub fn answer(&self, id: String, step: u32, choice: ChatChoice) -> ChatAnswer {
+        let core = self.core.clone();
+        core.runtime().block_on(self.answer_async(id, step, choice))
+    }
+
     /// The bytes of one image from [`ChatImage::key`], fetched from the desk
     /// the first time; `None` when it is gone or cannot be read. Blocks.
     pub fn image(&self, key: String) -> Option<Vec<u8>> {
@@ -768,11 +910,216 @@ impl Chat {
         Ok((t, start, l))
     }
 
+    /// The terminal's screen as text.
+    async fn screen(&self, c: &Client) -> Result<String, String> {
+        let got = c
+            .call("terminal.read", json!({"terminal": self.address}))
+            .await
+            .map_err(|e| format!("{e}"))?;
+        got["text"]
+            .as_str()
+            .map(str::to_owned)
+            .ok_or_else(|| "The screen could not be read".to_string())
+    }
+
+    /// The card for this poll (design D1): the log's pending call, a blocked
+    /// status and the agent and session shown. A call with several questions
+    /// follows the screen (D5); a screen the card does not know keeps the
+    /// step seen last.
+    async fn question_for(&self, c: &Client, t: &Term) -> Option<ChatQuestion> {
+        let asked = {
+            let st = self.state.lock().unwrap();
+            if t.status.as_deref() != Some("blocked") || !st.shows(t) {
+                None
+            } else {
+                st.question()
+            }
+        };
+        let Some(asked) = asked else {
+            *self.step.lock().unwrap() = None;
+            return None;
+        };
+        let mut at = match self.step.lock().unwrap().as_ref() {
+            Some((id, p)) if *id == asked.id => *p,
+            _ => Progress::Question(0),
+        };
+        if let Shape::Readable(qs) = &asked.shape
+            && qs.len() > 1
+            && let Ok(screen) = self.screen(c).await
+        {
+            let p = question::progress(&screen, qs);
+            if p != Progress::Gone {
+                at = p;
+            }
+        }
+        *self.step.lock().unwrap() = Some((asked.id.clone(), at));
+        Some(chat_question(&asked, at))
+    }
+
+    pub(crate) async fn answer_async(
+        &self,
+        id: String,
+        step: u32,
+        choice: ChatChoice,
+    ) -> ChatAnswer {
+        let failed = |r: &str| ChatAnswer::Failed { reason: r.into() };
+        let step = step as usize;
+        let answer = match &choice {
+            ChatChoice::Pick { index } => Answer::Option(*index as usize),
+            ChatChoice::Other { text } if text.trim().is_empty() => {
+                return failed("Type your answer");
+            }
+            ChatChoice::Other { text } if text.chars().count() > TEXT_MAX => {
+                return failed("Too long: 2000 characters at most");
+            }
+            ChatChoice::Other { .. } => Answer::Other,
+            ChatChoice::Skip => Answer::Skip,
+            ChatChoice::Submit => Answer::Submit,
+            ChatChoice::Multi { .. } if !question::MULTI_CONFIRMED => {
+                return failed("Open the terminal");
+            }
+            ChatChoice::Multi { indices } => {
+                Answer::Multi(indices.iter().map(|i| *i as usize).collect())
+            }
+        };
+        // From what is held, no call: the call must still be the one pending.
+        let (agent, session, qs) = {
+            let st = self.state.lock().unwrap();
+            let Some((agent, session)) = st.shown() else {
+                return ChatAnswer::Changed;
+            };
+            match st.question() {
+                Some(a) if a.id == id => match a.shape {
+                    Shape::Readable(qs) => (agent, session, qs),
+                    Shape::Unreadable { .. } => return failed("Open the terminal"),
+                },
+                _ => {
+                    return match st.asked(&id) {
+                        Some(a) if a.state != State::Pending => ChatAnswer::AlreadyAnswered,
+                        _ => ChatAnswer::Changed,
+                    };
+                }
+            }
+        };
+        let planned = match answer {
+            Answer::Submit if qs.len() < 2 => None,
+            Answer::Submit | Answer::Skip => question::plan(&qs[0], &answer),
+            _ => qs.get(step).and_then(|q| question::plan(q, &answer)),
+        };
+        let Some(keys) = planned else {
+            return ChatAnswer::Changed;
+        };
+        let Some(conn) = self.core.live_conn(&self.machine) else {
+            return failed("Not connected");
+        };
+        let c = conn.client;
+        match self.check(&c).await {
+            Ok((t, start, l)) => match question::check(agent, &session, &seen(&t, start, &l)) {
+                Ok(_) => {}
+                Err(question::Refusal::Answered) => return ChatAnswer::AlreadyAnswered,
+                Err(question::Refusal::Changed) => return ChatAnswer::Changed,
+            },
+            Err(e) => return failed(&e),
+        }
+        match self.screen(&c).await {
+            Ok(s) if question::before(&answer, step, question::progress(&s, &qs)) => {}
+            Ok(_) => return ChatAnswer::Changed,
+            Err(e) => return failed(&e),
+        }
+        // From here keys may have gone: nothing is sent again.
+        let pressed = c
+            .call_timeout(
+                "terminal.keys",
+                json!({"terminal": self.address, "keys": keys}),
+                KEYS_WAIT,
+            )
+            .await;
+        if pressed.is_err() {
+            return ChatAnswer::Unconfirmed;
+        }
+        if let ChatChoice::Other { text } = &choice {
+            // The free-text row is focused while the question still shows;
+            // the text and its Enter go into it (design D6).
+            match self.screen(&c).await {
+                Ok(s) if question::progress(&s, &qs) == Progress::Question(step) => {}
+                _ => return ChatAnswer::Unconfirmed,
+            }
+            let typed = c
+                .call_timeout(
+                    "terminal.send",
+                    json!({"terminal": self.address, "text": text, "force": true}),
+                    KEYS_WAIT,
+                )
+                .await;
+            if typed.is_err() {
+                return ChatAnswer::Unconfirmed;
+            }
+        }
+        for i in 0..CONFIRM_TRIES {
+            if i > 0 {
+                tokio::time::sleep(CONFIRM_GAP).await;
+            }
+            let Ok(s) = self.screen(&c).await else {
+                continue;
+            };
+            match question::moved_on(&answer, step, question::progress(&s, &qs)) {
+                Moved::Yes => return ChatAnswer::Done,
+                Moved::No => {}
+                Moved::AskLog => {
+                    let r = self.state.lock().unwrap().plan_read();
+                    if let Some(r) = r {
+                        let got = read_chunk(&c, &r).await;
+                        self.state.lock().unwrap().take_read(got, Instant::now());
+                    }
+                    let closed = self
+                        .state
+                        .lock()
+                        .unwrap()
+                        .asked(&id)
+                        .is_some_and(|a| a.state != State::Pending);
+                    if closed {
+                        return ChatAnswer::Done;
+                    }
+                }
+            }
+        }
+        ChatAnswer::Unconfirmed
+    }
+
+    /// Holds `tail_out` (the tail script's output) as the log of `session`
+    /// at `path`, for the agent in front as `pid`; the log's end.
+    #[cfg(test)]
+    pub(crate) fn seed(&self, path: &str, session: &str, pid: i64, tail_out: &str) -> u64 {
+        let t = Term {
+            agent: Some(Agent::Claude),
+            pid: Some(pid),
+            status: None,
+        };
+        let mut st = self.state.lock().unwrap();
+        st.take_lookup(
+            &t,
+            Some(Lookup::Found {
+                path: path.into(),
+                session: session.into(),
+            }),
+            Instant::now(),
+        );
+        let chunk = tail::parse_chunk(tail_out).expect("a tail output");
+        let end = chunk.next;
+        st.take_read(Ok(chunk), Instant::now());
+        end
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn poll_for_test(&self) -> ChatPoll {
+        self.poll_async(false).await
+    }
+
     async fn poll_async(&self, event: bool) -> ChatPoll {
         let began = Instant::now();
         let mut times = Times::default();
         let Some(conn) = self.core.live_conn(&self.machine) else {
-            return self.view("", false, Times("not connected".into()));
+            return self.view("", false, Times("not connected".into()), None);
         };
         let c = conn.client;
         let t = match c
@@ -785,7 +1132,7 @@ impl Chat {
                     .lock()
                     .unwrap()
                     .take_read(Err("terminal".into()), Instant::now());
-                return self.view("", false, times);
+                return self.view("", false, times, None);
             }
         };
         times.mark("get", began);
@@ -813,12 +1160,19 @@ impl Chat {
                 break;
             }
         }
+        let question = self.question_for(&c, &t).await;
         times.mark("total", began);
         let status = t.status.clone().unwrap_or_default();
-        self.view(&status, may_send(&t), times)
+        self.view(&status, may_send(&t), times, question)
     }
 
-    fn view(&self, status: &str, in_front: bool, times: Times) -> ChatPoll {
+    fn view(
+        &self,
+        status: &str,
+        in_front: bool,
+        times: Times,
+        question: Option<ChatQuestion>,
+    ) -> ChatPoll {
         let st = self.state.lock().unwrap();
         let v = st.view();
         let session = st.shown().map(|(_, s)| s).unwrap_or_default();
@@ -861,6 +1215,7 @@ impl Chat {
             gauge_percent: v.gauge.and_then(|g| g.percent()),
             queued: v.queued.clone(),
             timings: times.0,
+            question,
         }
     }
 

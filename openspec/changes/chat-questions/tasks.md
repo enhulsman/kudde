@@ -13,10 +13,10 @@ Fixtures are invented JSONL with the shapes in `design.md` section A.
 - [x] 2.5 Progress read from the screen: next question, review step, gone.
 
 ## 3. Build (Rust)
-- [ ] 3.1 Expose the pending question and its state through the chat's bridge; reuse the send target.
-- [ ] 3.2 Hub tests with the fake core, written first: checks in order, no keys on status or screen mismatch, one `terminal.keys` call per step, no repeat after an unknown outcome, free text through `terminal.send` with force, Skip sends nothing when a check fails, a tap racing the end of the card sends nothing.
-- [ ] 3.3 The answer path in `hub/chat.rs`: `terminal.get`, `terminal.read`, `terminal.keys`, re-read.
-- [ ] 3.4 Run clippy, fmt and the crate suites as CI does.
+- [x] 3.1 Expose the pending question and its state through the chat's bridge; reuse the send target.
+- [x] 3.2 Hub tests with the fake core, written first: checks in order, no keys on status or screen mismatch, one `terminal.keys` call per step, no repeat after an unknown outcome, free text through `terminal.send` with force, Skip sends nothing when a check fails, a tap racing the end of the card sends nothing.
+- [x] 3.3 The answer path in `hub/chat.rs`: `terminal.get`, `terminal.read`, `terminal.keys`, re-read.
+- [x] 3.4 Run clippy, fmt and the crate suites as CI does.
 
 ## 4. Android (tests first in each)
 - [ ] 4.1 State: card, step, chosen, disabled-while-sending, refusal texts; the message-box refusal.

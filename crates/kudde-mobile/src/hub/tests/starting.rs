@@ -10,7 +10,11 @@ use herdr_proto::start as proto;
 /// The start sheet's reads: the desk's layout and the installed-agents check
 /// (a `sh` line; the Changes view's calls run `git`).
 pub(super) fn is_start_read(req: &Value) -> bool {
-    (req["method"] == "machine.exec" && req["params"]["argv"][0] == "sh")
+    // The chat's lookup and log reads are `sh -c` too, but never the start sheet's.
+    let chat = [kudde_chat::locate::SCRIPT, kudde_chat::tail::SCRIPT];
+    (req["method"] == "machine.exec"
+        && req["params"]["argv"][0] == "sh"
+        && !chat.iter().any(|s| req["params"]["argv"][2] == *s))
         || (req["method"] == "doc.get" && req["params"]["name"] == "herdr-app")
 }
 
