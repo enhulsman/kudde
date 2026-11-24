@@ -91,11 +91,17 @@ free-text row, then send the text as one `terminal.send` with `force`, so
 that the text and its Enter land in that row. The text SHALL NOT be sent as
 a chat message and no bubble SHALL show for it. Past 2000 characters the
 field SHALL say so ("Too long: 2000 characters at most") and Send SHALL stay
-disabled.
+disabled. The keyboard SHALL open for this field when "Something else" is
+tapped, and SHALL close when the text is sent or the field is dismissed
+(Back), which closes the field and keeps the card.
 
 #### Scenario: A typed answer
 - **WHEN** Ezra taps "Something else", types "Use Postgres, but through Docker" and taps Send
 - **THEN** the checks pass, the row is focused, the text is sent into it, the card collapses to "Answered: Database" when the result arrives, and no message bubble shows
+
+#### Scenario: The keyboard comes only for the field
+- **WHEN** Ezra taps "Something else"
+- **THEN** the field takes the focus and the keyboard opens for it; after Send the keyboard is gone, and after Back the keyboard and the field are gone and the card stays
 
 #### Scenario: Too long
 - **WHEN** the text holds 2001 characters
@@ -138,8 +144,8 @@ moves the card on, and no keys for it are sent from the card.
 
 ### Requirement: A question where you may choose several
 A question with `multiSelect` SHALL show its options with checkboxes, the
-hint "Choose any number" and a "Send" button, enabled with at least one box
-ticked or one text answer. Tapping Send SHALL send, after the checks, the
+hint "Choose any number", how many are ticked ("N selected", "0 selected" at
+first) and a "Send" button, enabled with at least one box ticked. Tapping Send SHALL send, after the checks, the
 keys that toggle each ticked option and then the key that submits the
 question. The card SHALL report "Could not confirm the answer arrived. Check
 the terminal." when the screen does not move on. The keys for this question
@@ -182,14 +188,21 @@ way when the card ended SHALL send nothing (check one fails).
 - **THEN** the card is gone and the folded call line remains
 
 ### Requirement: The message box while a question card shows
-While a question card shows, the message box SHALL refuse to send with
-"Answer the question above first", keeping the draft. Other refusals keep
-their texts. When no card shows, the refusal for a blocked agent stays "The
-agent is waiting for you in the terminal".
+While a question card shows, the chat's message box SHALL NOT be shown and
+its keyboard SHALL NOT open; a keyboard already open when the card appears
+SHALL close. The draft SHALL be kept. The only keyboard while the card shows
+is the one for "Something else". When the card ends (answered, skipped, or
+gone because the agent moved on or the session changed), the message box
+SHALL show again with its draft. When no card shows, the refusal for a
+blocked agent stays "The agent is waiting for you in the terminal".
 
-#### Scenario: Typing a message under a card
-- **WHEN** Ezra taps send in the message box while the card shows
-- **THEN** nothing is typed, the draft stays and the chat says "Answer the question above first"
+#### Scenario: A card replaces the message box
+- **WHEN** a question card shows while Ezra has a draft in the message box
+- **THEN** the message box and its keyboard are gone, and the card is the last thing above the bottom edge
+
+#### Scenario: The message box comes back
+- **WHEN** the question is answered at the desk
+- **THEN** the card collapses to its quiet line and the message box shows again, holding the draft
 
 #### Scenario: A permission prompt
 - **WHEN** the agent is blocked on a permission prompt with no question card
@@ -209,6 +222,7 @@ The card SHALL use these texts and no others of its own:
 | Step | Question N of M |
 | Last step button | Send answers |
 | Multi-select hint | Choose any number |
+| Multi-select count | `N` selected ("0 selected", "2 selected") |
 | Multi-select button | Send |
 | Preview button | Preview |
 | Preview sheet title | Preview: `<label>` |
@@ -219,7 +233,6 @@ The card SHALL use these texts and no others of its own:
 | Unreadable or unsupported | Open the terminal |
 | Collapsed, answered | Answered: `<header>` (several: the headers joined with ", ") |
 | Collapsed, declined | Skipped: `<header>` |
-| Message box refusal | Answer the question above first |
 
 #### Scenario: Texts of the card
 - **WHEN** the card shows each state above

@@ -90,7 +90,8 @@ is waiting for you in the terminal". The author's own logs hold about 270 such c
   answer; the keys that answer it on the desk are computed in Rust and sent
   with `terminal.keys` after a screen check.
 - A free-text path pastes into the dialog's own text row; Skip sends Esc.
-- The message box says "Answer the question above first" while a card shows.
+- The message box is hidden while a card shows (owner, 2026-11-25; it first
+  refused with a text, which is dropped).
 - TalkBack reads the card in order (accessibility delta).
 - No change to the log reading, the terminal view, the list's cards or the
   Changes view. No new permission, no new herdr-core call (`terminal.keys`,
