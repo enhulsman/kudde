@@ -31,6 +31,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import uniffi.kudde_mobile.ChatAnswer
 import uniffi.kudde_mobile.ChatSent
 import kotlinx.coroutines.withContext
 import uniffi.kudde_mobile.ChatInterface
@@ -95,6 +96,11 @@ fun ChatPolling(visit: ChatVisit, app: KuddeApp, screen: () -> List<String>) {
         val heard = state.poll?.rows?.let { state.announced.next(it, state.live) }.orEmpty()
         if (readerOn) heard.forEach(view::announceForAccessibility)
     }
+    // The question card: its arrival, a step change and a refusal, each heard once.
+    LaunchedEffect(visit, state.poll?.question, state.card.problem) {
+        val heard = state.cardHeard.next(state.poll?.question, state.card.problem?.text)
+        if (readerOn) heard.forEach(view::announceForAccessibility)
+    }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(visit, showing) {
         if (showing) app.chatStates.shown = visit.key
@@ -120,9 +126,15 @@ fun ChatPolling(visit: ChatVisit, app: KuddeApp, screen: () -> List<String>) {
                     }
                     state.turnEnd = nextTurnEnd(state.turnEnd, state.poll?.status, state.poll?.rows.orEmpty(), p.status, p.rows, now)
                     state.poll = p
+                    if (showing) state.card.follow(p.question)
                     switch.onPoll(p)
                     if (switch.chat != showing) break
-                    val wait = if (showing) pollMs(p.status, state.pending, now, state.turnEnd) else WATCH_MS
+                    // An answer on its way or just arrived: the next step shows soon.
+                    val wait = when {
+                        !showing -> WATCH_MS
+                        state.card.busy -> 500L
+                        else -> pollMs(p.status, state.pending, now, state.turnEnd)
+                    }
                     event = withContext(Dispatchers.IO) { chat.waitChange(wait.toUInt()) }
                 }
             } finally {
@@ -168,9 +180,10 @@ fun ChatRoute(
     val waiting = state.pending.isNotEmpty() || state.poll?.status == "working" || state.turnEnd != null
     val clock = rememberUptimeTicker(waiting, everyMs = 250)
     val now = remember(clock) { { clock.value } }
-    BackHandler(enabled = state.viewer != null || state.sheet != null) {
+    BackHandler(enabled = state.viewer != null || state.sheet != null || state.card.preview != null) {
         when {
             state.viewer != null -> state.viewer = null
+            state.card.preview != null -> state.card.preview = null
             state.detail != null -> state.closeDetail(sheetCalls(state.poll?.rows.orEmpty(), state.sheet).orEmpty())
             else -> state.closeSheet()
         }
@@ -186,7 +199,7 @@ fun ChatRoute(
         onPick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
         onSend = {
             val poll = state.poll
-            val out = state.send(poll?.rows.orEmpty(), poll?.status.orEmpty(), SystemClock.uptimeMillis())
+            val out = state.send(poll?.rows.orEmpty(), poll?.status.orEmpty(), SystemClock.uptimeMillis(), card = poll?.question != null)
             val chat = visit.chat
             if (out != null) {
                 if (chat == null) {
@@ -212,7 +225,7 @@ fun ChatRoute(
                         val older = visit.lock.withLock { withContext(Dispatchers.IO) { chat.older() } }
                         state.live.saw(older.rows, SystemClock.uptimeMillis(), live = false)
                         val before = state.poll
-                        state.poll = if (before != null) older.copy(status = before.status, canSend = before.canSend) else older
+                        state.poll = if (before != null) older.copy(status = before.status, canSend = before.canSend, question = before.question) else older
                     } finally {
                         state.loadingOlder = false
                         state.olderLoads++
@@ -224,5 +237,19 @@ fun ChatRoute(
         onChanges = onChanges,
         map = map,
         onMap = onMap,
+        onAnswer = { choice ->
+            // The card has started the step (QuestionCard.start); the hub checks and sends it.
+            val q = state.poll?.question
+            val chat = visit.chat
+            if (q == null || chat == null) {
+                state.card.finished(ChatAnswer.Failed("Not connected"))
+            } else {
+                app.chatScope.launch {
+                    // Under the poll's lock: the answer reads the log too.
+                    val a = visit.lock.withLock { withContext(Dispatchers.IO) { chat.answerQuestion(q.id, q.step, choice) } }
+                    state.card.finished(a)
+                }
+            }
+        },
     )
 }

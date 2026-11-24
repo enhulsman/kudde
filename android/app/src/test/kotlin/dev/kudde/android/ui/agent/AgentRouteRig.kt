@@ -39,6 +39,8 @@ import uniffi.kudde_mobile.ChangesList
 import uniffi.kudde_mobile.ChangesView
 import uniffi.kudde_mobile.ChatFound
 import uniffi.kudde_mobile.ChatHealth
+import uniffi.kudde_mobile.ChatAnswer
+import uniffi.kudde_mobile.ChatChoice
 import uniffi.kudde_mobile.ChatInterface
 import uniffi.kudde_mobile.ChatPoll
 import uniffi.kudde_mobile.ChatRow
@@ -309,6 +311,7 @@ class FakeAgentChat(private val io: AgentIoTracker) : ChatInterface {
     override fun enterAgain() = false
     override fun send(text: String): ChatSent = ChatSent.Typed
     override fun sendWithImages(text: String, images: List<ChatUpload>): ChatSent = ChatSent.Typed
+    override fun answerQuestion(id: String, step: UInt, choice: ChatChoice): ChatAnswer = io.call { ChatAnswer.Done }
     fun answer(row: ChatRow) {
         current = current.copy(rows = current.rows + row)
         signal.release()
