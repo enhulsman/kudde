@@ -278,7 +278,20 @@ finishes a question that was typed in part. Forward is free too: the review
 step lists a question without an answer as "No answer yet" with "Answer",
 and Send answers waits for every answer (the dialog's review lists what was
 typed, so a gap could not be checked). A step moves the focus to what it
-shows; the step is no longer announced.
+shows; the step is no longer announced. Ezra's second try: an answer moves
+on to a later question without an answer, else the review step, gaps and
+all; never back to an earlier question. On the desk, Claude Code's review
+step accepts Submit with a question unanswered (it shows "⚠ Some questions
+are unanswered" and lists only the answered ones; Tab on a question moves on
+without answering; the tool result leaves the question out), which the
+owner's Skip decision may use. Ezra's decision (2026-11-25): on a question
+step the button reads "Skip question" and keeps no answer (moving on as an
+answer does); "Skip all" on the review step is Esc; Send answers goes with
+gaps, a Tab for each question without an answer (`Answer::Pass`, checked
+like an answer: that question on screen first), and the dialog's review is
+checked for the warning line and exactly the answered questions. All
+skipped is "Nothing to send" in the core and a disabled button on the
+phone.
 
 The card's steps no longer follow the screen. The poll's step stays the
 dialog's (for Send's checks and the hub's kept step); the card resets only
