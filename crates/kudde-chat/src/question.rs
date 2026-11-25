@@ -317,9 +317,24 @@ fn is_box(c: char) -> bool {
     matches!(c, '\u{2500}'..='\u{257F}' | '\u{2580}'..='\u{259F}')
 }
 
-/// The screen shows `q`: its text and every option's label.
+/// The dialog on `screen`: from its last header line (the question tabs or
+/// the header, marked ☐ or ☒) down; empty when no dialog shows. The chat
+/// above it may hold an earlier question and its options (phone round 5.1).
+pub fn dialog(screen: &str) -> &str {
+    let mut at = None;
+    let mut pos = 0;
+    for line in screen.split_inclusive('\n') {
+        if line.contains('\u{2610}') || line.contains('\u{2612}') {
+            at = Some(pos);
+        }
+        pos += line.len();
+    }
+    at.map_or("", |a| &screen[a..])
+}
+
+/// The dialog on the screen shows `q`: its text and every option's label.
 pub fn shows(screen: &str, q: &Question) -> bool {
-    shows_folded(&fold(screen), q)
+    shows_folded(&fold(dialog(screen)), q)
 }
 
 fn shows_folded(screen: &str, q: &Question) -> bool {
@@ -341,7 +356,7 @@ pub enum Progress {
 }
 
 pub fn progress(screen: &str, qs: &[Question]) -> Progress {
-    let screen = fold(screen);
+    let screen = fold(dialog(screen));
     // A call with several questions has a review step, and so does one
     // with a multi-select question (5.1); it lists the questions with their
     // answers, so it may hold their texts too.

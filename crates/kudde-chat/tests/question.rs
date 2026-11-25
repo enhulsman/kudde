@@ -515,6 +515,7 @@ fn a_missing_option_label_is_not_a_match() {
 #[test]
 fn a_wrapped_question_is_found() {
     let screen = "\
+│ ☐ Database                     │
 │ Which database should the todo │
 │ app use?                       │
 │ ❯ 1. SQLite (Recommended)      │
@@ -550,6 +551,46 @@ fn of_two_similar_questions_the_one_on_screen_wins() {
     assert_eq!(question::progress(first, &qs), Progress::Question(0));
 }
 
+/// Phone round 5.1: the screen holds the chat above the dialog. An earlier
+/// answer ("· Which database ...? → Postgres") and a prompt naming the same
+/// options matched the first question while the dialog showed the second.
+/// Only the dialog, from its last header line (☐ or ☒) down, is read.
+#[test]
+fn only_the_dialog_is_read_not_the_chat_above_it() {
+    let qs = readable(json!([
+        q(
+            "Which database should the todo app use?",
+            "Database",
+            &["SQLite", "Postgres", "JSON files"]
+        ),
+        q(
+            "How should users log in?",
+            "Login",
+            &["None", "Passkeys", "Email link"]
+        ),
+    ]));
+    let screen = "\
+● Answered Claude's questions:
+  ⎿  · Which database should the todo app use? → Postgres
+❯ Ask me: 'Database' (SQLite, Postgres, JSON files), 'Login' (None, Passkeys, Email link)
+────────────────────────────────────────
+←  ☒ Database  ☐ Login  ✔ Submit  →
+How should users log in?
+❯ 1. None
+  2. Passkeys
+  3. Email link
+  4. Type something.
+";
+    assert_eq!(question::progress(screen, &qs), Progress::Question(1));
+    assert!(!question::shows(screen, &qs[0]));
+    // With no dialog on screen, the chat alone shows no question.
+    let chat_only = "\
+  ⎿  · Which database should the todo app use? → Postgres
+❯ Ask me: 'Database' (SQLite, Postgres, JSON files)
+";
+    assert_eq!(question::progress(chat_only, &qs), Progress::Gone);
+}
+
 // ---- 2.5 progress
 
 #[test]
@@ -558,9 +599,11 @@ fn progress_reads_next_question_review_or_gone() {
         q("Which database?", "Database", &["SQLite", "Postgres"]),
         q("Which login?", "Login", &["Password", "Passkey"]),
     ]));
-    let next = "│ Which login? │\n│ ❯ 1. Password │\n│ 2. Passkey │\n";
+    let next =
+        "│ ☒ Database  ☐ Login  ✔ Submit │\n│ Which login? │\n│ ❯ 1. Password │\n│ 2. Passkey │\n";
     assert_eq!(question::progress(next, &qs), Progress::Question(1));
     let review = "\
+│ ☒ Database  ☒ Login  ✔ Submit           │
 │ Review your answers                     │
 │  ● Which database?                      │
 │    → Postgres                           │
@@ -598,7 +641,7 @@ fn a_single_question_has_no_review_step() {
         "Form",
         &["Submit answers", "Wait"]
     )]));
-    let screen = "│ Shall I submit answers to the form? │\n│ ❯ 1. Submit answers │\n│ 2. Wait │\n";
+    let screen = "│ ☐ Form │\n│ Shall I submit answers to the form? │\n│ ❯ 1. Submit answers │\n│ 2. Wait │\n";
     assert_eq!(question::progress(screen, &qs), Progress::Question(0));
 }
 

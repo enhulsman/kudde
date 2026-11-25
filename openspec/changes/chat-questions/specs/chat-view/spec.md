@@ -8,7 +8,8 @@ terminal's status is `blocked` (with no status kind, or the kind
 `question`); the chat's send target (agent, process, process start, session)
 is unchanged; and the terminal's screen shows the record's dialog (its
 question text and every option label, box-drawing characters and runs of
-spaces folded). The step the card answers is the one the screen shows. When
+spaces folded), read from the dialog's last header line (☐ or ☒) down and
+never from the chat above it, which may hold an earlier question. The step the card answers is the one the screen shows. When
 the record is missing, stale (another session, or its call already has a
 result in the log) or the screen does not show its dialog, while the status
 is `blocked` with the kind `question` or the log holds a call with no result,

@@ -58,6 +58,7 @@ fn login() -> Value {
 
 const DIALOG: &str = "\
 ╭──────────────────────────────────────────────╮
+│ ☐ Database                                   │
 │ Which database should the todo app use?      │
 │ ❯ 1. SQLite (Recommended)                    │
 │      One file, no server.                    │
@@ -73,6 +74,7 @@ const LOGIN: &str = "\
 │   2. Passkey                  │
 ";
 const REVIEW: &str = "\
+│ ☒ Database  ☒ Login  ✔ Submit │
 │ Review your answers           │
 │ ❯ 1. Submit answers           │
 │   2. Cancel                   │
