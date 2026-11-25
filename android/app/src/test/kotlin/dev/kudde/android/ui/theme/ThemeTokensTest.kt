@@ -71,6 +71,7 @@ class ThemeTokensTest {
         "accent" to c.accent,
         "solid" to c.solid,
         "solidFg" to c.solidFg,
+        "successHalo" to c.successHalo,
         "selection" to c.selection,
     )
 

@@ -156,6 +156,7 @@ fun ChatRoute(
     onChanges: (() -> Unit)? = null,
     map: TitleMap? = null,
     onMap: (() -> Unit)? = null,
+    hint: dev.kudde.android.ui.hint.TitleBarHintSetting? = null,
     onTerminal: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -238,6 +239,7 @@ fun ChatRoute(
         onChanges = onChanges,
         map = map,
         onMap = onMap,
+        hint = hint,
         onAnswer = { choice ->
             // The card has started the step (QuestionCard.start) for the call and step it was
             // tapped on, never the latest poll's (5.4 review); the hub checks and sends it.

@@ -177,6 +177,30 @@ class TerminalScreenshotTest {
         capture("terminal-waiting-graphite", session(TermPhase.Waiting, frame), TerminalScreenState())
     }
 
+    /** Render first-run-hint, terminal: the hint under the title bar over the watching grid; graphite, paper and 2x. */
+    @Test fun hintGraphite() = hint("first-run-hint-terminal-graphite", dark = true, font = 1f)
+    @Test fun hintPaper() = hint("first-run-hint-terminal-paper", dark = false, font = 1f)
+    @Test fun hint2x() = hint("first-run-hint-terminal-2x-graphite", dark = true, font = 2f)
+
+    private fun hint(name: String, dark: Boolean, font: Float) {
+        RuntimeEnvironment.setFontScale(font)
+        try {
+            val ui = terminalUi(TitleBarFixtures.hub, TitleBarFixtures.pricing, res)
+            val session = session(TermPhase.Watching, SessionFixture.frame(96, 44, wide = true, bottom = false))
+            val actions = TerminalActions(onBack = {}, onOpen = {}, onSwipe = { false }, onPhoneGrid = {})
+            val setting = dev.kudde.android.ui.hint.TitleBarHintSetting(
+                RuntimeEnvironment.getApplication().getSharedPreferences("hint-golden", android.content.Context.MODE_PRIVATE).also { it.edit().clear().commit() },
+            )
+            captureRoboImage("src/test/snapshots/$name.png") {
+                KuddeTheme(dark = dark) {
+                    TerminalScreen(ui, session, TerminalScreenState(), actions, TerminalInputHandle.None, onChat = {}, onChanges = {}, onMap = {}, hint = setting)
+                }
+            }
+        } finally {
+            RuntimeEnvironment.setFontScale(1f)
+        }
+    }
+
     private fun typing() = TerminalScreenState().apply {
         typing = true
         inputOpen = true

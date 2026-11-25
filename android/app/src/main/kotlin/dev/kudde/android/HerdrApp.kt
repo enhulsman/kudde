@@ -107,6 +107,10 @@ class KuddeApp : Application() {
     lateinit var chatView: ChatViewSetting
         private set
 
+    /** Whether the title bar's hint was closed, in its own preferences file. */
+    lateinit var titleBarHint: dev.kudde.android.ui.hint.TitleBarHintSetting
+        private set
+
     /** Agents or Spaces, the home screen's view chosen last, in its own preferences file. */
     lateinit var homeView: HomeViewSetting
         private set
@@ -135,6 +139,7 @@ class KuddeApp : Application() {
         contrast = ContrastSetting.open(this)
         stayConnected = StayConnectedSetting.open(this)
         chatView = ChatViewSetting.open(this)
+        titleBarHint = dev.kudde.android.ui.hint.TitleBarHintSetting.open(this)
         homeView = HomeViewSetting.open(this)
         pushStore = PushStore.open(this)
         val sink = AndroidAlertSink(this).apply { createChannels() }

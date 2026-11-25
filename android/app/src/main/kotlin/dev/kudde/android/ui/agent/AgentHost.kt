@@ -289,12 +289,13 @@ fun AgentHost(
                         }) else null,
                         onChanges = openChanges,
                         onMap = openOverview,
+                        hint = app.titleBarHint,
                         renderer = renderer,
                     )
                 }
                 AgentScreen.Chat -> ChatRoute(
                     chat, app, ui.header, actions,
-                    onChanges = openChanges, map = ui.map, onMap = openOverview,
+                    onChanges = openChanges, map = ui.map, onMap = openOverview, hint = app.titleBarHint,
                 ) {
                     navigate {
                         app.chatView.choose(chat = false)

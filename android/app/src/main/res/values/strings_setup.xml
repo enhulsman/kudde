@@ -88,4 +88,11 @@
     <string name="p_link_add_yourself">Add it yourself</string>
     <string name="u_continue_row">Continue setup</string>
     <string name="u_continue_row_detail">Opens the step this machine is at</string>
+    <!-- G1 to G6, the title bar hint (task 4.8) -->
+    <string name="hint_title">Move around from this bar</string>
+    <string name="hint_sideways">Swipe sideways for other panes in this tab. At either end it bounces; with one pane it only bounces.</string>
+    <string name="hint_vertical">Swipe up: the next agent that needs you. Down: back.</string>
+    <string name="hint_map">Tap the map: every pane of the tab.</string>
+    <string name="hint_got_it">Got it</string>
+    <string name="hint_talkback">With TalkBack, the title bar\'s actions move around: Next terminal, Previous terminal, Next agent that needs you, Previous agent that needs you. Double tap the map for every pane of the tab.</string>
 </resources>
