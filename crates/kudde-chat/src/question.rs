@@ -17,6 +17,7 @@ pub const TOOL: &str = "AskUserQuestion";
 
 /// The text the dialog's review step shows (design section B).
 const REVIEW: &str = "Submit answers";
+const REVIEW_TITLE: &str = "Review your answers";
 
 /// Questions and options per call the card takes (the tool allows 1 to 4).
 const MAX_QUESTIONS: usize = 4;
@@ -120,11 +121,14 @@ pub fn read_input(input: &Value) -> Shape {
 }
 
 /// Prints the question hook's record of session `$1` (design D1), or
-/// "missing"; only a plain session id is ever read. The hook script is
+/// "missing" when there is none; "unsafe" for a linked directory or file, or
+/// one not the user's own (5.4 review); only a plain session id is ever read. The hook script is
 /// `contrib/claude-code/kudde-question-hook.sh`.
 pub const HOOK_READ_SCRIPT: &str = r#"case $1 in ''|*[!0-9a-f-]*) echo missing; exit 0;; esac
-f="${XDG_STATE_HOME:-$HOME/.local/state}/kudde/questions/$1.json"
-if [ -f "$f" ]; then head -c 1048576 "$f"; else echo missing; fi"#;
+d="${XDG_STATE_HOME:-$HOME/.local/state}/kudde/questions"; f="$d/$1.json"
+if [ -L "$d" ] || [ -L "$f" ]; then echo unsafe
+elif [ -f "$f" ]; then if [ -O "$f" ]; then head -c 1048576 "$f"; else echo unsafe; fi
+elif [ -e "$f" ]; then echo unsafe; else echo missing; fi"#;
 
 /// The call the question hook saved: its id, its session and its shape.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -215,6 +219,28 @@ pub fn focused(screen: &str, row: usize) -> bool {
     screen
         .rfind('\u{276F}')
         .is_some_and(|at| screen[at..].starts_with(&format!("\u{276F} {row}. ")))
+}
+
+/// The focus is on a multi-select question's unnumbered Submit row ("❯    Submit").
+pub fn submit_focused(screen: &str) -> bool {
+    let screen = fold(screen);
+    screen.rfind('\u{276F}').is_some_and(|at| {
+        let rest = &screen[at..];
+        rest == "\u{276F} Submit" || rest.starts_with("\u{276F} Submit ")
+    })
+}
+
+/// The digits that make the screen's ticks on `q`'s option rows match
+/// `ticked` (0-based): one per row that differs. None when a row is not on
+/// the screen.
+pub fn toggles(screen: &str, q: &Question, ticked: &[usize]) -> Option<Vec<String>> {
+    let mut out = Vec::new();
+    for i in 0..q.options.len() {
+        if row_ticked(screen, i + 1)? != ticked.contains(&i) {
+            out.push(digit(i + 1)?);
+        }
+    }
+    Some(out)
 }
 
 /// The notes field of a preview question is open: the screen shows its
@@ -338,11 +364,46 @@ pub fn shows(screen: &str, q: &Question) -> bool {
     shows_folded(&fold(dialog(screen)), q)
 }
 
+/// The question's text, then each option as its numbered row ("2. Postgres",
+/// "2. [ ] Postgres" on multi-select) in the call's order: a dialog with the
+/// same labels in another order is not this question (5.4 review).
 fn shows_folded(screen: &str, q: &Question) -> bool {
     let text = fold(&q.text);
-    !text.is_empty()
-        && screen.contains(&text)
-        && q.options.iter().all(|o| screen.contains(&fold(&o.label)))
+    if text.is_empty() || !screen.contains(&text) {
+        return false;
+    }
+    let mut from = 0;
+    for (i, o) in q.options.iter().enumerate() {
+        let (n, label) = (i + 1, fold(&o.label));
+        let rows = [
+            format!("{n}. {label}"),
+            format!("{n}. [ ] {label}"),
+            format!("{n}. [\u{2714}] {label}"),
+        ];
+        let Some((at, len)) = rows
+            .iter()
+            .filter_map(|r| screen[from..].find(r.as_str()).map(|p| (p, r.len())))
+            .min()
+        else {
+            return false;
+        };
+        from += at + len;
+    }
+    true
+}
+
+/// The review step of this call, ready to send: the line after the header
+/// reads "Review your answers", every question of the call is listed ("●
+/// <question>"), and the focus is on "1. Submit answers" (5.4 review: a
+/// question or option holding the words is not the review step, nor is
+/// another call's review, nor Cancel in focus).
+fn review_shown(dialog: &str, qs: &[Question]) -> bool {
+    let body = fold(dialog.split_once('\n').map_or("", |(_, b)| b));
+    body.starts_with(REVIEW_TITLE)
+        && qs
+            .iter()
+            .all(|q| body.contains(&format!("\u{25CF} {}", fold(&q.text))))
+        && body.contains(&format!("\u{276F} 1. {REVIEW}"))
 }
 
 /// Where the dialog is, as the screen shows it (design D4).
@@ -357,13 +418,14 @@ pub enum Progress {
 }
 
 pub fn progress(screen: &str, qs: &[Question]) -> Progress {
-    let screen = fold(dialog(screen));
+    let d = dialog(screen);
     // A call with several questions has a review step, and so does one
     // with a multi-select question (5.1); it lists the questions with their
     // answers, so it may hold their texts too.
-    if (qs.len() > 1 || qs.iter().any(|q| q.multi)) && screen.contains(REVIEW) {
+    if (qs.len() > 1 || qs.iter().any(|q| q.multi)) && review_shown(d, qs) {
         return Progress::Review;
     }
+    let screen = fold(d);
     // Of two questions found (one text inside the other), the longer one.
     qs.iter()
         .enumerate()

@@ -169,9 +169,20 @@ class QuestionCard {
         note = ""
     }
 
-    /** A tap: false while an answer is on its way. */
-    fun start(choice: ChatChoice): Boolean {
+    /** The call and step the answer on its way was tapped on; the route sends it for these. */
+    var sentFor: Pair<String, UInt>? = null
+        private set
+
+    /**
+     * A tap on the card drawn for [on]: false while an answer is on its way,
+     * or when the card has moved on to another step or call since that frame
+     * (5.4 review: an old frame's option must not answer the new step).
+     */
+    fun start(choice: ChatChoice, on: ChatQuestion? = null): Boolean {
         if (busy) return false
+        val key = on?.let { Triple(it.id, it.step, it.review) } ?: shown
+        if (on != null && shown != null && key != shown) return false
+        sentFor = key?.let { it.first to it.second }
         chosen = when (choice) {
             is ChatChoice.Pick -> choice.index.toInt()
             is ChatChoice.Note -> choice.index.toInt()
@@ -182,7 +193,9 @@ class QuestionCard {
         return true
     }
 
-    fun finished(a: ChatAnswer) {
+    /** The answer's result; one for a step the card has left ([forKey] not its step) changes nothing. */
+    fun finished(a: ChatAnswer, forKey: Pair<String, UInt>? = null) {
+        if (forKey != null && shown?.let { it.first to it.second } != forKey) return
         sending = false
         problem = problemOf(a)
         done = a == ChatAnswer.Done
@@ -243,7 +256,7 @@ fun QuestionCard(
 ) {
     val ask = q.questions.getOrNull(q.step.toInt()).takeIf { q.readable && !q.review }
     fun answer(choice: ChatChoice) {
-        if (card.start(choice)) onAnswer(choice)
+        if (card.start(choice, q)) onAnswer(choice)
     }
     // Back closes the own-words field (and its keyboard), keeping the card.
     BackHandler(enabled = card.otherOpen) { card.otherOpen = false }

@@ -18,6 +18,8 @@ it and saves it, one file per session, as
     ${XDG_STATE_HOME:-~/.local/state}/kudde/questions/<session id>.json
 
 The files are readable by you only, and a file older than a day is removed.
+The hook writes only into a directory you own that nobody else can write,
+and kudde reads no record that is a link or belongs to someone else.
 The hook prints nothing and always exits 0, so it never changes what Claude
 Code does. kudde still checks the terminal's screen before it sends any key:
 a question the screen does not show is never answered from the phone.

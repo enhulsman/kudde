@@ -207,7 +207,7 @@ fun ChatScreen(
                 onChoose = {
                     val choice = chooseThis(i, state.card.note)
                     state.card.preview = null
-                    if (state.card.start(choice)) onAnswer(choice)
+                    if (state.card.start(choice, q)) onAnswer(choice)
                 },
                 onClose = { state.card.preview = null },
             )

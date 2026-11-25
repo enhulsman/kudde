@@ -19,7 +19,17 @@ case $session in
   '' | *[!0-9a-f-]*) exit 0 ;;
 esac
 mkdir -p "$dir" 2>/dev/null || exit 0
-tmp="$dir/.$session.$$"
+# Only into a directory of our own that nobody else may write: not a link,
+# owned by us, no group or other write bit (on it or on its parent).
+for d in "$dir" "${dir%/*}"; do
+  [ -L "$d" ] && exit 0
+  [ -d "$d" ] && [ -O "$d" ] || exit 0
+  case $(ls -ld "$d" 2>/dev/null) in
+    d????-??-*) ;;
+    *) exit 0 ;;
+  esac
+done
+tmp=$(mktemp "$dir/.$session.XXXXXX" 2>/dev/null) || exit 0
 if printf '%s' "$input" > "$tmp" 2>/dev/null; then
   mv -f "$tmp" "$dir/$session.json" 2>/dev/null
 fi

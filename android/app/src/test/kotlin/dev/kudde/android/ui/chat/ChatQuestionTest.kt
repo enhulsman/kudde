@@ -176,6 +176,32 @@ class ChatQuestionTest {
         assertNull(card.chosen)
     }
 
+    // 5.4 review (Codex): a tap carries the card it was made on.
+    @Test
+    fun aTapMadeOnAStepThatMovedOnIsDropped() {
+        val card = QuestionCard()
+        val q = question(database, login)
+        card.follow(q)
+        card.follow(q.copy(step = 1u))
+        assertFalse("the old frame's option must not answer the new step", card.start(ChatChoice.Pick(1u), q))
+        assertFalse(card.sending)
+        assertTrue(card.start(ChatChoice.Pick(0u), q.copy(step = 1u)))
+        assertEquals("toolu_01" to 1u, card.sentFor)
+    }
+
+    @Test
+    fun anOldAnswersResultLeavesTheNewStepAlone() {
+        val card = QuestionCard()
+        val q = question(database, login)
+        card.follow(q)
+        assertTrue(card.start(ChatChoice.Pick(1u), q))
+        val key = card.sentFor
+        card.follow(q.copy(step = 1u))
+        card.finished(ChatAnswer.Changed, key)
+        assertNull("the new step shows no refusal of the old one", card.problem)
+        assertFalse(card.busy)
+    }
+
     @Test
     fun whatAnAnswerSaysWhenNothingWasSent() {
         assertEquals(CardProblem(ALREADY_ANSWERED, terminal = false), problemOf(ChatAnswer.AlreadyAnswered))
