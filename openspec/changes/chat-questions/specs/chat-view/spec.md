@@ -26,7 +26,9 @@ area. With no result yet but a status that is not `blocked`, no card SHALL
 show. Unknown fields in the call SHALL be ignored. A call the card cannot
 show (no questions, more than four, an option without a label, or any shape
 the parser cannot read) SHALL show its question text as plain text with
-"Open the terminal" and no choices.
+"Open the terminal" and no choices. While a card shows, an `AskUserQuestion`
+call with no result SHALL NOT show as a line in the conversation (the card
+stands for it); a row left with nothing to show SHALL be hidden.
 
 #### Scenario: A single question
 - **WHEN** Claude Code, with the question hook installed, asks "Which database should the todo app use?" with options "SQLite (Recommended)" and "Postgres", the status turns blocked and the screen shows that dialog
@@ -35,6 +37,10 @@ the parser cannot read) SHALL show its question text as plain text with
 #### Scenario: A call with no result and no block
 - **WHEN** the log holds an AskUserQuestion call with no result and the status is idle
 - **THEN** no card shows and the call stays a folded line
+
+#### Scenario: The waiting call's line hides behind its card
+- **WHEN** a card shows and the log holds its `AskUserQuestion` call with no result yet
+- **THEN** the chat shows no "AskUserQuestion · running" line for it (other calls folded with it stay); when the result arrives, the answered line shows as before
 
 #### Scenario: No hook installed
 - **WHEN** the status is blocked with the kind `question` and the desk holds no record for the session
@@ -273,7 +279,10 @@ way when the card ended SHALL send nothing (check one fails).
 While a question card shows, the chat's message box SHALL NOT be shown and
 its keyboard SHALL NOT open; a keyboard already open when the card appears
 SHALL close. The draft SHALL be kept. The only keyboard while the card shows
-is the one for "Something else". When the card ends (answered, skipped, or
+is the one for "Something else" (and the note in a preview sheet). Every send
+from the card (an option, Send, the multi-select Send, Choose this, Skip,
+Send answers) SHALL close that keyboard, and nothing in the card SHALL take
+the focus while an answer is on its way. When the card ends (answered, skipped, or
 gone because the agent moved on or the session changed), the message box
 SHALL show again with its draft. When no card shows, the refusal for a
 blocked agent stays "The agent is waiting for you in the terminal".
@@ -281,6 +290,10 @@ blocked agent stays "The agent is waiting for you in the terminal".
 #### Scenario: A card replaces the message box
 - **WHEN** a question card shows while Ezra has a draft in the message box
 - **THEN** the message box and its keyboard are gone, and the card is the last thing above the bottom edge
+
+#### Scenario: No keyboard while the multi-select answer is sent
+- **WHEN** Ezra ticks an option, types "Berries" in "Something else" and taps the multi-select Send
+- **THEN** the keyboard closes at the tap and stays closed for the whole send
 
 #### Scenario: The message box comes back
 - **WHEN** the question is answered at the desk
