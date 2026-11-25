@@ -61,17 +61,31 @@ fun highlighted(id: Int, value: String, highlight: Color): AnnotatedString {
 
 /** Render 8: "Trust this machine?"; [onTrust] gets back the [prompt] it showed. */
 @Composable
-fun TrustDialog(prompt: HostKeyPrompt, error: String?, onTrust: (HostKeyPrompt) -> Unit, onCancel: () -> Unit) {
+fun TrustDialog(
+    prompt: HostKeyPrompt,
+    error: String?,
+    onTrust: (HostKeyPrompt) -> Unit,
+    onCancel: () -> Unit,
+    /** The password way's dialog (R3 to R5): the line that prints the key at the machine, to compare. Null: the command's wording. */
+    compareCommand: String? = null,
+) {
     val c = KuddeTheme.colors
     ModalDialog(stringResource(R.string.trust_title), onDismiss = onCancel) {
-        DialogText(highlighted(R.string.trust_body, prompt.address, c.fg))
-        MonoBox(listOf(prompt.algorithm, prompt.fingerprint))
-        DialogText(stringResource(R.string.trust_warning))
+        if (compareCommand == null) {
+            DialogText(highlighted(R.string.trust_body, prompt.address, c.fg))
+            MonoBox(listOf(prompt.algorithm, prompt.fingerprint))
+            DialogText(stringResource(R.string.trust_warning))
+        } else {
+            DialogText(highlighted(R.string.r_trust_body, prompt.address, c.fg))
+            MonoBox(listOf(prompt.algorithm, prompt.fingerprint))
+            DialogText(stringResource(R.string.r_trust_compare, prompt.machine))
+            MonoBox(listOf(compareCommand))
+        }
         DialogNote(stringResource(R.string.trust_after))
         error?.let { ErrorText(it) }
         DialogButtons {
             DialogButton(stringResource(R.string.cancel), onCancel)
-            DialogButton(stringResource(R.string.trust_confirm), { onTrust(prompt) }, solid = true)
+            DialogButton(stringResource(if (compareCommand == null) R.string.trust_confirm else R.string.r_trust_confirm), { onTrust(prompt) }, solid = true)
         }
     }
 }

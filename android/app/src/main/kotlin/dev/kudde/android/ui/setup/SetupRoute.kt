@@ -28,6 +28,7 @@ import dev.kudde.android.ui.addmachine.FormErrors
 import dev.kudde.android.ui.addmachine.derivedMachineName
 import dev.kudde.android.ui.addmachine.validateMachine
 import dev.kudde.android.ui.components.rememberWallClock
+import dev.kudde.android.ui.setup.KeyChoice
 import dev.kudde.android.ui.flows.MachineFlows
 import dev.kudde.android.ui.hostkey.hostKeyPrompt
 import dev.kudde.android.ui.machines.PhoneAlerts
@@ -80,7 +81,8 @@ fun SetupRoute(app: KuddeApp, flows: MachineFlows) {
         1 -> AddressRoute(flows, snapshot, machine)
         2 -> KeyRoute(app, flows, snapshot, machine)
         3 -> ConnectedStep(
-            ConnectedUi(flows.machine.orEmpty(), (machine?.state as? MachineState.Connected)?.version, snapshot.agents.count { it.machine == flows.machine }),
+            ConnectedUi(flows.machine.orEmpty(), (machine?.state as? MachineState.Connected)?.version, snapshot.agents.count { it.machine == flows.machine },
+                first = snapshot.machines.none { it.name != flows.machine && it.lastConnectedMs != null }),
             onBack = { flows.back() },
             onContinue = flows::continueToAlerts,
         )
@@ -141,17 +143,23 @@ private fun KeyRoute(app: KuddeApp, flows: MachineFlows, snapshot: uniffi.kudde_
     } else null
     val state = machine?.state
     val reach = machine?.let { reachText(it, res) }?.takeIf { flows.failure(snapshot) != null }
+    val secret = flows.password.field as? TextFieldStateSecret
+    val panel = flows.password.panel
+    val passwordUi = if (flows.keyDetail == KeyChoice.PASSWORD && secret != null && machine != null && panel != PasswordPanel.Hidden) {
+        PasswordUi(passwordView(panel, name, machine.user, machine.host, machine.port.toInt(), res), secret.state)
+    } else null
     val ui = KeyUi(
         machine = name,
         user = machine?.user.orEmpty(),
         notice = keyNotice(state ?: MachineState.Connecting, reach),
-        describe = flows.keyDetail == null,
+        describe = flows.keyDetail != KeyChoice.MANUAL && passwordUi == null,
         command = command,
         copied = copied,
         canCompare = hostKeyPrompt(snapshot, name) != null,
         passwordOffered = !flows.password.unavailable,
         canTryAgain = state == MachineState.KeyRejected || state == MachineState.NotInstalled || state is MachineState.Unreachable,
         connecting = state == MachineState.Connecting && hostKeyPrompt(snapshot, name) == null,
+        password = passwordUi,
     )
     KeyStep(
         ui,
@@ -169,6 +177,9 @@ private fun KeyRoute(app: KuddeApp, flows: MachineFlows, snapshot: uniffi.kudde_
             onCompare = flows::compareFingerprint,
             onTryAgain = flows::retry,
             onChangeAddress = flows::changeAddress,
+            onAddKey = flows::addKey,
+            onClosePassword = { flows.back() },
+            onPasswordTryAgain = { if (panel == PasswordPanel.StillRefused) flows.retry() else flows.chooseKey(KeyChoice.PASSWORD) },
         ),
     )
 }

@@ -612,7 +612,7 @@ everything from the warmer one except its bar weight.
 - **Earned moment** on step 3: a tick disc in a soft ring of the connected
   colour, once, with S4 under C2 for the first machine only.
 - **Motion** is small and never loops except the working ring: the current bar
-  segment sweeps in (200 ms), a tick draws (180 ms), the success disc pops once
+  segment sweeps in (200 ms), a tick fades in (180 ms), the success disc pops once
   (250 ms). With animations off nothing moves.
 - **Token**: `successHalo` (connected at 18%) in `design-tokens.json`, both
   themes; every other value is an existing token. The connected colour now also

@@ -1,5 +1,6 @@
 package dev.kudde.android.ui.setup
 
+import androidx.compose.foundation.text.input.clearText
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -18,6 +19,13 @@ class StringSecretField : SecretField {
     var value: String = ""
     override fun text() = value
     override fun clear() { value = "" }
+}
+
+/** The production field: Compose's text state, whose text is read once for the call and emptied after. */
+class TextFieldStateSecret : SecretField {
+    val state = androidx.compose.foundation.text.input.TextFieldState()
+    override fun text() = state.text.toString()
+    override fun clear() = state.clearText()
 }
 
 /** The two Rust calls of the password way; each answers once, off the caller's thread. */

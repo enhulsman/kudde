@@ -46,6 +46,7 @@
     <string name="m_command_name">Setup command</string>
     <string name="d_body">First connection to %1$s. The command you ran there printed its host key. Trust it only if the fingerprint is the same:</string>
     <string name="d_warning">Not the same? Do not trust it. Something else answered at that address: Tailscale SSH, or another SSH server on that port.</string>
+    <string name="k_card_choose">Choose how to add it, signed in as %1$s.</string>
     <string name="k_rejected_title">%1$s did not accept the phone key.</string>
     <string name="k_rejected_detail">Choose how to add it, signed in as %2$s. If you already ran the command, check that its quotes arrived unchanged, then try again.</string>
     <string name="k_missing_title">herdr-core was not found on %1$s.</string>
@@ -95,4 +96,29 @@
     <string name="hint_map">Tap the map: every pane of the tab.</string>
     <string name="hint_got_it">Got it</string>
     <string name="hint_talkback">With TalkBack, the title bar\'s actions move around: Next terminal, Previous terminal, Next agent that needs you, Previous agent that needs you. Double tap the map for every pane of the tab.</string>
+    <!-- R3 to R16, S1 to S4: the password way (design.md "Texts"; R8 is replaced by the checklist S1 to S3) -->
+    <string name="r_trust_body">First connection to %1$s. If this key is not your machine\'s, whoever answered gets the password, and setup can still look as if it worked. Trust it only if you are sure.</string>
+    <string name="r_trust_compare">To compare, run this at %1$s:</string>
+    <string name="r_trust_confirm">Trust and continue</string>
+    <string name="r_field_label">Password for %2$s on %1$s</string>
+    <string name="r_field_label_prompt">Password for %2$s on %1$s: %3$s</string>
+    <string name="r_add_key">Add the key</string>
+    <string name="s_signing_in">Signing in as %1$s</string>
+    <string name="s_adding_key">Adding the key</string>
+    <string name="s_signing_out">Signing out</string>
+    <string name="s_first_machine">Your first machine is set up.</string>
+    <string name="r_wrong_title">%1$s did not accept the password for %2$s.</string>
+    <string name="r_wrong_detail">Check it and try again. Nothing was changed there.</string>
+    <string name="r_again_title">%1$s refused the password again.</string>
+    <string name="r_again_detail">Some machines lock an account after a few wrong tries. To be safe, choose "Add it yourself" to run the command at the machine.</string>
+    <string name="r_none_title">%1$s does not take a password over SSH.</string>
+    <string name="r_none_detail">Choose "Add it yourself" to run the command at the machine: it needs none.</string>
+    <string name="r_more_title">%1$s asks for more than a password, such as a code.</string>
+    <string name="r_more_detail">Choose "Add it yourself" to run the command at the machine.</string>
+    <string name="r_dropped_title">The connection to %1$s dropped while the key was being added.</string>
+    <string name="r_dropped_detail">kudde cannot tell whether it went in. Try again: adding it twice does no harm.</string>
+    <string name="r_code_title">The setup on %1$s ended with code %2$d.</string>
+    <string name="r_code_detail">Choose "Add it yourself" to run the command at the machine to see why.</string>
+    <string name="r_refused_title">kudde added the key, but %1$s still refuses it.</string>
+    <string name="r_refused_detail">The SSH server may read keys from another file, or refuse the home directory\'s permissions (StrictModes). The setup guide\'s check script finds out which.</string>
 </resources>
