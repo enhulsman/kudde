@@ -80,7 +80,7 @@ Checks, from the repository root unless said otherwise:
 
 ## 5. Docs
 
-- [ ] 5.1 README: first-launch welcome and mandatory setup until a real connection, Machines addition/repair and "Setting up" rewritten to the app's four steps, with the command described and not repeated and the password way (D12) in two sentences, the second saying that confirming a wrong host key there gives the password away without any sign in the app; "What you need" gains the screen lock; the herdr-core link at `README.md:75` corrected to `herdrdev/herdr-core`; a short "When setup stops" list (host keys outside `/etc/ssh`, fish, an account with a group-writable default mode, `scripts/check-restricted-key.sh`). Public wording rules apply. Check: `git diff --stat` touches only `README.md`; the pre-commit denylist passes
+- [x] 5.1 README: first-launch welcome and mandatory setup until a real connection, Machines addition/repair and "Setting up" rewritten to the app's four steps, with the command described and not repeated and the password way (D12) in two sentences, the second saying that confirming a wrong host key there gives the password away without any sign in the app; "What you need" gains the screen lock; the herdr-core link at `README.md:75` corrected to `herdrdev/herdr-core`; a short "When setup stops" list (host keys outside `/etc/ssh`, fish, an account with a group-writable default mode, `scripts/check-restricted-key.sh`). Public wording rules apply. Check: `git diff --stat` touches only `README.md`; the pre-commit denylist passes
 - [ ] 5.2 Release notes draft, shown to the owner word for word before it ships **[owner]**
 
 ## 6. On a phone
