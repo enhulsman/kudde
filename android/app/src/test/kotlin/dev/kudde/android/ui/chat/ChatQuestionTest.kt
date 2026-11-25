@@ -256,21 +256,31 @@ class ChatQuestionTest {
         tap(NEXT_QUESTION)
         assertTrue(shows("Question 2 of 2"))
         tap("Option 2 of 2, Passkey, The phone signs in.")
-        // The first question has no answer: on to it, then the review step.
-        assertTrue(shows("Question 1 of 2"))
-        tap(NEXT_QUESTION)
-        tap(NEXT_QUESTION)
+        // Ezra's second try: after the last question the review step, gaps and all.
         assertTrue(s.card.onReview)
         assertTrue(shows(SOME_UNANSWERED))
         assertNotNull(node("Which database should the todo app use?, $NO_ANSWER_YET"))
-        assertTrue("Send answers waits for every answer", node(SEND_ANSWERS)!!.config.contains(SemanticsProperties.Disabled))
-        assertNotNull("Skip still declines", node(SKIP))
+        // Ezra, 2026-11-25: Send answers goes with gaps, like the desk.
+        assertFalse("one answer is enough to send", node(SEND_ANSWERS)!!.config.contains(SemanticsProperties.Disabled))
+        assertNotNull("Skip all still declines", node(SKIP_ALL))
+        assertNull(node(SKIP_QUESTION))
         tap(answerSpoken("Which database should the todo app use?"))
         tap("Option 1 of 2, SQLite (Recommended), One file, no server.")
         assertTrue("back on the review step", s.card.onReview)
         assertTrue(shows(ALL_ANSWERED))
         tap(SEND_ANSWERS)
         assertEquals(listOf<ChatChoice>(ChatChoice.Submit), answers)
+    }
+
+    @Test
+    fun anAnswerMovesOnToTheNextOpenQuestionNeverBackToAnEarlierOne() {
+        val s = show(poll(question(plainDb, login, tests), rows))
+        tap(NEXT_QUESTION)
+        tap("Option 2 of 2, Passkey, The phone signs in.")
+        assertTrue(shows("Question 3 of 3"))
+        tap("Option 1 of 2, Unit")
+        assertTrue("question 1 is still open, yet the review step comes", s.card.onReview)
+        assertNotNull(node("Which database should the todo app use?, $NO_ANSWER_YET"))
     }
 
     // Ezra's try (2026-11-25): with TalkBack the focus jumped to the title bar's Back.
@@ -342,12 +352,99 @@ class ChatQuestionTest {
         assertEquals(listOf<ChatChoice>(ChatChoice.Pick(1u)), answers)
     }
 
+    // Ezra, 2026-11-25: "Skip question" on a question step, "Skip all" on the review step.
     @Test
-    fun skipDeclinesFromAnyStep() {
+    fun skipQuestionMovesOnWithoutAnAnswerAndSendsNothing() {
+        val s = show(poll(question(plainDb, login, tests), rows))
+        assertNull("a question step has no Skip all", node(SKIP_ALL))
+        assertNull(node(SKIP))
+        tap(SKIP_QUESTION)
+        assertTrue(answers.isEmpty())
+        assertTrue(shows("Question 2 of 3"))
+        assertFalse(0 in s.card.answers)
+        assertTrue("the focus lands on the next question", focusOn("Question 2 of 3. Which login should it have?"))
+        tap("Option 2 of 2, Passkey, The phone signs in.")
+        tap("Option 1 of 2, Unit")
+        assertTrue(s.card.onReview)
+        assertTrue(shows(SOME_UNANSWERED))
+        assertNotNull(node("Which database should the todo app use?, $NO_ANSWER_YET"))
+        tap(SEND_ANSWERS)
+        assertEquals(listOf<ChatChoice>(ChatChoice.Submit), answers)
+        // The gap goes as Skip: the hub tabs past it, as the desk does.
+        assertEquals(listOf(ChatChoice.Skip, ChatChoice.Pick(1u), ChatChoice.Pick(0u)), s.card.answersToSend())
+    }
+
+    @Test
+    fun skipQuestionOnTheLastQuestionGoesToTheReviewStep() {
+        val s = show(poll(question(plainDb, login), rows))
+        tap("Option 2 of 2, Postgres, Needs a running server.")
+        tap(SKIP_QUESTION)
+        assertTrue(s.card.onReview)
+        assertTrue(focusOn(SOME_UNANSWERED))
+        assertNotNull(node("Which login should it have?, $NO_ANSWER_YET"))
+        assertTrue(answers.isEmpty())
+    }
+
+    @Test
+    fun skipQuestionOpenedFromTheReviewStepDropsItsAnswerAndComesBack() {
+        val s = show(poll(question(plainDb, login), rows))
+        tap("Option 2 of 2, Postgres, Needs a running server.")
+        tap("Option 2 of 2, Passkey, The phone signs in.")
+        tap(changeSpoken("Which database should the todo app use?"))
+        tap(SKIP_QUESTION)
+        assertTrue("back on the review step", s.card.onReview)
+        assertNotNull(node("Which database should the todo app use?, $NO_ANSWER_YET"))
+        assertTrue(focusOn("Which database should the todo app use?, $NO_ANSWER_YET"))
+        assertTrue(answers.isEmpty())
+    }
+
+    @Test
+    fun skipAllOnTheReviewStepDeclinesTheWholeCall() {
         show(poll(question(plainDb, login), rows))
         tap("Option 2 of 2, Postgres, Needs a running server.")
+        tap("Option 2 of 2, Passkey, The phone signs in.")
+        tap(SKIP_ALL)
+        assertEquals(listOf<ChatChoice>(ChatChoice.Skip), answers)
+    }
+
+    @Test
+    fun withNothingAnsweredThereIsNothingToSend() {
+        val s = show(poll(question(plainDb, login), rows))
+        tap(SKIP_QUESTION)
+        tap(SKIP_QUESTION)
+        assertTrue(s.card.onReview)
+        assertTrue(node(SEND_ANSWERS)!!.config.contains(SemanticsProperties.Disabled))
+        assertFalse(node(SKIP_ALL)!!.config.contains(SemanticsProperties.Disabled))
+        assertTrue(answers.isEmpty())
+    }
+
+    @Test
+    fun aMultiSelectQuestionSkipsLikeTheOthers() {
+        val s = show(poll(question(fruit), rows))
+        tap(SKIP_QUESTION)
+        assertTrue(s.card.onReview)
+        assertNotNull(node("Which fruits would you put in a fruit salad?, $NO_ANSWER_YET"))
+        assertTrue(answers.isEmpty())
+    }
+
+    @Test
+    fun aCallWithoutAReviewStepKeepsItsOneSkip() {
+        show(poll(question(plainDb), rows))
+        assertNull(node(SKIP_QUESTION))
+        assertNull(node(SKIP_ALL))
         tap(SKIP)
         assertEquals(listOf<ChatChoice>(ChatChoice.Skip), answers)
+    }
+
+    @Test
+    fun talkBackReadsSkipQuestionAndSkipAllAsTheyStand() {
+        show(poll(question(plainDb, login), rows))
+        // Each is one stop that says what it does on its own.
+        assertTrue(SKIP_QUESTION in reading("Question 1 of 2. Which database should the todo app use?"))
+        tap(SKIP_QUESTION)
+        tap(SKIP_QUESTION)
+        val review = reading(SOME_UNANSWERED)
+        assertEquals(review.indexOf(SEND_ANSWERS) + 1, review.indexOf(SKIP_ALL))
     }
 
     @Test
@@ -728,7 +825,7 @@ class ChatQuestionTest {
         assertNotNull(node("Which login should it have?, Passkey"))
         assertNull(node(SOMETHING_ELSE))
         assertFalse(shows("Question "))
-        assertNotNull(node(SKIP))
+        assertNotNull(node(SKIP_ALL))
         tap(SEND_ANSWERS)
         assertEquals(listOf<ChatChoice>(ChatChoice.Submit), answers)
         assertEquals(listOf<ChatChoice>(ChatChoice.Pick(1u), ChatChoice.Pick(1u)), s.card.answersToSend())
@@ -943,8 +1040,11 @@ class ChatQuestionTest {
         assertEquals("Change the answer to: Which login?", changeSpoken("Which login?"))
         assertEquals("Note: Bigger titles", noteLine("Bigger titles"))
         assertEquals("Typed 2 of 3 answers, then stopped. Check the terminal.", stoppedText(2, 3))
-        // Drafts (Ezra's try), to the owner before they ship.
-        assertEquals("Some questions have no answer yet. Answer them to send, or skip them all.", SOME_UNANSWERED)
+        // Ezra, 2026-11-25: Skip question, Skip all, and Send with gaps.
+        assertEquals("Some questions have no answer yet. Send what you have, or skip them all.", SOME_UNANSWERED)
+        assertEquals("Skip question", SKIP_QUESTION)
+        assertEquals("Skip all", SKIP_ALL)
+        // Ezra's try, approved verbatim by the owner.
         assertEquals("No answer yet", NO_ANSWER_YET)
         assertEquals("Answer", ANSWER)
         assertEquals("Answer the question: Which login?", answerSpoken("Which login?"))

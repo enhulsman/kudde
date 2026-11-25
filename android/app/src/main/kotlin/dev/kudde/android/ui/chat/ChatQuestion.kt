@@ -61,8 +61,11 @@ const val PREVIOUS_QUESTION = "Previous question"
 const val NEXT_QUESTION = "Next question"
 const val NEXT = "Next"
 const val CHANGE = "Change"
-// Drafts (Ezra's try, 2026-11-25), to the owner verbatim before they ship.
-const val SOME_UNANSWERED = "Some questions have no answer yet. Answer them to send, or skip them all."
+// Ezra, 2026-11-25: Skip question, Skip all, Send with gaps (replaces "Skip sends Esc" on question steps).
+const val SOME_UNANSWERED = "Some questions have no answer yet. Send what you have, or skip them all."
+const val SKIP_QUESTION = "Skip question"
+const val SKIP_ALL = "Skip all"
+// Ezra's try (2026-11-25), approved verbatim by the owner.
 const val NO_ANSWER_YET = "No answer yet"
 const val ANSWER = "Answer"
 fun answerSpoken(question: String) = "Answer the question: $question"
@@ -198,8 +201,11 @@ class QuestionCard {
     /** Moving on is free (Ezra's try): any question, then the review step. */
     val canNext: Boolean get() = !onReview
 
-    /** Every question has an answer: Send answers is possible. */
+    /** Every question has an answer. */
     val allAnswered: Boolean get() = count > 0 && (0 until count).all { it in answers }
+
+    /** Send answers is possible: one answer is enough, gaps go as Tab (Ezra, 2026-11-25). */
+    val anyAnswered: Boolean get() = (0 until count).any { it in answers }
 
     /** A step the person took (not a new call): the card moves the focus to what it shows. */
     var stepped by mutableStateOf(0)
@@ -280,22 +286,38 @@ class QuestionCard {
     }
 
     /**
-     * Keeps [choice] for the question shown and moves on: to the next
-     * question without an answer, or the review step when every question
-     * has one. Nothing is sent (D11).
+     * Keeps [choice] for the question shown and moves on: to the next later
+     * question without an answer, or else the review step, gaps and all
+     * (Ezra's second try: never back to an earlier question). Nothing is
+     * sent (D11).
      */
     fun keep(choice: ChatChoice) {
         if (busy || onReview) return
         answers = answers + (at to choice)
+        moveOn()
+    }
+
+    /**
+     * "Skip question": the question shown keeps no answer ("No answer yet",
+     * one kept before goes) and the card moves on as after an answer.
+     * Nothing is sent; Send answers tabs past it.
+     */
+    fun pass() {
+        if (busy || onReview) return
+        answers = answers - at
+        moveOn()
+    }
+
+    private fun moveOn() {
         problem = null
         val was = at
         if (fromReview) return step(count, row = was)
-        val open = ((at + 1 until count) + (0 until at)).firstOrNull { it !in answers }
+        val open = (at + 1 until count).firstOrNull { it !in answers }
         step(open ?: count)
     }
 
-    /** The kept answers in the call's order, for Send answers. */
-    fun answersToSend(): List<ChatChoice> = (0 until count).mapNotNull { answers[it] }
+    /** The kept answers in the call's order, for Send answers; a question without one goes as Skip (Tab past it). */
+    fun answersToSend(): List<ChatChoice> = (0 until count).map { answers[it] ?: ChatChoice.Skip }
 
     /** Opens the preview sheet of option [o] with an empty note. */
     fun openPreview(o: ChatOption) {
@@ -397,6 +419,13 @@ fun QuestionCard(
     fun answer(choice: ChatChoice) {
         if (held && choice !is ChatChoice.Skip) card.keep(choice) else send(choice)
     }
+    // In a held call Skip leaves this question unanswered; elsewhere it declines the call.
+    @Composable
+    fun SkipButton() = if (held) {
+        OutlineButton(SKIP_QUESTION, enabled = !card.busy) { card.pass() }
+    } else {
+        OutlineButton(SKIP, enabled = !card.busy) { send(ChatChoice.Skip) }
+    }
     // Back closes the own-words field (and its keyboard), keeping the card.
     BackHandler(enabled = card.otherOpen) { card.otherOpen = false }
     // A send on its way, from any button or TalkBack: no keyboard.
@@ -468,8 +497,8 @@ fun QuestionCard(
                 q.readable && card.onReview -> Footer(
                     left = {},
                     right = {
-                        SolidButton(SEND_ANSWERS, enabled = !card.busy && card.allAnswered) { send(ChatChoice.Submit) }
-                        OutlineButton(SKIP, enabled = !card.busy) { send(ChatChoice.Skip) }
+                        SolidButton(SEND_ANSWERS, enabled = !card.busy && card.anyAnswered) { send(ChatChoice.Submit) }
+                        OutlineButton(SKIP_ALL, enabled = !card.busy) { send(ChatChoice.Skip) }
                     },
                 )
                 ask == null || !ask.answerable -> Footer(left = {}, right = { OutlineButton(OPEN_TERMINAL, enabled = true, onClick = onTerminal) })
@@ -478,7 +507,7 @@ fun QuestionCard(
                     endsWithCircle = true,
                     left = { CountText(pluralSelected(card.chosenCount)) },
                     right = {
-                        OutlineButton(SKIP, enabled = !card.busy) { send(ChatChoice.Skip) }
+                        SkipButton()
                         // The ticks and the typed answer together (owner, 2026-11-25), kept until Send answers.
                         SendCircle(enabled = !card.busy && card.canSendMulti, label = NEXT) {
                             answer(ChatChoice.Multi(card.ticked.sorted().map { it.toUInt() }, card.typedAnswer))
@@ -487,10 +516,10 @@ fun QuestionCard(
                     below = otherProblem(card.otherText),
                 )
                 // A question with previews has no free-text row in the dialog: no Something else there.
-                hasPreviews(ask) -> Footer(left = {}, right = { OutlineButton(SKIP, enabled = !card.busy) { send(ChatChoice.Skip) } })
+                hasPreviews(ask) -> Footer(left = {}, right = { SkipButton() })
                 else -> Footer(
                     left = { if (card.otherOpen) Other(card, focusOther, held, ::answer) else SomethingElse(enabled = !card.busy) { card.otherOpen = true } },
-                    right = { OutlineButton(SKIP, enabled = !card.busy) { send(ChatChoice.Skip) } },
+                    right = { SkipButton() },
                     below = otherProblem(card.otherText).takeIf { card.otherOpen },
                     fieldOpen = card.otherOpen,
                 )
