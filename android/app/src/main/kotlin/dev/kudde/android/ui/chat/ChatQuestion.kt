@@ -55,6 +55,14 @@ const val OPEN_TERMINAL = "Open the terminal"
 const val NOT_CONNECTED = "Not connected. Nothing was sent."
 const val NOTE_HINT = "Note (optional)"
 const val CHOOSE_THIS = "Choose this"
+// Drafts (design D11), to the owner verbatim before they ship.
+const val PREVIOUS_QUESTION = "Previous question"
+const val NEXT_QUESTION = "Next question"
+const val NEXT = "Next"
+const val CHANGE = "Change"
+fun changeSpoken(question: String) = "Change the answer to: $question"
+fun noteLine(note: String) = "Note: $note"
+fun stoppedText(sent: Int, of: Int) = "Typed $sent of $of answers, then stopped. Check the terminal."
 const val ALL_ANSWERED = "All questions answered. Send your answers, or skip them all."
 const val NO_HOOK = "The agent asked a question in the terminal. To answer it here, add the question hook on the desk."
 
@@ -94,7 +102,7 @@ fun optionSpoken(i: Int, of: Int, o: ChatOption, checked: Boolean? = null): Stri
 /** Why nothing was sent, or that it was not confirmed, and whether the terminal helps. */
 data class CardProblem(val text: String, val terminal: Boolean)
 
-fun problemOf(a: ChatAnswer): CardProblem? = when (a) {
+fun problemOf(a: ChatAnswer, of: Int = 0): CardProblem? = when (a) {
     ChatAnswer.Done -> null
     ChatAnswer.AlreadyAnswered -> CardProblem(ALREADY_ANSWERED, terminal = false)
     ChatAnswer.Changed -> CardProblem(QUESTION_CHANGED, terminal = false)
@@ -102,21 +110,56 @@ fun problemOf(a: ChatAnswer): CardProblem? = when (a) {
     ChatAnswer.NotConnected -> CardProblem(NOT_CONNECTED, terminal = false)
     // A check that could not be made: the terminal is where to look (owner, 2026-11-24).
     is ChatAnswer.Failed -> CardProblem(NOT_CONFIRMED, terminal = true)
+    // Sending the kept answers stopped halfway (D11).
+    is ChatAnswer.Stopped -> CardProblem(stoppedText(a.sent.toInt(), of), terminal = true)
 }
 
+/** The dialog of this call ends on a review step (several questions, or a multi-select one): the phone keeps the answers until Send (D11). */
+fun hasReview(q: ChatQuestion) = q.questions.size > 1 || q.questions.any { it.multi }
+
+/** What the review step lists for [c] to [ask]: the label, the typed text, or the ticked labels and the typed text. */
+fun answerText(ask: ChatAsk, c: ChatChoice): String = when (c) {
+    is ChatChoice.Pick -> ask.options.getOrNull(c.index.toInt())?.label.orEmpty()
+    is ChatChoice.Note -> ask.options.getOrNull(c.index.toInt())?.label.orEmpty()
+    is ChatChoice.Other -> c.text
+    is ChatChoice.Multi -> (c.indices.sorted().mapNotNull { ask.options.getOrNull(it.toInt())?.label } + listOfNotNull(c.text)).joinToString(", ")
+    else -> ""
+}
+
+/** A note kept with an option, shown beneath its answer on the review step. */
+fun answerNote(c: ChatChoice): String? = (c as? ChatChoice.Note)?.text?.takeIf { it.isNotBlank() }
+
 /**
- * What one card holds besides the poll: the option tapped, whether an answer
- * is on its way, the own-words field and the open preview. All of it belongs
- * to one step of one call: a new step or call starts it afresh. Main thread.
+ * What one card holds besides the poll: the answers kept per question (D11),
+ * the question the phone shows, how many answers an earlier send typed, the
+ * own-words field, the ticks, the open preview, and whether a send is on its
+ * way. All of it belongs to one call: a new call starts it afresh; the
+ * dialog's own step (the poll's) does not move the card. Main thread.
  */
 class QuestionCard {
-    private var shown: Triple<String, UInt, Boolean>? = null
+    /** The call the card holds answers for. */
+    var shownId by mutableStateOf<String?>(null)
+        private set
+    private var count = 0
+
+    /** The question the phone shows (from 0); [count] is the review step. */
+    var at by mutableStateOf(0)
+        private set
+
+    /** The answers kept so far, by question. */
+    var answers by mutableStateOf<Map<Int, ChatChoice>>(emptyMap())
+        private set
+
+    /** Answers an earlier send typed before it stopped; the next send goes on from there. */
+    var sent by mutableStateOf(0)
+        private set
+
     var chosen by mutableStateOf<Int?>(null)
         private set
     var sending by mutableStateOf(false)
         private set
 
-    /** The step's answer arrived: the card stays disabled until the poll shows the next step. */
+    /** The answer arrived: the card stays disabled until the poll ends it. */
     private var done by mutableStateOf(false)
     var problem by mutableStateOf<CardProblem?>(null)
         private set
@@ -137,31 +180,81 @@ class QuestionCard {
     /** Ticks plus the typed answer: the multi-select count. */
     val chosenCount: Int get() = ticked.size + (if (typedAnswer != null) 1 else 0)
 
-    /** The multi-select Send: something chosen, and the typed answer within its limit. */
+    /** The multi-select button: something chosen, and the typed answer within its limit. */
     val canSendMulti: Boolean get() = chosenCount > 0 && otherText.length <= OTHER_MAX
+
+    /** The phone shows the review step. */
+    val onReview: Boolean get() = count > 0 && at >= count
+
+    /** The next question is open: the one shown has an answer. */
+    val canNext: Boolean get() = !onReview && at in answers
 
     fun toggle(i: Int) {
         if (!busy) ticked = if (i in ticked) ticked - i else ticked + i
     }
 
-    /** Buttons are disabled: an answer is on its way or arrived for this step. */
+    /** Buttons are disabled: an answer is on its way or arrived. */
     val busy: Boolean get() = sending || done
 
-    /** The poll's card: a new call or step forgets what was tapped. */
+    /** The poll's card: a new call forgets everything; the dialog's step does not move the card. */
     fun follow(q: ChatQuestion?) {
-        val key = q?.let { Triple(it.id, it.step, it.review) }
-        if (key == shown) return
-        shown = key
-        chosen = null
+        if (q?.id == shownId) return
+        // A card that never held a call has nothing to forget (what was set on it before stays).
+        val fresh = shownId == null && answers.isEmpty() && !sending && !done
+        shownId = q?.id
+        count = q?.questions?.size ?: 0
+        if (fresh && q != null) return
+        answers = emptyMap()
+        sent = 0
         sending = false
         done = false
         problem = null
+        show(0)
+    }
+
+    /** Shows question [i] (or the review step at [count]) with its kept answer restored. */
+    fun show(i: Int) {
+        at = i.coerceIn(0, count.coerceAtLeast(0))
+        val a = answers[at]
+        chosen = when (a) {
+            is ChatChoice.Pick -> a.index.toInt()
+            is ChatChoice.Note -> a.index.toInt()
+            else -> null
+        }
+        ticked = (a as? ChatChoice.Multi)?.indices?.map { it.toInt() }?.toSet().orEmpty()
+        otherText = when (a) {
+            is ChatChoice.Other -> a.text
+            is ChatChoice.Multi -> a.text.orEmpty()
+            else -> ""
+        }
         otherOpen = false
-        otherText = ""
         preview = null
         note = ""
-        ticked = emptySet()
     }
+
+    fun previous() {
+        if (!busy && at > 0) show(at - 1)
+    }
+
+    fun next() {
+        if (!busy && canNext) show(at + 1)
+    }
+
+    /**
+     * Keeps [choice] for the question shown and moves on: to the next
+     * question without an answer, or the review step when every question
+     * has one. Nothing is sent (D11).
+     */
+    fun keep(choice: ChatChoice) {
+        if (busy || onReview) return
+        answers = answers + (at to choice)
+        problem = null
+        val open = ((at + 1 until count) + (0 until at)).firstOrNull { it !in answers }
+        show(open ?: count)
+    }
+
+    /** The kept answers in the call's order, for Send answers. */
+    fun answersToSend(): List<ChatChoice> = (0 until count).mapNotNull { answers[it] }
 
     /** Opens the preview sheet of option [o] with an empty note. */
     fun openPreview(o: ChatOption) {
@@ -169,51 +262,53 @@ class QuestionCard {
         note = ""
     }
 
-    /** The call and step the answer on its way was tapped on; the route sends it for these. */
+    /** The call the send on its way was tapped on; the route sends it for this call. */
     var sentFor: Pair<String, UInt>? = null
         private set
 
     /**
-     * A tap on the card drawn for [on]: false while an answer is on its way,
-     * or when the card has moved on to another step or call since that frame
-     * (5.4 review: an old frame's option must not answer the new step).
+     * A send from the card drawn for [on] (an answer at once, Skip, or Send
+     * answers): false while one is on its way, or when the card has moved to
+     * another call since that frame (5.4 review).
      */
     fun start(choice: ChatChoice, on: ChatQuestion? = null): Boolean {
         if (busy) return false
-        val key = on?.let { Triple(it.id, it.step, it.review) } ?: shown
-        if (on != null && shown != null && key != shown) return false
-        sentFor = key?.let { it.first to it.second }
+        if (on != null && shownId != null && on.id != shownId) return false
+        val id = on?.id ?: shownId
+        sentFor = id?.let { it to at.toUInt() }
         chosen = when (choice) {
             is ChatChoice.Pick -> choice.index.toInt()
             is ChatChoice.Note -> choice.index.toInt()
-            else -> null
+            else -> chosen
         }
         sending = true
         problem = null
         return true
     }
 
-    /** The answer's result; one for a step the card has left ([forKey] not its step) changes nothing. */
+    /** The send's result; one for a call the card has left ([forKey] another call) changes nothing. */
     fun finished(a: ChatAnswer, forKey: Pair<String, UInt>? = null) {
-        if (forKey != null && shown?.let { it.first to it.second } != forKey) return
+        if (forKey != null && forKey.first != shownId) return
         sending = false
-        problem = problemOf(a)
         done = a == ChatAnswer.Done
-        if (!done) chosen = null
+        if (a is ChatAnswer.Stopped) sent = a.sent.toInt()
+        problem = problemOf(a, count)
+        if (!done && !onReview) chosen = answers[at]?.let { (it as? ChatChoice.Pick)?.index?.toInt() ?: (it as? ChatChoice.Note)?.index?.toInt() }
     }
 }
 
 /**
  * What TalkBack hears of the card, each once: the card's arrival with its
- * question, a step change ("Send answers" for the last), and a refusal when
- * it appears.
+ * question, a step change on the phone ("Send answers" for the review step),
+ * and a refusal when it appears.
  */
 class CardHeard {
     private var id: String? = null
-    private var step: Pair<UInt, Boolean>? = null
+    private var step: Int? = null
     private var problem: String? = null
 
-    fun next(q: ChatQuestion?, problem: String?): List<String> {
+    /** [at]: the question the phone shows; the question count is the review step. */
+    fun next(q: ChatQuestion?, problem: String?, at: Int = 0): List<String> {
         if (q == null) {
             id = null
             step = null
@@ -221,12 +316,11 @@ class CardHeard {
             return emptyList()
         }
         val out = mutableListOf<String>()
-        val at = q.step to q.review
         if (q.id != id) {
-            out += "$QUESTION_FROM_AGENT. ${shownText(q)}"
+            out += "$QUESTION_FROM_AGENT. ${shownText(q, at)}"
         } else if (at != step) {
-            // The last step is heard as its button (owner, 2026-11-24).
-            out += if (q.review) SEND_ANSWERS else stepLine(q.step.toInt() + 1, q.questions.size)
+            // The review step is heard as its button (owner, 2026-11-24).
+            out += if (at >= q.questions.size) SEND_ANSWERS else stepLine(at + 1, q.questions.size)
         }
         id = q.id
         step = at
@@ -235,8 +329,8 @@ class CardHeard {
         return out
     }
 
-    private fun shownText(q: ChatQuestion): String =
-        q.questions.getOrNull(q.step.toInt())?.text ?: q.questions.firstOrNull()?.text ?: q.texts.firstOrNull()
+    private fun shownText(q: ChatQuestion, at: Int): String =
+        q.questions.getOrNull(at)?.text ?: q.questions.firstOrNull()?.text ?: q.texts.firstOrNull()
             ?: NO_HOOK.takeIf { q.hookMissing }.orEmpty()
 }
 
@@ -254,17 +348,24 @@ fun QuestionCard(
     modifier: Modifier = Modifier,
     focusOther: Boolean = true,
 ) {
-    val ask = q.questions.getOrNull(q.step.toInt()).takeIf { q.readable && !q.review }
-    fun answer(choice: ChatChoice) {
+    val held = q.readable && hasReview(q)
+    // The route follows the poll; a card shown on its own (previews, tests) follows its call here.
+    LaunchedEffect(q.id, card.shownId) { if (card.shownId != q.id) card.follow(q) }
+    val ask = q.questions.getOrNull(card.at).takeIf { q.readable && !card.onReview }
+    fun send(choice: ChatChoice) {
         if (card.start(choice, q)) onAnswer(choice)
+    }
+    // An answer: kept on the phone in a call with a review step (D11), sent at once in the others.
+    fun answer(choice: ChatChoice) {
+        if (held && choice !is ChatChoice.Skip) card.keep(choice) else send(choice)
     }
     // Back closes the own-words field (and its keyboard), keeping the card.
     BackHandler(enabled = card.otherOpen) { card.otherOpen = false }
-    // An answer on its way, from any button or TalkBack: no keyboard until the card moves on.
+    // A send on its way, or an answer kept, from any button or TalkBack: no keyboard.
     val focusManager = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
-    LaunchedEffect(card.busy) {
-        if (card.busy) {
+    LaunchedEffect(card.busy, card.at) {
+        if (card.busy || !card.otherOpen) {
             focusManager.clearFocus()
             keyboard?.hide()
         }
@@ -274,22 +375,34 @@ fun QuestionCard(
         body = {
             if (!q.readable) for (t in q.texts) QuestionTitle(t)
             if (!q.readable && q.hookMissing) CardText(NO_HOOK)
-            if (q.readable && q.review) CardText(ALL_ANSWERED)
+            if (q.readable && card.onReview) {
+                CardText(ALL_ANSWERED)
+                for ((i, a) in q.questions.withIndex()) {
+                    val c = card.answers[i] ?: continue
+                    AnswerRow(a.text, answerText(a, c), answerNote(c)?.let(::noteLine), enabled = !card.busy) { card.show(i) }
+                }
+            }
             if (ask != null) {
-                if (q.questions.size > 1) StepLine(stepLine(q.step.toInt() + 1, q.questions.size))
+                if (q.questions.size > 1) {
+                    StepNav(
+                        stepLine(card.at + 1, q.questions.size),
+                        back = (card.at > 0 && !card.busy).takeIf { card.at > 0 }?.let { { card.previous() } },
+                        forward = card.canNext.takeIf { it && !card.busy }?.let { { card.next() } },
+                    )
+                }
                 QuestionTitle(ask.text)
                 if (ask.multi && ask.answerable) Hint(CHOOSE_ANY)
             }
             card.problem?.let { p -> Notice(p.text, if (p.terminal) onTerminal else null) }
-            if (ask != null) Options(ask, card, focusOther, ::answer)
+            if (ask != null) Options(ask, card, focusOther, held, ::answer)
         },
         footer = {
             when {
-                q.review -> Footer(
+                q.readable && card.onReview -> Footer(
                     left = {},
                     right = {
-                        SolidButton(SEND_ANSWERS, enabled = !card.busy) { answer(ChatChoice.Submit) }
-                        OutlineButton(SKIP, enabled = !card.busy) { answer(ChatChoice.Skip) }
+                        SolidButton(SEND_ANSWERS, enabled = !card.busy) { send(ChatChoice.Submit) }
+                        OutlineButton(SKIP, enabled = !card.busy) { send(ChatChoice.Skip) }
                     },
                 )
                 ask == null || !ask.answerable -> Footer(left = {}, right = { OutlineButton(OPEN_TERMINAL, enabled = true, onClick = onTerminal) })
@@ -298,19 +411,19 @@ fun QuestionCard(
                     endsWithCircle = true,
                     left = { CountText(pluralSelected(card.chosenCount)) },
                     right = {
-                        OutlineButton(SKIP, enabled = !card.busy) { answer(ChatChoice.Skip) }
-                        // The one send: the ticks and the typed answer together (owner, 2026-11-25).
-                        SendCircle(enabled = !card.busy && card.canSendMulti) {
+                        OutlineButton(SKIP, enabled = !card.busy) { send(ChatChoice.Skip) }
+                        // The ticks and the typed answer together (owner, 2026-11-25), kept until Send answers.
+                        SendCircle(enabled = !card.busy && card.canSendMulti, label = NEXT) {
                             answer(ChatChoice.Multi(card.ticked.sorted().map { it.toUInt() }, card.typedAnswer))
                         }
                     },
                     below = otherProblem(card.otherText),
                 )
                 // A question with previews has no free-text row in the dialog: no Something else there.
-                hasPreviews(ask) -> Footer(left = {}, right = { OutlineButton(SKIP, enabled = !card.busy) { answer(ChatChoice.Skip) } })
+                hasPreviews(ask) -> Footer(left = {}, right = { OutlineButton(SKIP, enabled = !card.busy) { send(ChatChoice.Skip) } })
                 else -> Footer(
-                    left = { if (card.otherOpen) Other(card, focusOther, ::answer) else SomethingElse(enabled = !card.busy) { card.otherOpen = true } },
-                    right = { OutlineButton(SKIP, enabled = !card.busy) { answer(ChatChoice.Skip) } },
+                    left = { if (card.otherOpen) Other(card, focusOther, held, ::answer) else SomethingElse(enabled = !card.busy) { card.otherOpen = true } },
+                    right = { OutlineButton(SKIP, enabled = !card.busy) { send(ChatChoice.Skip) } },
                     below = otherProblem(card.otherText).takeIf { card.otherOpen },
                     fieldOpen = card.otherOpen,
                 )
@@ -324,7 +437,7 @@ private fun pluralSelected(n: Int): String = stringResource(R.string.chat_questi
 
 /** The options: tappable rows for a single choice, ticks for several, plain rows when the card cannot answer. */
 @Composable
-private fun Options(ask: ChatAsk, card: QuestionCard, focusOther: Boolean, answer: (ChatChoice) -> Unit) {
+private fun Options(ask: ChatAsk, card: QuestionCard, focusOther: Boolean, held: Boolean, answer: (ChatChoice) -> Unit) {
     val n = ask.options.size
     for ((i, o) in ask.options.withIndex()) {
         val enabled = !card.busy && ask.answerable
@@ -354,9 +467,9 @@ private fun Options(ask: ChatAsk, card: QuestionCard, focusOther: Boolean, answe
         )
     }
     if (ask.multi && ask.answerable) {
-        // The typed answer is one more ticked row; the footer's Send takes it with the ticks.
+        // The typed answer is one more ticked row; the footer's button takes it with the ticks.
         when {
-            card.otherOpen -> OtherRow { Other(card, focusOther, answer, multi = true) }
+            card.otherOpen -> OtherRow { Other(card, focusOther, held, answer, multi = true) }
             card.typedAnswer != null -> TypedRow(
                 card.otherText,
                 enabled = !card.busy,
@@ -369,10 +482,10 @@ private fun Options(ask: ChatAsk, card: QuestionCard, focusOther: Boolean, answe
 
 /**
  * The own-words field: it takes the focus (and the keyboard) when it opens;
- * Send gives both back. Send is enabled for 1 to 2000 characters.
+ * its button gives both back, enabled for 1 to 2000 characters.
  */
 @Composable
-private fun RowScope.Other(card: QuestionCard, takeFocus: Boolean, answer: (ChatChoice) -> Unit, multi: Boolean = false) {
+private fun RowScope.Other(card: QuestionCard, takeFocus: Boolean, held: Boolean, answer: (ChatChoice) -> Unit, multi: Boolean = false) {
     val text = card.otherText
     val focus = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
@@ -386,7 +499,8 @@ private fun RowScope.Other(card: QuestionCard, takeFocus: Boolean, answer: (Chat
         lead = { if (multi) CheckBox(text.isNotBlank()) else Pencil() },
         // On multi-select the footer's one Send takes the text with the ticks.
         send = if (multi) null else ({
-            SendCircle(enabled = !card.busy && canSendOther(text), small = true) {
+            // Kept until Send answers in a call with a review step ("Next"), sent at once otherwise.
+            SendCircle(enabled = !card.busy && canSendOther(text), small = true, label = if (held) NEXT else SEND) {
                 focusManager.clearFocus()
                 keyboard?.hide()
                 answer(ChatChoice.Other(text))

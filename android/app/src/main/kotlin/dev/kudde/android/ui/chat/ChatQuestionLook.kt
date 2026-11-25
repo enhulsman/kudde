@@ -51,6 +51,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
@@ -115,6 +116,73 @@ internal fun CardSurface(modifier: Modifier, body: @Composable ColumnScope.() ->
 @Composable
 internal fun StepLine(text: String) {
     BasicText(text, style = KuddeType.secondary.copy(color = KuddeTheme.colors.dim), modifier = Modifier.padding(start = TEXT_START, end = TEXT_START, bottom = 6.dp))
+}
+
+/**
+ * "Question N of M" with the previous and next controls (D11): chevrons in
+ * 48 dp touch targets, read as "Previous question" and "Next question"; a
+ * null action draws the chevron dimmed and disabled.
+ */
+@Composable
+internal fun StepNav(text: String, back: (() -> Unit)?, forward: (() -> Unit)?) {
+    Row(
+        Modifier.fillMaxWidth().padding(start = TEXT_START - 4.dp, end = INSET - 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        NavChevron(LineIcon.ChevronLeft, PREVIOUS_QUESTION, back)
+        BasicText(text, style = KuddeType.secondary.copy(color = KuddeTheme.colors.dim), modifier = Modifier.weight(1f))
+        NavChevron(LineIcon.ChevronRight, NEXT_QUESTION, forward)
+    }
+}
+
+@Composable
+private fun NavChevron(icon: LineIcon, label: String, onClick: (() -> Unit)?) {
+    val c = KuddeTheme.colors
+    Box(
+        Modifier.size(TOUCH).clickable(enabled = onClick != null, role = Role.Button) { onClick?.invoke() }
+            .semantics { contentDescription = label },
+        contentAlignment = Alignment.Center,
+    ) {
+        LineIconImage(icon, if (onClick != null) c.fg else c.dim, 18.dp)
+    }
+}
+
+/**
+ * One kept answer on the review step (D11): the question above its answer
+ * (and its note), one stop; then its change control, a stop of its own that
+ * goes back to the question.
+ */
+@Composable
+internal fun AnswerRow(question: String, answer: String, note: String?, enabled: Boolean, onChange: () -> Unit) {
+    val c = KuddeTheme.colors
+    Row(
+        Modifier.fillMaxWidth().drawBehind { hairline(c.border) },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(
+            Modifier.weight(1f).padding(start = ROW_START, top = KuddeSpacing.s8, bottom = KuddeSpacing.s8)
+                .clearAndSetSemantics { contentDescription = listOfNotNull(question, answer, note).joinToString(", ") },
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            BasicText(question, style = KuddeType.secondary.copy(color = c.muted, lineHeight = 18.sp))
+            BasicText(answer, style = KuddeType.rowName.copy(color = c.fg, lineHeight = 20.sp))
+            if (note != null) BasicText(note, style = KuddeType.secondary.copy(color = c.muted, lineHeight = 18.sp))
+        }
+        Box(
+            Modifier.heightIn(min = TOUCH).padding(end = INSET - 12.dp)
+                .clickable(enabled = enabled, role = Role.Button, onClick = onChange)
+                .clearAndSetSemantics {
+                    contentDescription = changeSpoken(question)
+                    role = Role.Button
+                    if (!enabled) disabled()
+                    onClick { onChange(); true }
+                }
+                .padding(horizontal = 12.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            BasicText(CHANGE, style = KuddeType.settingRow.copy(color = if (enabled) c.fg else c.dim, fontWeight = FontWeight.Medium))
+        }
+    }
 }
 
 @Composable
@@ -439,11 +507,11 @@ internal fun SolidButton(label: String, enabled: Boolean, onClick: () -> Unit) {
  * 32 dp in the footer, 28 dp ([small]) inside the own-words field.
  */
 @Composable
-internal fun SendCircle(enabled: Boolean, small: Boolean = false, onClick: () -> Unit) {
+internal fun SendCircle(enabled: Boolean, small: Boolean = false, label: String = SEND, onClick: () -> Unit) {
     val c = KuddeTheme.colors
     val size: Dp = if (small) 28.dp else 32.dp
     Box(
-        Modifier.size(TOUCH).clickable(enabled = enabled, role = Role.Button, onClick = onClick).semantics { contentDescription = SEND },
+        Modifier.size(TOUCH).clickable(enabled = enabled, role = Role.Button, onClick = onClick).semantics { contentDescription = label },
         contentAlignment = Alignment.Center,
     ) {
         Box(Modifier.size(size).clip(CircleShape).background(if (enabled) c.solid else c.selected), contentAlignment = Alignment.Center) {

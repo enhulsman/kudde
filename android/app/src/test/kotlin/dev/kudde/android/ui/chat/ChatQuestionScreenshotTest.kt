@@ -14,6 +14,8 @@ import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import uniffi.kudde_mobile.ChatAsk
+import uniffi.kudde_mobile.ChatAnswer
+import uniffi.kudde_mobile.ChatChoice
 import uniffi.kudde_mobile.ChatFound
 import uniffi.kudde_mobile.ChatHealth
 import uniffi.kudde_mobile.ChatOption
@@ -198,8 +200,40 @@ class ChatQuestionScreenshotTest {
     }
 
     // The two body texts (owner, 2026-11-25): the review step and a desk without the question hook.
+    // The review step lists the kept answers, each with Change (D11, owner 2026-11-25).
     @Test
-    fun reviewStep() = capture("review", one(database, login, step = 2u).copy(review = true))
+    fun reviewStep() {
+        val q = one(database, login)
+        capture("review", q) {
+            ChatState().apply {
+                card.follow(q)
+                card.keep(ChatChoice.Note(1u, "Bigger titles please"))
+                card.keep(ChatChoice.Pick(0u))
+            }
+        }
+    }
+
+    // A later question: the step line with its previous and next controls.
+    @Test
+    fun secondQuestion() {
+        val q = one(database, login)
+        capture("second", q) { ChatState().apply { card.follow(q); card.keep(ChatChoice.Pick(1u)) } }
+    }
+
+    // Sending that stopped halfway: the notice on the review step.
+    @Test
+    fun stoppedHalfway() {
+        val q = one(database, login)
+        capture("stopped", q) {
+            ChatState().apply {
+                card.follow(q)
+                card.keep(ChatChoice.Pick(1u))
+                card.keep(ChatChoice.Pick(0u))
+                card.start(ChatChoice.Submit, q)
+                card.finished(ChatAnswer.Stopped(1u), card.sentFor)
+            }
+        }
+    }
 
     @Test
     fun noHook() = capture(

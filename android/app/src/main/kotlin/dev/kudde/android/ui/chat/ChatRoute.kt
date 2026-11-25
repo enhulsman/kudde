@@ -32,6 +32,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import uniffi.kudde_mobile.ChatAnswer
+import uniffi.kudde_mobile.ChatChoice
 import uniffi.kudde_mobile.ChatSent
 import kotlinx.coroutines.withContext
 import uniffi.kudde_mobile.ChatInterface
@@ -97,8 +98,8 @@ fun ChatPolling(visit: ChatVisit, app: KuddeApp, screen: () -> List<String>) {
         if (readerOn) heard.forEach(view::announceForAccessibility)
     }
     // The question card: its arrival, a step change and a refusal, each heard once.
-    LaunchedEffect(visit, state.poll?.question, state.card.problem) {
-        val heard = state.cardHeard.next(state.poll?.question, state.card.problem?.text)
+    LaunchedEffect(visit, state.poll?.question, state.card.problem, state.card.at) {
+        val heard = state.cardHeard.next(state.poll?.question, state.card.problem?.text, state.card.at)
         if (readerOn) heard.forEach(view::announceForAccessibility)
     }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -245,9 +246,21 @@ fun ChatRoute(
             if (key == null || chat == null) {
                 state.card.finished(ChatAnswer.NotConnected)
             } else {
+                // Skip declines at once; Send answers sends the kept answers (D11), from the first
+                // not yet typed; an answer at once (a call without a review step) is a send of one.
+                val answers = when (choice) {
+                    is ChatChoice.Skip -> null
+                    is ChatChoice.Submit -> state.card.answersToSend()
+                    else -> listOf(choice)
+                }
+                val from = if (choice is ChatChoice.Submit) state.card.sent.toUInt() else 0u
                 app.chatScope.launch {
                     // Under the poll's lock: the answer reads the log too.
-                    val a = visit.lock.withLock { withContext(Dispatchers.IO) { chat.answerQuestion(key.first, key.second, choice) } }
+                    val a = visit.lock.withLock {
+                        withContext(Dispatchers.IO) {
+                            if (answers == null) chat.answerQuestion(key.first, key.second, choice) else chat.sendAnswers(key.first, answers, from)
+                        }
+                    }
                     state.card.finished(a, key)
                 }
             }
