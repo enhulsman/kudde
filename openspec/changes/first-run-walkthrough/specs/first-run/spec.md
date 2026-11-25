@@ -137,7 +137,9 @@ SHALL keep today's "Could not start the connections" with its reason and
 
 ### Requirement: Setup is four steps, the same for every machine
 Adding a machine SHALL be one flow of four steps in a fixed order, each on
-its own screen under the title "Set up a machine" with "Step n of 4": step 1
+its own screen under the title "Set up a machine" with a four-segment step
+bar that TalkBack reads as "Step n of 4" (the bar replaces any step text):
+step 1
 "Where is it?", step 2 "This phone's key", step 3 "Connected", step 4
 "Alerts (optional)". The welcome's
 "Set up a machine" and the Machines screen's "Add machine" SHALL both open
@@ -149,7 +151,7 @@ connected, step 4 only from step 3. Steps 1 to 3 SHALL NOT be skipped; step
 #### Scenario: From the welcome
 - **GIVEN** no saved setup checkpoint
 - **WHEN** the person taps "Set up a machine"
-- **THEN** step 1 shows, titled "Set up a machine", reading "Step 1 of 4" and "Where is it?"
+- **THEN** step 1 shows, titled "Set up a machine", with its step bar on the first segment, announced as "Step 1 of 4", and "Where is it?"
 
 #### Scenario: A second machine
 - **GIVEN** one machine is connected
@@ -409,9 +411,11 @@ dialog alone.
 ### Requirement: Both key-install choices are shared with Machines
 Full-screen step 2 SHALL show "This phone's key", the machine and user, and
 two choices together: "kudde adds it for you" first, "Add it yourself" second,
-with R2/R18 descriptions and R19's shared restriction note. The two choices
-SHALL appear side by side where text fits and stack in that order at large
-text or narrow widths. Choosing either SHALL open its detail within step 2;
+with R2/R18 descriptions and R19's shared restriction note. Each choice SHALL
+be one tappable card holding its title and its description, and the two cards
+SHALL stack in that order at every text size and width. The first card SHALL
+be filled like the primary button and the second plain, and no other colour
+SHALL be used. Choosing either SHALL open its detail within step 2;
 the other choice SHALL remain available, with any password cleared on switching.
 Exception: after R16, the password choice SHALL be unavailable for the rest
 of that visit, as required below; the manual choice stays available.
@@ -468,12 +472,16 @@ manual fallback, retries and completion SHALL be the same as in first setup.
 - **THEN** confirmation of the presented fingerprint comes before the probe and password field
 
 #### Scenario: Both choices at large text
-- **GIVEN** 2x font or a width too narrow for adjacent choices
+- **GIVEN** 2x font
 - **WHEN** step 2 or a rejected-key card shows
-- **THEN** the choices stack password-once first, without clipping, and both remain reachable by scrolling
+- **THEN** the two cards are stacked as at every other size, password-once first, without clipping, and both remain reachable by scrolling
+
+#### Scenario: One card is one control
+- **WHEN** step 2 shows with TalkBack on
+- **THEN** each card is one focus stop that reads its title and then its description, and a tap anywhere on the card chooses it
 
 ### Requirement: The app can run the setup with the password once
-Step 2 SHALL offer "kudde adds it for you" as its first choice beside
+Step 2 SHALL offer "kudde adds it for you" as its first choice above
 "Add it yourself". It SHALL
 send no password and no user name to a machine before its host key is
 confirmed: for a machine whose host key is not confirmed yet it SHALL first
@@ -511,6 +519,16 @@ the hub's "key not accepted" SHALL show as the panel, not as the text of
 and drop the panel. On success the hub SHALL retry at once with the phone
 key, and setup continues as after the command. The phone key SHALL sign
 nothing on this path.
+
+#### Scenario: Progress shows as a checklist
+- **GIVEN** the password has been sent
+- **WHEN** the app signs in, adds the key and signs out
+- **THEN** a checklist of "Signing in as dev", "Adding the key" and "Signing out" replaces the working text: a finished step shows a tick, the step in progress a turning ring, the others an empty ring, and with animations off the ring is still; TalkBack hears each change once
+
+#### Scenario: A failure lands on the step that failed
+- **GIVEN** the machine refuses the password
+- **WHEN** the outcome shows
+- **THEN** "Signing in as dev" shows a cross with R9 under it, the other two steps stay empty and the empty password field is back so the person can type again; a dropped connection or a script that ended with a code (R12, R14) marks "Adding the key"; R16 shows all three ticked with its text under the list
 
 #### Scenario: Straight through with a password
 - **GIVEN** step 2 for workstation, whose machine takes passwords, and the host key not confirmed yet
@@ -727,6 +745,16 @@ step 4. Step 3 SHALL NOT ask for the notification permission.
 - **GIVEN** workstation runs two agents
 - **WHEN** step 3 shows
 - **THEN** it reads "workstation is connected.", the herdr-core version and "2 agents are running there.", with "Continue"
+
+#### Scenario: The first machine connects
+- **GIVEN** no machine had connected before
+- **WHEN** step 3 shows
+- **THEN** a disc with a tick appears once inside a soft ring of the connected colour, "workstation is connected." reads under it and "Your first machine is set up." under that, and with animations off nothing moves
+
+#### Scenario: A later machine connects
+- **GIVEN** another machine has connected before
+- **WHEN** step 3 shows
+- **THEN** the same disc and "workstation is connected." show, without "Your first machine is set up."
 
 #### Scenario: No agents yet
 - **GIVEN** workstation runs no agent
@@ -1032,7 +1060,7 @@ scroll, with no text cut off and no button off screen without scrolling.
 
 #### Scenario: Arriving on step 2 with TalkBack
 - **WHEN** step 2 opens with TalkBack on
-- **THEN** it reads "Step 2 of 4, This phone's key", not the command
+- **THEN** it reads "Step 2 of 4, This phone's key", not the command, and the step bar is one element, not four
 
 #### Scenario: A failure with TalkBack
 - **WHEN** "workstation did not accept the phone key." appears
