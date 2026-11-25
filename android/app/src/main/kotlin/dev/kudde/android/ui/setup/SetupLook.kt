@@ -268,7 +268,10 @@ internal fun SuccessMoment(machine: String, first: Boolean, bodyText: androidx.c
 // The password field and what protects it while the panel shows (spec "The password is never kept").
 
 /** The password way's panel state with the field's own text state (never saved; emptied on close). */
-data class PasswordUi(val view: PasswordView, val field: TextFieldState)
+class PasswordUi(val view: PasswordView, val field: TextFieldState) {
+    /** Never the field's text: a generated toString would print it. */
+    override fun toString() = "PasswordUi(view=$view, field=<hidden>)"
+}
 
 /** The platform calls the panel makes, replaceable in tests. */
 class PasswordSeams(val cancelAutofill: () -> Unit)

@@ -213,7 +213,11 @@ class MachineFlows(
 
     private fun restoreCheckpoint(kept: SetupCheckpoint) {
         screen = Screen.Setup
-        machine = kept.machine?.takeIf { name -> current().machines.any { it.name == name } }
+        // A cold start restores before the hub's first snapshot: the saved machine is kept pending, then
+        // reconciled by the first real snapshot (onSnapshot), which also reopens the password choice once.
+        val listed = kept.machine?.let { name -> current().machines.any { it.name == name } } == true
+        machine = if (listed) kept.machine else kept.machine
+        pendingMachine = kept.machine != null && !listed
         setupStep = kept.step.coerceIn(1, 3)
         input = MachineInput(kept.name, kept.host, kept.port, kept.user)
         addedThisVisit = kept.added
@@ -221,7 +225,37 @@ class MachineFlows(
         setupOrigin = runCatching { Screen.valueOf(kept.origin) }.getOrDefault(Screen.Agents)
         password.newVisit()
         keyDetail = kept.choice
-        if (kept.choice == KeyChoice.PASSWORD && setupStep == 2) chooseKey(KeyChoice.PASSWORD)
+        if (kept.choice == KeyChoice.PASSWORD && setupStep == 2) {
+            if (pendingMachine) keyDetail = null else chooseKey(KeyChoice.PASSWORD)
+        }
+        pendingChoice = if (pendingMachine) kept.choice else null
+    }
+
+    /** The saved machine of a restored checkpoint, not yet seen in a snapshot. */
+    private var pendingMachine = false
+    private var pendingChoice: KeyChoice? = null
+
+    /** The first snapshot that lists machines settles a pending restore: reopen the saved choice, or drop a machine that is gone. */
+    private fun settlePending(snapshot: HubSnapshot) {
+        if (!pendingMachine) return
+        val name = machine
+        when {
+            name != null && snapshot.machines.any { it.name == name } -> {
+                pendingMachine = false
+                val choice = pendingChoice
+                pendingChoice = null
+                if (choice != null && screen == Screen.Setup && setupStep == 2) {
+                    keyDetail = choice
+                    if (choice == KeyChoice.PASSWORD) chooseKey(KeyChoice.PASSWORD)
+                }
+            }
+            snapshot.machines.isNotEmpty() -> {
+                pendingMachine = false
+                pendingChoice = null
+                machine = null
+                keyDetail = null
+            }
+        }
     }
 
     /** An update with no record: completed only by a machine that has actually connected. */
@@ -380,6 +414,7 @@ class MachineFlows(
     /** Follow settlements forward, closing dialogs whose keys are no longer presented. */
     fun onSnapshot(snapshot: HubSnapshot) {
         inferCompletion(snapshot)
+        settlePending(snapshot)
         if (screen == Screen.Setup) {
             snapshot.machines.find { it.name == machine }?.let { m ->
                 when (m.state) {
@@ -422,7 +457,7 @@ class MachineFlows(
             }
         }
         if (screen == Screen.HostKeyChanged && hostKeyChange(snapshot, machine) == null) {
-            show(Screen.Machines, null)
+            leaveChangedKey()
         }
         removing?.let { name ->
             if (snapshot.machines.none { it.name == name }) removing = null
@@ -499,7 +534,7 @@ class MachineFlows(
     fun forget() {
         val name = machine
         if (screen != Screen.HostKeyChanged || !confirmingForget || name == null) return
-        if (call { it.forgetHostKey(name) }) show(Screen.Machines, null)
+        if (call { it.forgetHostKey(name) }) leaveChangedKey()
     }
 
     /** The card's "Remove machine": opens the confirm; calls nothing. */
@@ -550,11 +585,27 @@ class MachineFlows(
                 show(Screen.Agents, null)
                 true
             }
+            screen == Screen.HostKeyChanged -> {
+                leaveChangedKey()
+                true
+            }
             screen != Screen.Agents -> {
                 show(Screen.Machines, null)
                 true
             }
             else -> false
+        }
+    }
+
+    /** Leaving the changed-key screen: before the first connection back to setup's step, never to Machines or home. */
+    private fun leaveChangedKey() {
+        val name = machine
+        if (firstSetup && name != null) {
+            show(Screen.Setup, name)
+            setupStep = setupStep.coerceIn(1, 2).coerceAtLeast(if (setupStep >= 2) 2 else 1)
+            persist()
+        } else {
+            show(Screen.Machines, null)
         }
     }
 
