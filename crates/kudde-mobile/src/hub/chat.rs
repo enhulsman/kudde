@@ -1263,7 +1263,7 @@ impl Chat {
         };
         let c = conn.client;
         let before = match self
-            .checked(&c, agent, &session, &qs, |p| {
+            .checked(&c, agent, &session, &id, &qs, |p| {
                 question::before(&g.answer, step, p)
             })
             .await
@@ -1328,7 +1328,9 @@ impl Chat {
         let stopped = |i: usize| ChatAnswer::Stopped { sent: i as u32 };
         for (i, planned) in plans.into_iter().enumerate().skip(from) {
             let before = match self
-                .checked(&c, agent, &session, &qs, |p| p == Progress::Question(i))
+                .checked(&c, agent, &session, &id, &qs, |p| {
+                    p == Progress::Question(i)
+                })
                 .await
             {
                 Ok(s) => s,
@@ -1351,10 +1353,10 @@ impl Chat {
         }
         // Nothing pressed in this send yet when every answer was typed before.
         let refused = |a: ChatAnswer| if from == n { a } else { stopped(n) };
-        if let Err(a) = self.target_ok(&c, agent, &session).await {
+        if let Err(a) = self.target_ok(&c, agent, &session, &id).await {
             return refused(a);
         }
-        let expected: Vec<Option<Vec<String>>> = qs
+        let expected: Vec<Option<question::Expected>> = qs
             .iter()
             .zip(&gs)
             .map(|(q, g)| {
@@ -1404,15 +1406,27 @@ impl Chat {
         }
     }
 
-    /// The send target is unchanged and still blocked (design D2).
-    async fn target_ok(&self, c: &Client, agent: Agent, session: &str) -> Result<(), ChatAnswer> {
+    /// The send target is unchanged and still blocked (design D2), and the
+    /// hook's record, read again, still names call `id` (second review: a new
+    /// call asking the same words before the next poll is not this card's).
+    async fn target_ok(
+        &self,
+        c: &Client,
+        agent: Agent,
+        session: &str,
+        id: &str,
+    ) -> Result<(), ChatAnswer> {
         match self.check(c).await {
             Ok((t, start, l)) => match question::check(agent, session, &seen(&t, start, &l)) {
-                Ok(_) => Ok(()),
-                Err(question::Refusal::Answered) => Err(ChatAnswer::AlreadyAnswered),
-                Err(question::Refusal::Changed) => Err(ChatAnswer::Changed),
+                Ok(_) => {}
+                Err(question::Refusal::Answered) => return Err(ChatAnswer::AlreadyAnswered),
+                Err(question::Refusal::Changed) => return Err(ChatAnswer::Changed),
             },
-            Err(e) => Err(ChatAnswer::Failed { reason: e }),
+            Err(e) => return Err(ChatAnswer::Failed { reason: e }),
+        }
+        match self.record(c, session).await {
+            Hooked::Record(r) if r.id == id && r.session == session => Ok(()),
+            _ => Err(ChatAnswer::Changed),
         }
     }
 
@@ -1422,10 +1436,11 @@ impl Chat {
         c: &Client,
         agent: Agent,
         session: &str,
+        id: &str,
         qs: &[question::Question],
         at: impl Fn(Progress) -> bool,
     ) -> Result<String, ChatAnswer> {
-        self.target_ok(c, agent, session).await?;
+        self.target_ok(c, agent, session, id).await?;
         match self.screen(c).await {
             Ok(s) if at(question::progress(&s, qs)) => Ok(s),
             Ok(_) => Err(ChatAnswer::Changed),
@@ -1519,6 +1534,18 @@ impl Chat {
     /// empty call leaves the send's own reply to wait for. The caller's own
     /// screen check follows either way.
     async fn type_forced(&self, c: &Client, text: &str, arrived: impl Fn(&str) -> bool) -> bool {
+        self.type_followed(c, text, arrived).await.is_some()
+    }
+
+    /// As [Chat::type_forced]; Some(true) when it went on from the screen
+    /// (a redraw may still lag), Some(false) on the send's own reply, none
+    /// when it may not have arrived.
+    async fn type_followed(
+        &self,
+        c: &Client,
+        text: &str,
+        arrived: impl Fn(&str) -> bool,
+    ) -> Option<bool> {
         let _t = self.timed("paste");
         let sent = c.call_timeout(
             "terminal.send",
@@ -1528,17 +1555,17 @@ impl Chat {
         tokio::pin!(sent);
         loop {
             tokio::select! {
-                r = &mut sent => return r.is_ok(),
+                r = &mut sent => return r.is_ok().then_some(false),
                 () = tokio::time::sleep(TYPED_LOOK) => {
                     let Ok(s) = self.screen(c).await else { continue };
                     if !arrived(&s) {
                         continue;
                     }
                     if !self.press(c, &[]).await {
-                        return sent.await.is_ok();
+                        return sent.await.is_ok().then_some(false);
                     }
                     tokio::time::sleep(TYPED_LOOK).await;
-                    return true;
+                    return Some(true);
                 }
             }
         }
@@ -1642,11 +1669,18 @@ impl Chat {
             if question::typed_row(&s, q, text) != Some(true) {
                 if question::typed_row(&s, q, text).is_none() {
                     let typed_in = |s: &str| here(s) && question::typed_row(s, q, text).is_some();
-                    if !self.type_forced(c, text, typed_in).await {
+                    let Some(followed) = self.type_followed(c, text, typed_in).await else {
                         return ChatAnswer::Unconfirmed;
-                    }
+                    };
+                    // The paste's own Enter leaves the text unticked (desk,
+                    // 2026-11-25) and a frame from before it shows it ticked:
+                    // gone on from the screen, only the unticked row counts.
                     let Some(after) = self
-                        .screen_until(c, |s| here(s) && question::typed_row(s, q, text).is_some())
+                        .screen_until(c, |s| {
+                            here(s)
+                                && question::typed_row(s, q, text)
+                                    .is_some_and(|on| !(followed && on))
+                        })
                         .await
                     else {
                         return ChatAnswer::Unconfirmed;

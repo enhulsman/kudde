@@ -130,14 +130,26 @@ fn tail(at: u64, lines: &[String]) -> String {
 }
 
 impl Core {
-    /// `terminal.get` (the status given), then the lookup for the session.
+    /// `terminal.get` (the status given), the lookup for the session, then
+    /// (blocked) the hook's record, still the held call `toolu_01`.
     async fn serves_check(&mut self, status: &str) {
+        self.serves_check_for(status, Some("toolu_01")).await;
+    }
+
+    /// As [Core::serves_check]; the record names the call `rec` (none: no read).
+    async fn serves_check_for(&mut self, status: &str, rec: Option<&str>) {
         let req = self.expect("terminal.get").await;
         assert_eq!(req["params"]["terminal"], ADDR);
         self.reply(&req, terminal(status)).await;
         let req = self.expect("machine.exec").await;
         assert_eq!(req["params"]["argv"][4], PID.to_string(), "{req}");
         self.reply(&req, exec_out(&probe(SESSION))).await;
+        if status == "blocked"
+            && let Some(id) = rec
+        {
+            let r = record(id, SESSION, json!([database()]));
+            self.serves_record(Some(&format!("{r}\n"))).await;
+        }
     }
 
     async fn serves_screen(&mut self, text: &str) {
@@ -333,6 +345,19 @@ async fn free_text_focuses_the_row_then_types_with_force() {
     core.serves_log(end, &[result_line("toolu_01", false)])
         .await;
     assert_eq!(got.await.unwrap(), ChatAnswer::Done);
+    core.nothing_more().await;
+}
+
+/// Second review (2026-11-25): the call answered at the desk and a new one
+/// asking the same words before the phone's next poll. The hook's record,
+/// read again before the keys, names the new call: nothing is sent.
+#[tokio::test(start_paused = true)]
+async fn a_new_call_with_the_same_words_is_not_answered_by_the_old_card() {
+    let mut r = rig("q-same-words");
+    let (mut core, chat, _) = with_log(&mut r, &[ask_line("toolu_01", json!([database()]))]).await;
+    let got = spawn_answer(&chat, "toolu_01", 0, ChatChoice::Pick { index: 1 });
+    core.serves_check_for("blocked", Some("toolu_02")).await;
+    assert_eq!(got.await.unwrap(), ChatAnswer::Changed);
     core.nothing_more().await;
 }
 
@@ -1932,7 +1957,10 @@ async fn a_paste_seen_before_its_enter_is_not_decided_on() {
         .await;
     let after = core.takes_keys(&[]).await;
     core.reply(&after, json!({"turn": 3})).await;
-    // Behind the empty call the Enter is written: the row shows unticked.
+    // A redraw lagging the Enter still shows it ticked: not decided on.
+    core.serves_screen(&extras([true, false, true], "tea", true, 4))
+        .await;
+    // Then the Enter shows: the row unticked.
     core.serves_screen(&extras([true, false, true], "tea", false, 4))
         .await;
     let k = core.takes_keys(&["enter"]).await;
