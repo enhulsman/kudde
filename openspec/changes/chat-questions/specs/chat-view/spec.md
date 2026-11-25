@@ -1,27 +1,55 @@
 ## ADDED Requirements
 
 ### Requirement: A pending question shows as a card
-The chat SHALL show a card at the bottom while the log holds an
-`AskUserQuestion` call of the agent in front with no result yet, the
-terminal's status is `blocked` and the chat's send target (agent, process,
-process start, session) is unchanged. The card SHALL show the question's text,
-its options numbered from 1 in the log's order, each with its label and,
-beneath it, its description, a "Something else" row and a "Skip" button.
-Labels, descriptions and questions SHALL be shown whole and wrapped, never
-truncated; a card taller than the screen SHALL scroll inside its own area.
-With no result yet but a status that is not `blocked`, no card SHALL show.
-Unknown fields in the call SHALL be ignored. A call the card cannot show
-(no questions, more than four, an option without a label, or any shape the
-parser cannot read) SHALL show its question text as plain text with "Open the
-terminal" and no choices.
+The chat SHALL show an answerable card at the bottom only while all of these
+hold: the desk holds the question hook's record (design D1) for the session
+shown, naming an `AskUserQuestion` call that has no result in the log; the
+terminal's status is `blocked` (with no status kind, or the kind
+`question`); the chat's send target (agent, process, process start, session)
+is unchanged; and the terminal's screen shows the record's dialog (its
+question text and every option label, box-drawing characters and runs of
+spaces folded). The step the card answers is the one the screen shows. When
+the record is missing, stale (another session, or its call already has a
+result in the log) or the screen does not show its dialog, while the status
+is `blocked` with the kind `question` or the log holds a call with no result,
+the card SHALL show the question text it knows (none when it knows none)
+with "Open the terminal" and no choices, and SHALL send nothing. A status of
+another kind (a permission prompt) SHALL show no card. The log SHALL stay
+the source of completed calls. The card SHALL show the question's text, its
+options numbered from 1 in the call's order, each with its label and,
+beneath it, its description, "Something else" (not on a question whose
+options have previews, where the dialog has no free-text row) and a "Skip"
+button. Labels, descriptions and questions SHALL be shown whole and wrapped,
+never truncated; a card taller than the screen SHALL scroll inside its own
+area. With no result yet but a status that is not `blocked`, no card SHALL
+show. Unknown fields in the call SHALL be ignored. A call the card cannot
+show (no questions, more than four, an option without a label, or any shape
+the parser cannot read) SHALL show its question text as plain text with
+"Open the terminal" and no choices.
 
 #### Scenario: A single question
-- **WHEN** Claude Code asks "Which database should the todo app use?" with options "SQLite (Recommended)" and "Postgres" and the status turns blocked
+- **WHEN** Claude Code, with the question hook installed, asks "Which database should the todo app use?" with options "SQLite (Recommended)" and "Postgres", the status turns blocked and the screen shows that dialog
 - **THEN** a card shows the question, "1." SQLite (Recommended) with its description, "2." Postgres with its description, "Something else" and "Skip"
 
 #### Scenario: A call with no result and no block
 - **WHEN** the log holds an AskUserQuestion call with no result and the status is idle
 - **THEN** no card shows and the call stays a folded line
+
+#### Scenario: No hook installed
+- **WHEN** the status is blocked with the kind `question` and the desk holds no record for the session
+- **THEN** the card shows "Open the terminal" and no choices, and nothing can be sent from it
+
+#### Scenario: A stale record
+- **WHEN** the record names a call whose result is already in the log and the agent waits on a new question
+- **THEN** the card shows "Open the terminal" and no choices
+
+#### Scenario: The screen disagrees with the record
+- **WHEN** the record holds "Which database should the todo app use?" but the screen shows another question
+- **THEN** the card shows "Open the terminal" and no choices
+
+#### Scenario: A permission prompt with a record left over
+- **WHEN** the status is blocked with the kind `permission` and an old record exists
+- **THEN** no card shows
 
 #### Scenario: A description of 700 characters
 - **WHEN** an option's description is 700 characters long
@@ -93,8 +121,8 @@ call to learn the answer.
 - **THEN** the card says "Could not confirm the answer arrived. Check the terminal." with the terminal button
 
 ### Requirement: Your own words answer through the dialog's text row
-"Something else" SHALL open a text field ("Type your answer") with a "Send"
-button, enabled for non-blank text of at most 2000 characters. Send SHALL
+"Something else" (offered only on a question without previews) SHALL open a
+text field ("Type your answer") with a "Send" button, enabled for non-blank text of at most 2000 characters. Send SHALL
 pass the same checks as an option, send the key that focuses the dialog's
 free-text row, then send the text as one `terminal.send` with `force`, so
 that the text and its Enter land in that row. The text SHALL NOT be sent as
@@ -194,12 +222,35 @@ terminal" with its options as plain text.
 ### Requirement: A preview is shown on request
 An option with a `preview` SHALL show a "Preview" button; it SHALL open a
 sheet titled "Preview: <label>" with the preview text in the chat's code
-box, wrapped and never scrolling sideways, and closing it SHALL leave the
-card as it was.
+font, its lines never wrapped (a wide sample scrolls sideways, a long one up
+and down), and below it, fixed, a "Note (optional)" field and a "Choose
+this" button; closing it SHALL leave the card as it was. "Choose this"
+SHALL answer that option. Without a note it sends what a tap on the option
+sends. With a note, after the same checks, it SHALL send the option's digit
+(which moves the dialog's focus there); once the screen shows that option
+focused, `n`; once the screen shows the notes field open, the note as one
+`terminal.send` with `force`, whose Enter saves the note and answers the
+option. Each step SHALL wait for the screen it depends on; a screen that
+does not come SHALL stop the answer with "Could not confirm the answer
+arrived. Check the terminal.", sending nothing again. A note SHALL be at
+most 2000 characters ("Too long: 2000 characters at most", Choose this
+disabled). On a multi-select question the sheet SHALL show the sample only.
 
 #### Scenario: An option with a preview
-- **WHEN** Ezra taps "Preview" under "Postgres"
-- **THEN** the sheet opens with the preview text, and closing it returns to the unchanged card
+- **WHEN** Ezra taps "Preview" under "Cards"
+- **THEN** the sheet opens with the sample unwrapped, "Note (optional)" and "Choose this", and closing it returns to the unchanged card
+
+#### Scenario: Choosing with a note
+- **WHEN** Ezra types "Bigger titles please" in the sheet of option 2 and taps "Choose this"
+- **THEN** after the checks `2` is sent, then `n` once option 2 shows focused, then the note once the notes field shows, and the card moves on when the screen does
+
+#### Scenario: Choosing without a note
+- **WHEN** Ezra taps "Choose this" with the note empty
+- **THEN** `2` and Enter are sent, as for a tap on option 2
+
+#### Scenario: A wide sample
+- **WHEN** a sample's lines are wider than the sheet
+- **THEN** they stay on one line each and the sample scrolls sideways
 
 ### Requirement: The card ends with the question
 The card SHALL end, with no keys sent, when the call's result arrives, the
@@ -256,6 +307,8 @@ The card SHALL use these texts and no others of its own:
 | Multi-select button | Send |
 | Preview button | Preview |
 | Preview sheet title | Preview: `<label>` |
+| Preview sheet note hint | Note (optional) |
+| Preview sheet button | Choose this |
 | Nothing sent: answered | Already answered at the desk. Nothing was sent. |
 | Nothing sent: changed | The question changed. Nothing was sent. |
 | Nothing sent: not connected | Not connected. Nothing was sent. |
