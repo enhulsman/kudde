@@ -320,6 +320,8 @@ button{font-family:inherit;color:inherit}
 .fc-tile{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;padding:14px 12px;border:1px solid var(--border);background:var(--canvas);border-radius:14px}
 .fc-tile b{font-size:22px;font-weight:600;letter-spacing:-.01em;line-height:1.15;color:var(--fg)}
 .fc-tile span{font-size:13px;line-height:1.35;color:var(--muted)}
+.fc-tiles.stack{flex-direction:column}
+.fc-tiles.stack .fc-tile{flex-direction:row;align-items:center;gap:12px;padding:14px}
 .fc-mid{flex:1;display:flex;flex-direction:column;justify-content:center;gap:20px}
 .fc-top{display:flex;flex-direction:column;gap:20px}
 .fr-set{display:flex;align-items:flex-start;gap:24px;flex-wrap:wrap}
@@ -1068,8 +1070,8 @@ function frRefused(theme){
   return frPhone(theme,frBody(2,"This phone's key",`<div class="fr-notice"><b style="font-weight:500">workstation did not accept the phone key.</b><p>Choose how to add it, signed in as dev. If you already ran the command, check that its quotes arrived unchanged, then try again.</p></div>
     ${frChoices()}<p>Both ways add only this phone's public key, limited to herdr-core. Existing keys stay in place.</p>`),frButton('Try again')+frButton('Change the address',false));
 }
-function frConnected(theme,first=true){
-  return fdSuccess('b',first)(theme);
+function frConnected(theme,first=true,large=false){
+  return frConnectedV(theme,'v1',first,large);
 }
 function frAlerts(theme,state='received'){
   const missed=state==='missed';
@@ -1224,7 +1226,7 @@ function fdSuccess(d, first=true){
 function frConnectedV(theme, variant, first, large){
   const agents = first ? 3 : 1, terms = first ? 5 : 2;
   const tile = (v, l) => `<div class="fc-tile"><b>${v}</b><span>${l}</span></div>`;
-  const tiles = `<div class="fc-tiles">${tile('0.1.16','herdr-core')}${tile(agents, agents===1?'agent running':'agents running')}${tile(terms, terms===1?'terminal open':'terminals open')}</div>`;
+  const tiles = `<div class="fc-tiles${large?' stack':''}">${tile('0.1.16','herdr-core')}${tile(agents, agents===1?'agent running':'agents running')}${tile(terms, terms===1?'terminal open':'terminals open')}</div>`;
   const card = fdSuccess('b',first)(theme).match(/<div class="fd-ok b">[\s\S]*?<\/div><\/div>/)[0];
   const inner = variant === 'v2' ? `<div class="fc-mid">${card}${tiles}</div>` : `<div class="fc-top">${card}${tiles}</div>`;
   const body = frBody(3, 'Connected', inner);
@@ -1265,7 +1267,7 @@ const SCREENS = [
   ['first-run-address','First run · Address',()=>frBoth([['Waiting',frAddress],['No answer (F1)',t=>frAddress(t,true)]])],
   ['first-run-manual','First run · Manual key setup',()=>frBoth([['Manual detail',frManual]])],
   ['first-run-key-refused','First run · Key refused',()=>frBoth([['Key refused',frRefused]])],
-  ['first-run-connected','First run · Connected',()=>frBoth([['Connected, first machine',frConnected],['Connected, a later machine',t=>frConnected(t,false)]])],
+  ['first-run-connected','First run · Connected',()=>frBoth([['Connected, first machine',frConnected],['Connected, a later machine',t=>frConnected(t,false)],['Connected, first machine, large text',t=>frConnected(t,true,true)]])],
   ['first-run-connected-v1','Connected · V1, card at the top',()=>frBoth([['First machine',t=>frConnectedV(t,'v1',true,false)],['Later machine',t=>frConnectedV(t,'v1',false,false)],['First machine, large text',t=>frConnectedV(t,'v1',true,true)],['Later machine, large text',t=>frConnectedV(t,'v1',false,true)]])],
   ['first-run-connected-v2','Connected · V2, card and tiles centred',()=>frBoth([['First machine',t=>frConnectedV(t,'v2',true,false)],['Later machine',t=>frConnectedV(t,'v2',false,false)],['First machine, large text',t=>frConnectedV(t,'v2',true,true)],['Later machine, large text',t=>frConnectedV(t,'v2',false,true)]])],
   ['first-run-alerts','First run · Alerts',()=>frBoth([['Before (AL4)',t=>frAlerts(t,'before')],['Test received (AL6)',t=>frAlerts(t,'received')],['No test alert (AL7)',t=>frAlerts(t,'missed')]])],
