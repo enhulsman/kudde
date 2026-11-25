@@ -94,6 +94,6 @@ Checks, from the repository root unless said otherwise:
 
 ## 7. Review and close
 
-- [ ] 7.1 Codex adversarial review of the branch, with the focus: the command's quoting, nothing signed before trust, the setup flow's state after process death, and the password way (nothing sent before the pinned key, the password's lifetime and every place it could leak, the script sent)
+- [x] 7.1 (done 2026-11-25; five findings fixed tests first, two need the owner: see design.md "Review") Codex adversarial review of the branch, with the focus: the command's quoting, nothing signed before trust, the setup flow's state after process death, and the password way (nothing sent before the pinned key, the password's lifetime and every place it could leak, the script sent)
 - [ ] 7.2 `openspec validate first-run-walkthrough --strict`
 - [ ] 7.3 Open the follow-up issues named in the proposal's decision 7 and in design D7, after showing the owner their text **[owner]**
