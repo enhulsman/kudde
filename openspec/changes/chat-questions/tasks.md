@@ -46,7 +46,10 @@ Fixtures are invented JSONL with the shapes in `design.md` section A.
 - [x] 7.4 The texts marked draft go to the owner verbatim before they replace the placeholders. (2026-11-25: all approved word for word.)
 - [x] 7.5 **[owner]** Ten minutes with the debug build before the review and the phone round. (2026-11-25: three findings, 7.7.)
 - [x] 7.7 After Ezra's try, tests first: the "Next" button row of a multi-select question before another one, and a resume of a question typed in part; free forward with "No answer yet" on the review step and Send answers waiting for every answer; a step lands the focus on what it shows, at once, and is no longer announced.
-- [ ] 7.8 The texts marked draft from 7.7 go to the owner verbatim.
+- [x] 7.8 The texts marked draft from 7.7 go to the owner verbatim. (2026-11-25: approved word for word.)
+- [x] 7.9 Ezra's second try, tests first: after the last question the review step comes, gaps and all, never an earlier question. Desk finding for the owner's Skip question: Claude Code's review accepts Submit with a question unanswered ("⚠ Some questions are unanswered"; the result leaves it out).
+- [x] 7.10 **[owner]** Skip on a question step, and Send with gaps. (2026-11-25, Ezra: "Skip question" moves on without an answer, "Skip all" on the review step, Send with gaps through Tab; texts approved word for word.)
+- [x] 7.11 Tests first: `Answer::Pass` as Tab, the gap-aware review check (warning line, only the answered questions, none of another call's), all-skipped sends nothing; on the phone "Skip question", "Skip all", Send answers with one answer, TalkBack stops; goldens.
 - [ ] 7.6 A second `/codex:adversarial-review` against main, then a phone round on the test phone.
 
 ## 6. Records

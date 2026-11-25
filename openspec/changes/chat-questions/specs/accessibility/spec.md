@@ -7,7 +7,7 @@ SHALL NOT move by itself. Reading order SHALL be: the question text, then the
 options in the log's order, each as "Option N of M", its label, then its
 description (in one stop, with "Preview available" when it has a preview, and
 "checked" or "not checked" for a multi-select option), then "Something else",
-then "Skip". Every action SHALL be a button reachable without the terminal. While the
+then "Skip" ("Skip question" in a call with a review step). Every action SHALL be a button reachable without the terminal. While the
 card shows the message box is not shown (chat-view), so the card is the
 last thing read; the reading order above is unchanged by the card's look.
 A step the person takes (previous, next, an answer, a change) SHALL move
@@ -20,7 +20,9 @@ line's previous and next controls SHALL be buttons read as "Previous
 question" and "Next question". On the review step each answer SHALL be one
 stop read as its question, its answer (and its note), then its change
 control as a button ("Change the answer to: <question>"), in the call's
-order, before "Send answers" and "Skip". "Typed N of M answers, then
+order, before "Send answers" and "Skip all". "Skip question" and "Skip all"
+SHALL each be one stop read as its text, which says on its own what it does;
+"Skip question" moves the focus as an answer does. "Typed N of M answers, then
 stopped. Check the terminal." SHALL be announced once when it appears. The text the card
 shows when it could not send ("Already answered at the desk. Nothing was
 sent.", "The question changed. Nothing was sent.", "Could not confirm the
@@ -44,4 +46,4 @@ the card has no "Something else" stop.
 
 #### Scenario: The answer list is heard
 - **WHEN** the review step of two questions shows with TalkBack on
-- **THEN** it announces "Send answers" once, and swiping reads "Which database should the todo app use?, Postgres", "Change the answer to: Which database should the todo app use?", the second answer and its change control, then "Send answers" and "Skip"
+- **THEN** it announces "Send answers" once, and swiping reads "Which database should the todo app use?, Postgres", "Change the answer to: Which database should the todo app use?", the second answer and its change control, then "Send answers" and "Skip all"

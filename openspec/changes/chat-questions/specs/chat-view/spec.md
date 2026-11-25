@@ -22,7 +22,8 @@ the source of completed calls. The card SHALL show the question's text, its
 options numbered from 1 in the call's order, each with its label and,
 beneath it, its description, "Something else" (not on a question whose
 options have previews, where the dialog has no free-text row) and a "Skip"
-button. Labels, descriptions and questions SHALL be shown whole and wrapped,
+button ("Skip question" in a call with a review step, requirement "The phone
+keeps the answers until Send"). Labels, descriptions and questions SHALL be shown whole and wrapped,
 never truncated; a card taller than the screen SHALL scroll inside its own
 area. With no result yet but a status that is not `blocked`, no card SHALL
 show. Unknown fields in the call SHALL be ignored. A call the card cannot
@@ -168,7 +169,7 @@ tapped, and SHALL close when the text is sent or the field is dismissed
 - **THEN** the card says "Could not confirm the answer arrived. Check the terminal."
 
 ### Requirement: Skip declines the question
-"Skip" SHALL pass the same checks as an option and then send one Esc through
+"Skip" (in a call with a review step: "Skip all" on the review step) SHALL pass the same checks as an option and then send one Esc through
 `terminal.keys`, and SHALL NOT send Esc when a check fails (Esc outside the
 dialog interrupts the agent). The call's result with `is_error` SHALL
 collapse the card to "Skipped: <header>".
@@ -190,42 +191,67 @@ to the previous and to the next question, answered or not (Ezra's try,
 2026-11-25); next on the last question is the review step. A step SHALL
 show at once (nothing is sent while stepping). Answering a question (an option, your own words, "Choose this", or
 the multi-select footer's button) SHALL keep that answer and show the next
-question without an answer, or the review step when every question has one;
+later question without an answer, or else the review step, gaps and all
+(Ezra's second try: never back to an earlier question);
 an answer to a question opened from the review step goes back to the review
 step.
 Going back to a question SHALL show its kept answer (the option marked, the
 ticks and the typed text restored) and a new answer SHALL replace it. The
 review step SHALL show "All questions answered. Send your answers, or skip
 them all." (with a question still unanswered: "Some questions have no answer
-yet. Answer them to send, or skip them all."), then each question with its
+yet. Send what you have, or skip them all."), then each question with its
 kept answer ("No answer yet" with an "Answer" control where there is none) (the option's label;
 your own words; on multi-select the ticked labels in the options' order and
 the typed text, joined with ", "; a note beneath its option as "Note:
 <note>"), each with a control that goes back to that question, then "Send
-answers", enabled only when every question has an answer, and "Skip". Send answers SHALL type the answers in the call's
+answers", enabled once one question has an answer (Ezra, 2026-11-25: gaps
+go, as on the desk), and "Skip all". On a question step the Skip button SHALL
+read "Skip question": it keeps no answer for that question (an answer kept
+before goes) and moves on as an answer does, sending nothing; the review
+step lists it as "No answer yet". Send answers SHALL type the answers in the call's
 order, each question only after the checks of requirement "Each answer is
-typed on the desk after its checks" and once the screen shows that question;
-then, once the screen shows the dialog's review step (the line after the
-header reads "Review your answers", every question of the call is listed
-with the answer the phone typed, and "1. Submit answers" is in focus; words
-in a question or an option, another call's review, other answers, or Cancel
-in focus are not it), Enter. When a step cannot be confirmed or a check
+typed on the desk after its checks" and once the screen shows that question,
+and one Tab for a question without an answer, which moves the dialog on
+without answering it; then, once the screen shows the dialog's review step
+(the line after the header reads "Review your answers", it lists exactly the
+questions the phone answered, each with the answer the phone typed, it shows
+"⚠ Some questions are unanswered" when one has no answer and only then, and
+"1. Submit answers" is in focus; words in a question or an option, another
+call's review, other answers, a question listed that was left unanswered,
+or Cancel in focus are not it), Enter. Send answers with no answer at all
+SHALL send nothing. When a step cannot be confirmed or a check
 fails after some answers were typed, the app SHALL send nothing more and the
 card SHALL say how many were typed ("Typed N of M answers, then stopped.
 Check the terminal." with the terminal button) and keep the answers; a
 second Send answers SHALL go on only from the question the screen then
 shows, and only when that is the first one not yet typed. A first Send
 answers whose screen does not show the first question SHALL send nothing
-("The question changed. Nothing was sent."). Skip SHALL stay available on
-every step and declines the whole call.
+("The question changed. Nothing was sent."). "Skip all" on the review step
+declines the whole call (one Esc, requirement "Skip declines the question").
 
 #### Scenario: Three questions
 - **WHEN** a call asks three single-choice questions and Ezra taps an option for each
 - **THEN** nothing is sent while he answers, the card reads "Question 1 of 3", "Question 2 of 3", "Question 3 of 3", then shows the review step listing the three answers
 
 #### Scenario: Ahead before answering
-- **WHEN** the card shows question 1 of 2 with no answer and Ezra goes to the next question, answers it and goes on to the review step
-- **THEN** the review step reads "Some questions have no answer yet. Answer them to send, or skip them all.", lists question 1 as "No answer yet" with "Answer", and Send answers is disabled until question 1 has an answer
+- **WHEN** the card shows question 1 of 2 with no answer and Ezra goes to the next question and answers it
+- **THEN** the card shows the review step (not question 1), which reads "Some questions have no answer yet. Send what you have, or skip them all.", lists question 1 as "No answer yet" with "Answer", and Send answers is enabled
+
+#### Scenario: Skip question
+- **WHEN** the card shows question 1 of 3 and Ezra taps "Skip question", then answers questions 2 and 3
+- **THEN** nothing is sent, the card shows question 2 and then the review step, which lists question 1 as "No answer yet"
+
+#### Scenario: Send with a gap
+- **WHEN** Ezra taps Send answers on a review step of three questions where the first has no answer
+- **THEN** one Tab moves the dialog past question 1, questions 2 and 3 are typed after their screens, and Enter is sent only once the dialog's review shows "⚠ Some questions are unanswered" and lists questions 2 and 3 with the typed answers
+
+#### Scenario: Nothing to send
+- **WHEN** every question was skipped
+- **THEN** the review step's Send answers is disabled and "Skip all" declines the call
+
+#### Scenario: Skip all
+- **WHEN** Ezra taps "Skip all" on the review step
+- **THEN** one Esc is sent after the checks and the card collapses to "Skipped: <header>"
 
 #### Scenario: Back to an earlier question
 - **WHEN** the card shows question 3 and Ezra goes back to question 1
@@ -389,7 +415,9 @@ The card SHALL use these texts and no others of its own:
 | Free-text field hint | Type your answer |
 | Free-text button | Send (one single-choice question); Next in the other calls |
 | Free-text too long | Too long: 2000 characters at most |
-| Skip button | Skip |
+| Skip button | Skip (a call without a review step) |
+| Skip button, question step of a call with a review step | Skip question |
+| Skip button, review step | Skip all |
 | Step | Question N of M |
 | Last step button | Send answers |
 | Multi-select hint | Choose any number |
@@ -409,8 +437,8 @@ The card SHALL use these texts and no others of its own:
 | Review step, change control | Change; read as "Change the answer to: `<question>`" |
 | Previous / next question | Previous question, Next question (read by TalkBack; icons on screen) |
 | Sending stopped halfway | Typed N of M answers, then stopped. Check the terminal. |
-| Review step, a question unanswered | Some questions have no answer yet. Answer them to send, or skip them all. (draft) |
-| Review step, no answer | No answer yet (draft); its control "Answer" (draft), read as "Answer the question: `<question>`" (draft) |
+| Review step, a question unanswered | Some questions have no answer yet. Send what you have, or skip them all. |
+| Review step, no answer | No answer yet; its control "Answer", read as "Answer the question: `<question>`" |
 | No hook record | The agent asked a question in the terminal. To answer it here, add the question hook on the desk. |
 | Collapsed, answered | Answered: `<header>` (several: the headers joined with ", ") |
 | Collapsed, declined | Skipped: `<header>` |
