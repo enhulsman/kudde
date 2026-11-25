@@ -50,6 +50,7 @@ Fixtures are invented JSONL with the shapes in `design.md` section A.
 - [x] 7.9 Ezra's second try, tests first: after the last question the review step comes, gaps and all, never an earlier question. Desk finding for the owner's Skip question: Claude Code's review accepts Submit with a question unanswered ("⚠ Some questions are unanswered"; the result leaves it out).
 - [x] 7.10 **[owner]** Skip on a question step, and Send with gaps. (2026-11-25, Ezra: "Skip question" moves on without an answer, "Skip all" on the review step, Send with gaps through Tab; texts approved word for word.)
 - [x] 7.11 Tests first: `Answer::Pass` as Tab, the gap-aware review check (warning line, only the answered questions, none of another call's), all-skipped sends nothing; on the phone "Skip question", "Skip all", Send answers with one answer, TalkBack stops; goldens.
+- [x] 7.12 Ezra's third try, tests first: sending faster (the send's held-back reply, shorter looks; measured before and after on the desk), the folded line without skipped questions, the focus on the folded line after Send.
 - [ ] 7.6 A second `/codex:adversarial-review` against main, then a phone round on the test phone.
 
 ## 6. Records
