@@ -240,7 +240,13 @@ Codex: the card shows the question as read-only text and "Open the terminal".
   rather than arrows (a digit typed into an empty input box is only text),
   but an Enter submits it. Confidence the residual harm is small: moderate;
   it should go through the adversarial Codex review (security class: sends
-  input to a terminal the person cannot see).
+  input to a terminal the person cannot see). The review (task 5.4,
+  2026-11-25) rated it high: with the quiet rule's wait, a desk user who
+  closes the dialog meanwhile can have a queued Enter, Esc or pasted text
+  reach whatever opens next. Not closable in this change: the guard belongs
+  in herdr-core (check the expected screen right before it writes, after any
+  wait), a follow-up issue. The phone round 5.3 raced a desk answer twice
+  and no key reached the next prompt.
 - **The quiet rule.** `terminal.keys` waits "until nobody has typed for ~3 s".
   Someone typing at the desk delays the keys by up to 3 s after the screen
   check: a second look at the screen after the delay is not possible through
@@ -252,6 +258,34 @@ Codex: the card shows the question as read-only text and "Open the terminal".
 - **Free-text paste and multi-select** were confirmed on the desk and the phone (section B); the owner lifted the multi-select gate on 2026-11-25 (the switch stays, off as a way back).
 - **Long text**: a 700-character description wraps; a card taller than the
   screen scrolls inside its own area, with the options reachable.
+
+### The adversarial review (task 5.4, 2026-11-25)
+
+Codex, read-only, against main. Its findings and what was done:
+
+- The window above (high): follow-up in herdr-core; recorded as a risk.
+- Review detected from any "Submit answers" (high): fixed. The review step
+  is read as its own screen: "Review your answers" after the header, every
+  question of the call listed, "1. Submit answers" in focus (captured on the
+  desk, 2.1.332).
+- A replaced record authorising an old card's index (high): the screen match
+  now needs each option as its numbered row in the call's order, so a new
+  call with the same labels reordered is not the old card's. The record is
+  not read again at the tap: with the ordered match, a call that passes
+  shows the same question with the same rows the card shows (moderate).
+- Text and Enter without the focus seen (high): fixed. The free-text paste
+  waits for its row in focus; from the multi-select editor, Tab, then Enter
+  once Submit shows in focus (both captured on the desk). The note path
+  already waits for its option in focus before `n`.
+- An old Android frame answering the new step (high): fixed. A tap carries
+  the call and step it was made on; a result for a step the card has left
+  changes nothing.
+- A retry undoing ticks (medium): fixed. The digits are the rows whose tick
+  the screen shows otherwise.
+- The hook following links (medium): fixed. The hook writes only into a
+  directory of the user's own that nobody else may write, through a
+  `mktemp` file; the reader refuses a linked or foreign record ("unsafe",
+  which is not a missing hook).
 
 ## Test and phone strategy
 

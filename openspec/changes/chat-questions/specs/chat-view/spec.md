@@ -7,8 +7,8 @@ shown, naming an `AskUserQuestion` call that has no result in the log; the
 terminal's status is `blocked` (with no status kind, or the kind
 `question`); the chat's send target (agent, process, process start, session)
 is unchanged; and the terminal's screen shows the record's dialog (its
-question text and every option label, box-drawing characters and runs of
-spaces folded), read from the dialog's last header line (☐ or ☒) down and
+question text and every option as its numbered row in the call's order,
+box-drawing characters and runs of spaces folded), read from the dialog's last header line (☐ or ☒) down and
 never from the chat above it, which may hold an earlier question. The step the card answers is the one the screen shows. When
 the record is missing, stale (another session, or its call already has a
 result in the log) or the screen does not show its dialog, while the status
@@ -72,7 +72,8 @@ stands for it); a row left with nothing to show SHALL be hidden.
 A tap on an option SHALL send the keys that answer it only after, in this
 order: `terminal.get` shows the same target and the status still `blocked`;
 `terminal.read` shows the call's question text (box-drawing characters and
-runs of spaces folded) and the first label of each of its options; then one
+runs of spaces folded) and each of its options as its numbered row, in the
+call's order; then one
 `terminal.keys` call carries the whole key list of the step. For a single
 choice option N the list SHALL be the digit N alone when no option of the
 question has a preview, and the digit N and Enter when one has; it SHALL NOT
@@ -81,7 +82,9 @@ no longer `blocked` says "Already answered at the desk. Nothing was sent.",
 and another agent, process or session in front (or none) or a screen without
 the question says "The question changed. Nothing was sent." The card SHALL
 show a tapped option as chosen and its buttons as disabled from the tap
-until the step ends. After the keys, the app SHALL read the screen again; the
+until the step ends. A tap SHALL answer the call and step of the card it was
+made on: one made on a step the card has since left sends nothing, and the
+result of an answer for a step the card has left changes nothing on it. After the keys, the app SHALL read the screen again; the
 step is done when the dialog shows its next question or step, or is gone
 and the log holds the call's result. When none matches, the card SHALL say
 "Could not confirm the answer arrived. Check the terminal." with the
@@ -133,8 +136,10 @@ call to learn the answer.
 "Something else" (offered only on a question without previews) SHALL open a
 text field ("Type your answer") with a "Send" button, enabled for non-blank text of at most 2000 characters. Send SHALL
 pass the same checks as an option, send the key that focuses the dialog's
-free-text row, then send the text as one `terminal.send` with `force`, so
-that the text and its Enter land in that row. The text SHALL NOT be sent as
+free-text row, then, once the screen shows that row in focus, send the text
+as one `terminal.send` with `force`, so that the text and its Enter land in
+that row; a screen that never shows it SHALL stop the answer with "Could not
+confirm the answer arrived. Check the terminal." and send no text. The text SHALL NOT be sent as
 a chat message and no bubble SHALL show for it. Past 2000 characters the
 field SHALL say so ("Too long: 2000 characters at most") and Send SHALL stay
 disabled. The keyboard SHALL open for this field when "Something else" is
@@ -175,7 +180,10 @@ collapse the card to "Skipped: <header>".
 A call with more than one question SHALL show one question at a time with
 "Question N of M", following the question the screen shows. A tap answers
 that question on the desk at once; the card then shows the next question. When the dialog shows
-its review step ("Submit answers"), the card SHALL show "All questions
+its review step (the line after the header reads "Review your answers",
+every question of the call is listed, and "1. Submit answers" is in focus;
+words in a question or an option, another call's review, or Cancel in focus
+are not it), the card SHALL show "All questions
 answered. Send your answers, or skip them all.", "Send answers" and "Skip"
 and nothing else, and Send answers SHALL send Enter after the same
 checks. The card SHALL follow the screen: a question answered at the desk
@@ -198,13 +206,15 @@ answer there SHALL show as a ticked row with its text, SHALL count as one
 chosen, and SHALL go out with the ticked options through the footer's Send:
 the field gets no send button of its own on a multi-select question (a
 single-choice question keeps the field's own Send). Tapping Send SHALL send,
-after the checks, the digit of each ticked option alone (a digit toggles its
-row) and no digit for the free-text row or the rows after it; with a typed
+after the checks, the digit alone of each option whose tick the screen
+shows otherwise than chosen (a digit toggles its row, so a retry or a tick
+made at the desk is not undone) and no digit for the free-text row or the
+rows after it; with a typed
 answer, once the screen shows the ticks, the text as one `terminal.send`
 with `force`, and an Enter when the screen then shows the text in the
 free-text row unticked; once the screen shows exactly the planned rows
-ticked, the key that leaves the question (Tab, or Tab and Enter from the
-free-text row); and in a call of one question, once the screen shows the
+ticked, the key that leaves the question (Tab; from the free-text row Tab,
+then Enter once the screen shows Submit in focus); and in a call of one question, once the screen shows the
 review step, Enter. Each of these steps SHALL wait for the screen it
 depends on, and a screen that does not come SHALL stop the answer with
 "Could not confirm the answer arrived. Check the terminal.", sending nothing
