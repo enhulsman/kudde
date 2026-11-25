@@ -5,6 +5,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -131,15 +133,44 @@ fun MonoBox(lines: List<String>, modifier: Modifier = Modifier) {
     )
 }
 
-/** The dialog's buttons, right-aligned 10 dp apart (`margin-top: 4px` on top of the 14 dp gap). */
+/**
+ * The dialog's buttons, right-aligned 10 dp apart (`margin-top: 4px` on top of the 14 dp gap) while they
+ * fit side by side. When they do not (large system font), they stack at full width, the last one (the
+ * primary) on top, and a label wraps instead of being cut off.
+ */
 @Composable
 fun DialogButtons(content: @Composable () -> Unit) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .padding(top = KuddeSpacing.s4),
-        horizontalArrangement = Arrangement.spacedBy(KuddeSpacing.s10, androidx.compose.ui.Alignment.End),
-    ) { content() }
+    Layout(
+        content = content,
+        modifier = Modifier.fillMaxWidth().padding(top = KuddeSpacing.s4),
+    ) { measurables, constraints ->
+        val gap = KuddeSpacing.s10.roundToPx()
+        val room = constraints.maxWidth
+        val natural = measurables.map { it.maxIntrinsicWidth(Constraints.Infinity) }
+        val sideBySide = natural.sum() + gap * (measurables.size - 1).coerceAtLeast(0) <= room
+        if (sideBySide) {
+            val placeables = measurables.map { it.measure(Constraints()) }
+            val height = placeables.maxOfOrNull { it.height } ?: 0
+            layout(room, height) {
+                var x = room
+                for (p in placeables.asReversed()) {
+                    x -= p.width
+                    p.placeRelative(x, 0)
+                    x -= gap
+                }
+            }
+        } else {
+            val placeables = measurables.asReversed().map { it.measure(Constraints(minWidth = room, maxWidth = room)) }
+            val height = placeables.sumOf { it.height } + gap * (placeables.size - 1).coerceAtLeast(0)
+            layout(room, height) {
+                var y = 0
+                for (p in placeables) {
+                    p.placeRelative(0, y)
+                    y += p.height + gap
+                }
+            }
+        }
+    }
 }
 
 /**
@@ -167,7 +198,6 @@ fun DialogButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifi
                 fontWeight = if (solid) FontWeight.W500 else FontWeight.W400,
                 lineHeight = KuddeType.settingRow.lineHeight,
             ),
-            maxLines = 1,
         )
     }
 }

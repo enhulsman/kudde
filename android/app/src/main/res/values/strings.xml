@@ -363,6 +363,7 @@
     <!-- Proposed first-run wording, awaiting owner sign-off. -->
     <string name="setup_title">Set up a machine</string>
     <string name="setup_step">Step %1$d of 4</string>
+    <string name="setup_step_spoken">%1$s, %2$s</string>
     <string name="setup_stub_welcome">Welcome (numbered stub)</string>
     <string name="setup_stub_start">Set up a machine</string>
     <string name="setup_stub_lock">Set a screen lock (numbered stub)</string>
