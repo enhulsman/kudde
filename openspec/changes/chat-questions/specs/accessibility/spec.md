@@ -10,8 +10,14 @@ description (in one stop, with "Preview available" when it has a preview, and
 then "Skip". Every action SHALL be a button reachable without the terminal. While the
 card shows the message box is not shown (chat-view), so the card is the
 last thing read; the reading order above is unchanged by the card's look.
-A step change ("Question 2 of 3") SHALL be announced once; the review step
-SHALL be announced once as "Send answers". The text the card
+A step change ("Question 2 of 3"), going back included, SHALL be announced
+once; the review step SHALL be announced once as "Send answers". The step
+line's previous and next controls SHALL be buttons read as "Previous
+question" and "Next question". On the review step each answer SHALL be one
+stop read as its question, its answer (and its note), then its change
+control as a button ("Change the answer to: <question>"), in the call's
+order, before "Send answers" and "Skip". "Typed N of M answers, then
+stopped. Check the terminal." SHALL be announced once when it appears. The text the card
 shows when it could not send ("Already answered at the desk. Nothing was
 sent.", "The question changed. Nothing was sent.", "Could not confirm the
 answer arrived. Check the terminal.", "Not connected. Nothing was sent.")
@@ -31,3 +37,7 @@ the card has no "Something else" stop.
 #### Scenario: Choosing with TalkBack
 - **WHEN** TalkBack's double tap activates "Option 2 of 2"
 - **THEN** the answer is sent as for a tap, and the focus stays in the chat
+
+#### Scenario: The answer list is heard
+- **WHEN** the review step of two questions shows with TalkBack on
+- **THEN** it announces "Send answers" once, and swiping reads "Which database should the todo app use?, Postgres", "Change the answer to: Which database should the todo app use?", the second answer and its change control, then "Send answers" and "Skip"
