@@ -55,7 +55,7 @@ const val OPEN_TERMINAL = "Open the terminal"
 const val NOT_CONNECTED = "Not connected. Nothing was sent."
 const val NOTE_HINT = "Note (optional)"
 const val CHOOSE_THIS = "Choose this"
-// Drafts (design D11), to the owner verbatim before they ship.
+// Design D11, approved verbatim by the owner (2026-11-25).
 const val PREVIOUS_QUESTION = "Previous question"
 const val NEXT_QUESTION = "Next question"
 const val NEXT = "Next"

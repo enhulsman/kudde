@@ -884,7 +884,7 @@ class ChatQuestionTest {
         assertEquals("Choose this", CHOOSE_THIS)
         assertEquals("All questions answered. Send your answers, or skip them all.", ALL_ANSWERED)
         assertEquals("The agent asked a question in the terminal. To answer it here, add the question hook on the desk.", NO_HOOK)
-        // Drafts (D11), to the owner before they ship.
+        // D11, approved verbatim by the owner (2026-11-25).
         assertEquals("Previous question", PREVIOUS_QUESTION)
         assertEquals("Next question", NEXT_QUESTION)
         assertEquals("Next", NEXT)
