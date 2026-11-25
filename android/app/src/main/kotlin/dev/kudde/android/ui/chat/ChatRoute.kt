@@ -238,16 +238,17 @@ fun ChatRoute(
         map = map,
         onMap = onMap,
         onAnswer = { choice ->
-            // The card has started the step (QuestionCard.start); the hub checks and sends it.
-            val q = state.poll?.question
+            // The card has started the step (QuestionCard.start) for the call and step it was
+            // tapped on, never the latest poll's (5.4 review); the hub checks and sends it.
+            val key = state.card.sentFor
             val chat = visit.chat
-            if (q == null || chat == null) {
+            if (key == null || chat == null) {
                 state.card.finished(ChatAnswer.NotConnected)
             } else {
                 app.chatScope.launch {
                     // Under the poll's lock: the answer reads the log too.
-                    val a = visit.lock.withLock { withContext(Dispatchers.IO) { chat.answerQuestion(q.id, q.step, choice) } }
-                    state.card.finished(a)
+                    val a = visit.lock.withLock { withContext(Dispatchers.IO) { chat.answerQuestion(key.first, key.second, choice) } }
+                    state.card.finished(a, key)
                 }
             }
         },

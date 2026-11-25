@@ -127,6 +127,64 @@ mod script {
         let (_, out) = run(question::HOOK_READ_SCRIPT, &[""], "", &d);
         assert_eq!(out.trim(), "missing");
     }
+
+    // 5.4 review (Codex): the state tree may not be the user's alone.
+
+    #[test]
+    fn a_symlinked_record_is_not_read() {
+        let d = state("link-read");
+        let dir = d.join("kudde/questions");
+        std::fs::create_dir_all(&dir).unwrap();
+        let elsewhere = d.join("forged.json");
+        std::fs::write(&elsewhere, hook_input(SESSION).to_string()).unwrap();
+        std::os::unix::fs::symlink(&elsewhere, dir.join(format!("{SESSION}.json"))).unwrap();
+        let (_, out) = run(question::HOOK_READ_SCRIPT, &[SESSION], "", &d);
+        assert!(
+            question::read_record(&out).is_none(),
+            "read through a link: {out}"
+        );
+        assert_ne!(out.trim(), "missing", "a link is not a missing hook");
+    }
+
+    #[test]
+    fn the_hook_writes_nothing_through_a_symlinked_directory() {
+        let d = state("link-dir");
+        let target = d.join("target");
+        std::fs::create_dir_all(&target).unwrap();
+        std::fs::create_dir_all(d.join("kudde")).unwrap();
+        std::os::unix::fs::symlink(&target, d.join("kudde/questions")).unwrap();
+        let (code, out) = run(HOOK, &[], &hook_input(SESSION).to_string(), &d);
+        assert_eq!((code, out.as_str()), (0, ""));
+        assert_eq!(std::fs::read_dir(&target).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn the_hook_writes_nothing_into_a_directory_others_may_write() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = state("open-dir");
+        let dir = d.join("kudde/questions");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o777)).unwrap();
+        let (code, out) = run(HOOK, &[], &hook_input(SESSION).to_string(), &d);
+        assert_eq!((code, out.as_str()), (0, ""));
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn the_record_and_its_directory_are_private() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = state("private");
+        run(HOOK, &[], &hook_input(SESSION).to_string(), &d);
+        let dir = d.join("kudde/questions");
+        let mode = |p: &Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode(&dir), 0o700);
+        assert_eq!(mode(&dir.join(format!("{SESSION}.json"))), 0o600);
+        let left: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        assert_eq!(left.len(), 1, "no temporary file left: {left:?}");
+    }
 }
 
 mod record {

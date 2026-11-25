@@ -76,8 +76,24 @@ const LOGIN: &str = "\
 const REVIEW: &str = "\
 │ ☒ Database  ☒ Login  ✔ Submit │
 │ Review your answers           │
+│  ● Which database should the todo app use? │
+│    → Postgres                 │
+│  ● Which login should it have? │
+│    → Passkey                  │
 │ ❯ 1. Submit answers           │
 │   2. Cancel                   │
+";
+/// [DIALOG] with the focus on its free-text row, as digit 3 leaves it (desk, 2.1.332).
+const DIALOG_FREE: &str = "\
+╭──────────────────────────────────────────────╮
+│ ☐ Database                                   │
+│ Which database should the todo app use?      │
+│   1. SQLite (Recommended)                    │
+│      One file, no server.                    │
+│   2. Postgres                                │
+│      Needs a running server.                 │
+│ ❯ 3. Type something.                         │
+╰──────────────────────────────────────────────╯
 ";
 const PROMPT: &str = "⏺ Going with Postgres.\n\n> \n";
 const OTHER: &str = "│ Allow this edit to notes.md? │\n│ ❯ 1. Yes │\n│ 2. No │\n";
@@ -305,7 +321,7 @@ async fn free_text_focuses_the_row_then_types_with_force() {
     core.serves_screen(DIALOG).await;
     let keys = core.takes_keys(&["3"]).await;
     core.reply(&keys, json!({"turn": 3})).await;
-    core.serves_screen(DIALOG).await;
+    core.serves_screen(DIALOG_FREE).await;
     let send = core.expect("terminal.send").await;
     assert_eq!(send["params"]["terminal"], ADDR);
     assert_eq!(send["params"]["text"], "Use Postgres, but through Docker");
@@ -317,6 +333,31 @@ async fn free_text_focuses_the_row_then_types_with_force() {
     core.serves_log(end, &[result_line("toolu_01", false)])
         .await;
     assert_eq!(got.await.unwrap(), ChatAnswer::Done);
+    core.nothing_more().await;
+}
+
+/// 5.4 review: the text goes only once the screen shows the free row focused.
+#[tokio::test(start_paused = true)]
+async fn free_text_waits_for_its_row_in_focus_and_never_types_without_it() {
+    let mut r = rig("q-text-focus");
+    let (mut core, chat, _) = with_log(&mut r, &[ask_line("toolu_01", json!([database()]))]).await;
+    let got = spawn_answer(
+        &chat,
+        "toolu_01",
+        0,
+        ChatChoice::Other {
+            text: "Use Postgres".into(),
+        },
+    );
+    core.serves_check("blocked").await;
+    core.serves_screen(DIALOG).await;
+    let keys = core.takes_keys(&["3"]).await;
+    core.reply(&keys, json!({"turn": 3})).await;
+    // The focus stays on option 1 (a rebound digit, a lagging redraw): no paste.
+    assert_eq!(
+        only_reads_until(&mut core, got, DIALOG).await,
+        ChatAnswer::Unconfirmed
+    );
     core.nothing_more().await;
 }
 
@@ -1051,6 +1092,13 @@ fn fruit_screen(ticked: [bool; 3], free: &str, free_on: bool) -> String {
     )
 }
 
+/// `screen` with the focus on the unnumbered Submit row (Tab from the editor).
+fn on_submit(screen: &str) -> String {
+    screen
+        .replace("❯ 1.", "  1.")
+        .replace("     Submit", "❯    Submit")
+}
+
 const FRUIT_REVIEW: &str = "\
 ←  ☒ Fruit  ✔ Submit  →
 Review your answers
@@ -1151,7 +1199,16 @@ async fn a_typed_answer_is_pasted_ticked_then_sent_with_the_ticks() {
     core.reply(&k, json!({"turn": 3})).await;
     core.serves_screen(&fruit_screen([true, false, true], "Berries", true))
         .await;
-    let k = core.takes_keys(&["tab", "enter"]).await;
+    let k = core.takes_keys(&["tab"]).await;
+    core.reply(&k, json!({"turn": 3})).await;
+    // From the editor Tab moves the focus to Submit; Enter only once the screen shows it.
+    core.serves_screen(&on_submit(&fruit_screen(
+        [true, false, true],
+        "Berries",
+        true,
+    )))
+    .await;
+    let k = core.takes_keys(&["enter"]).await;
     core.reply(&k, json!({"turn": 3})).await;
     core.serves_screen(FRUIT_REVIEW).await;
     let k = core.takes_keys(&["enter"]).await;
@@ -1189,12 +1246,86 @@ async fn a_free_row_already_ticked_gets_no_extra_enter() {
         .await;
     core.serves_screen(&fruit_screen([false; 3], "Berries", true))
         .await;
-    let k = core.takes_keys(&["tab", "enter"]).await;
+    let k = core.takes_keys(&["tab"]).await;
+    core.reply(&k, json!({"turn": 3})).await;
+    core.serves_screen(&on_submit(&fruit_screen([false; 3], "Berries", true)))
+        .await;
+    let k = core.takes_keys(&["enter"]).await;
     core.reply(&k, json!({"turn": 3})).await;
     // A call with a second question: the screen moves on to it; no Enter.
     core.serves_screen("←  ☒ Fruit  ☐ Bowl  ✔ Submit  →\nWhich bowl?\n❯ 1. Glass\n  2. Wood\n")
         .await;
     assert_eq!(got.await.unwrap(), ChatAnswer::Done);
+    core.nothing_more().await;
+}
+
+/// 5.4 review: a retry after a lost reply, or a tick made at the desk, sends
+/// only the rows the screen shows otherwise (a digit toggles its row).
+#[tokio::test(start_paused = true)]
+async fn ticks_already_on_screen_are_not_toggled_again() {
+    let mut r = rig("q-multi-retry");
+    let (mut core, chat, end) = with_log(&mut r, &[ask_line("toolu_01", json!([fruit()]))]).await;
+    let got = spawn_answer(
+        &chat,
+        "toolu_01",
+        0,
+        ChatChoice::Multi {
+            indices: vec![0, 2],
+            text: None,
+        },
+    );
+    core.serves_check("blocked").await;
+    core.serves_screen(&fruit_screen([true, false, false], "Type something", false))
+        .await;
+    let k = core.takes_keys(&["3"]).await;
+    core.reply(&k, json!({"turn": 3})).await;
+    core.serves_screen(&fruit_screen([true, false, true], "Type something", false))
+        .await;
+    let k = core.takes_keys(&["tab"]).await;
+    core.reply(&k, json!({"turn": 3})).await;
+    core.serves_screen(FRUIT_REVIEW).await;
+    let k = core.takes_keys(&["enter"]).await;
+    core.reply(&k, json!({"turn": 3})).await;
+    core.serves_screen(PROMPT).await;
+    core.serves_log(end, &[result_line("toolu_01", false)])
+        .await;
+    assert_eq!(got.await.unwrap(), ChatAnswer::Done);
+    core.nothing_more().await;
+}
+
+/// 5.4 review: Tab from the editor must show Submit in focus before Enter.
+#[tokio::test(start_paused = true)]
+async fn no_enter_unless_submit_shows_in_focus() {
+    let mut r = rig("q-multi-tab");
+    let (mut core, chat, _) = with_log(&mut r, &[ask_line("toolu_01", json!([fruit()]))]).await;
+    let got = spawn_answer(
+        &chat,
+        "toolu_01",
+        0,
+        ChatChoice::Multi {
+            indices: vec![],
+            text: Some("Berries".into()),
+        },
+    );
+    core.serves_check("blocked").await;
+    core.serves_screen(&fruit_screen([false; 3], "Type something", false))
+        .await;
+    core.serves_screen(&fruit_screen([false; 3], "Type something", false))
+        .await;
+    let send = core.expect("terminal.send").await;
+    core.reply(&send, json!({"turn": 3, "status": "blocked"}))
+        .await;
+    core.serves_screen(&fruit_screen([false; 3], "Berries", true))
+        .await;
+    core.serves_screen(&fruit_screen([false; 3], "Berries", true))
+        .await;
+    let k = core.takes_keys(&["tab"]).await;
+    core.reply(&k, json!({"turn": 3})).await;
+    let stuck = fruit_screen([false; 3], "Berries", true);
+    assert_eq!(
+        only_reads_until(&mut core, got, &stuck).await,
+        ChatAnswer::Unconfirmed
+    );
     core.nothing_more().await;
 }
 

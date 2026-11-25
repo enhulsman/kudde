@@ -1198,11 +1198,11 @@ impl Chat {
             },
             Err(e) => return failed(&e),
         }
-        match self.screen(&c).await {
-            Ok(s) if question::before(&answer, step, question::progress(&s, &qs)) => {}
+        let before = match self.screen(&c).await {
+            Ok(s) if question::before(&answer, step, question::progress(&s, &qs)) => s,
             Ok(_) => return ChatAnswer::Changed,
             Err(e) => return failed(&e),
-        }
+        };
         // From here keys may have gone: nothing is sent again.
         let keys = match planned {
             Planned::Keys(keys) => keys,
@@ -1212,10 +1212,16 @@ impl Chat {
                 };
                 return self.answer_note(&c, &id, &qs, step, *i, text, &digit).await;
             }
-            Planned::Multi(m) => {
+            Planned::Multi(mut m) => {
                 let Answer::Multi(ticked) = &answer else {
                     return ChatAnswer::Changed;
                 };
+                // Only the rows the screen shows otherwise: a digit toggles its
+                // row, so a retry or a desk tick must not undo one (5.4 review).
+                let Some(ticks) = question::toggles(&before, &qs[step], ticked) else {
+                    return ChatAnswer::Changed;
+                };
+                m.ticks = ticks;
                 return self
                     .answer_multi(&c, &id, &qs, step, ticked, typed.as_deref(), m)
                     .await;
@@ -1225,11 +1231,18 @@ impl Chat {
             return ChatAnswer::Unconfirmed;
         }
         if let Some(text) = &typed {
-            // The free-text row is focused while the question still shows;
-            // the text and its Enter go into it (design D6).
-            match self.screen(&c).await {
-                Ok(s) if question::progress(&s, &qs) == Progress::Question(step) => {}
-                _ => return ChatAnswer::Unconfirmed,
+            // The text and its Enter go into the free-text row only once the
+            // screen shows it focused on this question (design D6; 5.4 review).
+            let row = qs[step].options.len() + 1;
+            if self
+                .screen_until(&c, |s| {
+                    question::progress(s, &qs) == Progress::Question(step)
+                        && question::focused(s, row)
+                })
+                .await
+                .is_none()
+            {
+                return ChatAnswer::Unconfirmed;
             }
             if !self.type_forced(&c, text).await {
                 return ChatAnswer::Unconfirmed;
@@ -1373,8 +1386,25 @@ impl Chat {
                 return ChatAnswer::Unconfirmed;
             }
         }
-        if !self.press(c, &m.next).await {
+        // From the editor, Tab moves the focus to Submit; its Enter goes only
+        // once the screen shows that focus (5.4 review).
+        let Some((tab, rest)) = m.next.split_first() else {
             return ChatAnswer::Unconfirmed;
+        };
+        if !self.press(c, std::slice::from_ref(tab)).await {
+            return ChatAnswer::Unconfirmed;
+        }
+        if !rest.is_empty() {
+            if self
+                .screen_until(c, |s| here(s) && question::submit_focused(s))
+                .await
+                .is_none()
+            {
+                return ChatAnswer::Unconfirmed;
+            }
+            if !self.press(c, rest).await {
+                return ChatAnswer::Unconfirmed;
+            }
         }
         if qs.len() > 1 {
             return self

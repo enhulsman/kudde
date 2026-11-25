@@ -645,6 +645,107 @@ fn a_single_question_has_no_review_step() {
     assert_eq!(question::progress(screen, &qs), Progress::Question(0));
 }
 
+// ---- 5.4 adversarial review (Codex, 2026-11-25)
+
+/// The review step as the desk draws it (2.1.332, captured 2026-11-25).
+const REAL_REVIEW: &str = "\
+←  ☒ Size  ☒ Shape  ✔ Submit  →
+Review your answers
+ ● Which size?
+   → Tiny
+ ● Which shape?
+   → Round
+❯ 1. Submit answers
+  2. Cancel
+";
+
+fn size_shape() -> Vec<Question> {
+    readable(json!([
+        q("Which size?", "Size", &["Small", "Medium"]),
+        q("Which shape?", "Shape", &["Round", "Square"]),
+    ]))
+}
+
+#[test]
+fn the_review_step_is_its_own_screen_with_submit_in_focus() {
+    assert_eq!(
+        question::progress(REAL_REVIEW, &size_shape()),
+        Progress::Review
+    );
+}
+
+#[test]
+fn submit_answers_inside_a_question_is_not_the_review_step() {
+    let qs = readable(json!([
+        q(
+            "Submit answers now or later?",
+            "When",
+            &["Submit answers", "Later"]
+        ),
+        q("Which shape?", "Shape", &["Round", "Square"]),
+    ]));
+    let screen = "\
+←  ☐ When  ☐ Shape  ✔ Submit  →
+Submit answers now or later?
+❯ 1. Submit answers
+  2. Later
+  3. Type something.
+";
+    assert_eq!(question::progress(screen, &qs), Progress::Question(0));
+}
+
+#[test]
+fn the_review_of_another_call_is_not_this_ones() {
+    let qs = readable(json!([
+        q("Which colour?", "Colour", &["Red", "Blue"]),
+        q("Which shape?", "Shape", &["Round", "Square"]),
+    ]));
+    assert_eq!(question::progress(REAL_REVIEW, &qs), Progress::Gone);
+}
+
+#[test]
+fn a_review_with_cancel_in_focus_is_not_ready_to_submit() {
+    let cancel = REAL_REVIEW
+        .replace("❯ 1. Submit answers", "  1. Submit answers")
+        .replace("  2. Cancel", "❯ 2. Cancel");
+    assert_ne!(question::progress(&cancel, &size_shape()), Progress::Review);
+}
+
+#[test]
+fn the_options_must_show_numbered_in_their_order() {
+    let qs = readable(json!([database()]));
+    let swapped = DIALOG
+        .replace("1. SQLite (Recommended)", "1. Postgres              ")
+        .replace("2. Postgres", "2. SQLite (Recommended)");
+    assert!(!question::shows(&swapped, &qs[0]));
+    let unnumbered = "\
+│ ☐ Database                               │
+│ Which database should the todo app use?  │
+│ SQLite (Recommended) or Postgres?        │
+";
+    assert!(!question::shows(unnumbered, &qs[0]));
+}
+
+#[test]
+fn multi_select_rows_match_with_their_boxes() {
+    let mut v = q("Which fruits?", "Fruit", &["Apple", "Banana", "Mango"]);
+    v["multiSelect"] = json!(true);
+    let qs = readable(json!([v]));
+    let screen = "\
+←  ☒ Fruit  ✔ Submit  →
+Which fruits?
+❯ 1. [✔] Apple
+         Apple
+  2. [ ] Banana
+         Banana
+  3. [ ] Mango
+         Mango
+  4. [ ] Type something
+     Submit
+";
+    assert!(question::shows(screen, &qs[0]));
+}
+
 // ---- the check before an answer (design D2, decision 8)
 
 mod check {
@@ -862,6 +963,42 @@ Which fruits?
             "Berries and a spoon of yoghurt, only\n   if it is plain and cold",
         );
         assert_eq!(typed_row(&wrapped, &q, long), Some(true));
+    }
+
+    #[test]
+    fn submit_in_focus_is_read_from_its_pointer() {
+        // From the editor, Tab moves the focus to the unnumbered Submit row (desk, 2.1.332).
+        let on = "  4. [✔] Berries\n❯    Submit\n";
+        let off = "❯ 4. [✔] Berries\n     Submit\n";
+        assert!(question::submit_focused(on));
+        assert!(!question::submit_focused(off));
+    }
+
+    #[test]
+    fn toggles_only_change_rows_the_screen_shows_otherwise() {
+        // A retry after a lost reply, or ticks made at the desk: only the difference is sent.
+        let q = three();
+        let screen = "\
+☐ Fruit
+Which fruits?
+  1. [✔] Apple
+  2. [ ] Banana
+  3. [✔] Mango
+  4. [ ] Type something
+";
+        assert_eq!(
+            question::toggles(screen, &q, &[0, 2]),
+            Some(Vec::<String>::new())
+        );
+        assert_eq!(
+            question::toggles(screen, &q, &[0, 1]),
+            Some(vec!["2".to_string(), "3".to_string()])
+        );
+        assert_eq!(
+            question::toggles("> \n", &q, &[0]),
+            None,
+            "rows not on screen: no plan"
+        );
     }
 
     #[test]
