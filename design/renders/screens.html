@@ -316,6 +316,12 @@ button{font-family:inherit;color:inherit}
 .fd-disc svg{width:30px;height:30px}
 .fd-okt b{font-weight:500;font-size:17px}
 .fd-okt p{margin:4px 0 0}
+.fc-tiles{display:flex;gap:10px}
+.fc-tile{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;padding:14px 12px;border:1px solid var(--border);background:var(--canvas);border-radius:14px}
+.fc-tile b{font-size:22px;font-weight:600;letter-spacing:-.01em;line-height:1.15;color:var(--fg)}
+.fc-tile span{font-size:13px;line-height:1.35;color:var(--muted)}
+.fc-mid{flex:1;display:flex;flex-direction:column;justify-content:center;gap:20px}
+.fc-top{display:flex;flex-direction:column;gap:20px}
 .fr-set{display:flex;align-items:flex-start;gap:24px;flex-wrap:wrap}
 .fr-variant{display:flex;flex-direction:column;gap:10px}
 .fr-label{font-size:13px;font-weight:500;color:#98999b}
@@ -1212,6 +1218,19 @@ function fdSuccess(d, first=true){
   return t => frPhone(t, (d==='b'?frBody:((n,h,b)=>fdBody(d,n,h,b)))(3, 'Connected', `${mark}<p>herdr-core 0.1.16</p><p>3 agents are running there.</p>`), frButton('Continue'));
 }
 
+
+// ---------- Connected screen variants (task 059): stat tiles under the success card ----------
+// Tile labels are drafts for Ezra: "herdr-core", "agents running" / "agent running", "terminals open" / "terminal open".
+function frConnectedV(theme, variant, first, large){
+  const agents = first ? 3 : 1, terms = first ? 5 : 2;
+  const tile = (v, l) => `<div class="fc-tile"><b>${v}</b><span>${l}</span></div>`;
+  const tiles = `<div class="fc-tiles">${tile('0.1.16','herdr-core')}${tile(agents, agents===1?'agent running':'agents running')}${tile(terms, terms===1?'terminal open':'terminals open')}</div>`;
+  const card = fdSuccess('b',first)(theme).match(/<div class="fd-ok b">[\s\S]*?<\/div><\/div>/)[0];
+  const inner = variant === 'v2' ? `<div class="fc-mid">${card}${tiles}</div>` : `<div class="fc-top">${card}${tiles}</div>`;
+  const body = frBody(3, 'Connected', inner);
+  return frPhone(theme, large ? body.replace('class="fr-body ', 'style="zoom:1.45" class="fr-body ') : body, frButton('Continue'));
+}
+
 const SCREENS = [
   ['1-home-dark','1 Agent list (graphite)',()=>home('graphite')],
   ['2-home-light','2 Agent list (paper)',()=>home('paper')],
@@ -1247,6 +1266,8 @@ const SCREENS = [
   ['first-run-manual','First run · Manual key setup',()=>frBoth([['Manual detail',frManual]])],
   ['first-run-key-refused','First run · Key refused',()=>frBoth([['Key refused',frRefused]])],
   ['first-run-connected','First run · Connected',()=>frBoth([['Connected, first machine',frConnected],['Connected, a later machine',t=>frConnected(t,false)]])],
+  ['first-run-connected-v1','Connected · V1, card at the top',()=>frBoth([['First machine',t=>frConnectedV(t,'v1',true,false)],['Later machine',t=>frConnectedV(t,'v1',false,false)],['First machine, large text',t=>frConnectedV(t,'v1',true,true)],['Later machine, large text',t=>frConnectedV(t,'v1',false,true)]])],
+  ['first-run-connected-v2','Connected · V2, card and tiles centred',()=>frBoth([['First machine',t=>frConnectedV(t,'v2',true,false)],['Later machine',t=>frConnectedV(t,'v2',false,false)],['First machine, large text',t=>frConnectedV(t,'v2',true,true)],['Later machine, large text',t=>frConnectedV(t,'v2',false,true)]])],
   ['first-run-alerts','First run · Alerts',()=>frBoth([['Before (AL4)',t=>frAlerts(t,'before')],['Test received (AL6)',t=>frAlerts(t,'received')],['No test alert (AL7)',t=>frAlerts(t,'missed')]])],
   ['first-run-trust','First run · Compare the fingerprint',()=>frBoth([['Trust dialog',frTrust]])],
   ['first-run-home','First run · Home',()=>frBoth([['Finish setup',frHome],['Empty after completion',t=>frHome(t,true)]])],
