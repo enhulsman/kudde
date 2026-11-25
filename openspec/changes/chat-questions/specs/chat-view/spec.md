@@ -366,12 +366,21 @@ The card SHALL end, with no keys sent, when the call's result arrives, the
 status leaves `blocked`, or the target changes. It SHALL then become a quiet
 line "Answered: <header>" (or "Skipped: <header>" when the result has
 `is_error`) that opens the call's tool sheet; a call with several questions
-names every header, joined with ", " ("Answered: Database, Login"). A tap that was already on its
+names the headers joined with ", " ("Answered: Database, Login"). A question
+left unanswered SHALL NOT be named (Ezra's third try, 2026-11-25): the line
+names the questions the result's structured answers hold
+(`toolUseResult.answers`, keyed by question text), every header when the
+log line has none, and "Skipped: <every header>" when it holds no answer at
+all. A tap that was already on its
 way when the card ended SHALL send nothing (check one fails).
 
 #### Scenario: Answered at the desk
 - **WHEN** the question is answered at the desk
 - **THEN** the card becomes "Answered: Database" without a tap and without keys
+
+#### Scenario: A skipped question is not named
+- **WHEN** Lunch was skipped and Extras and When were answered
+- **THEN** the line reads "Answered: Extras, When"
 
 #### Scenario: The agent exits
 - **WHEN** the agent exits while the card shows

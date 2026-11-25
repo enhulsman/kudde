@@ -28,6 +28,9 @@ shows when it could not send ("Already answered at the desk. Nothing was
 sent.", "The question changed. Nothing was sent.", "Could not confirm the
 answer arrived. Check the terminal.", "Not connected. Nothing was sent.")
 SHALL be announced once when it appears. The collapsed line SHALL read like its text.
+After an answer the card sent arrives, the focus SHALL land on the collapsed
+line once it shows (Ezra's third try, 2026-11-25: the focus went back to
+the title bar's Back); a card answered at the desk moves no focus.
 The preview sheet SHALL read its title, the sample, the note field as "Note
 (optional)" and then "Choose this" as a button. On a question with previews
 the card has no "Something else" stop.

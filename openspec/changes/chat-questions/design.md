@@ -291,7 +291,18 @@ gaps, a Tab for each question without an answer (`Answer::Pass`, checked
 like an answer: that question on screen first), and the dialog's review is
 checked for the warning line and exactly the answered questions. All
 skipped is "Nothing to send" in the core and a disabled button on the
-phone.
+phone. Ezra's third try (2026-11-25) worked; it took a while. Measured on the
+desk (Lunch skipped, Extras ticks and own words, When): 6.4 s from Send to
+the folded line, 5.2 s of it in the one `terminal.send`, whose reply
+herdr-core holds back ~5 s waiting for the turn a send starts (text typed
+into the dialog starts none). The paste is now followed on the screen: once
+the text shows, a `terminal.keys` call with no keys waits behind the paste
+and its Enter in the terminal's input queue, and its reply means both are
+written (the pasted text shows ticked until that Enter unticks it, so the
+screen before it must not be decided on). Screen looks after a step are
+150 ms apart instead of 500 ms, over the same 2.5 s. Same run after: 1.2 s.
+The folded line leaves out questions left unanswered, from the log line's
+structured answers; after the card's own send the focus lands on it.
 
 The card's steps no longer follow the screen. The poll's step stays the
 dialog's (for Send's checks and the hub's kept step); the card resets only
