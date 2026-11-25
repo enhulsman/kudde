@@ -67,16 +67,16 @@ fun passwordView(panel: PasswordPanel, machine: String, user: String, host: Stri
             listOf(PanelButton.TryAgain, PanelButton.Manual),
         )
         PasswordPanel.Cancelled -> PasswordView(
-            null, Outcome(res.getString(R.string.x_cancelled_title), null), null, null, false, null, listOf(PanelButton.TryAgain, PanelButton.Manual),
+            null, Outcome(res.getString(R.string.x_cancelled_title, machine), null), null, null, false, null, listOf(PanelButton.TryAgain, PanelButton.Manual),
         )
         PasswordPanel.CancelledSignedIn -> PasswordView(
             listOf(StepMark.Done, StepMark.Todo, StepMark.Todo),
-            Outcome(res.getString(R.string.x_signed_in_title), res.getString(R.string.x_signed_in_detail)), null, null, false, null,
+            Outcome(res.getString(R.string.x_signed_in_title), res.getString(R.string.x_signed_in_detail, machine)), null, null, false, null,
             listOf(PanelButton.TryAgain, PanelButton.Manual),
         )
         PasswordPanel.CancelledKeyAdded -> PasswordView(
             List(3) { StepMark.Done },
-            Outcome(res.getString(R.string.x_key_added_title), res.getString(R.string.x_key_added_detail)), null, null, false,
+            Outcome(res.getString(R.string.x_key_added_title), res.getString(R.string.x_key_added_detail, machine)), null, null, false,
             res.getString(R.string.a_connecting, machine), emptyList(),
         )
         // The hub shows its own changed-key screen; nothing of the panel remains.
