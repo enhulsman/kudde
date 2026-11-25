@@ -17,6 +17,10 @@ Fixtures are invented JSONL with the shapes in `design.md` section A.
 - [x] 3.2 Hub tests with the fake core, written first: checks in order, no keys on status or screen mismatch, one `terminal.keys` call per step, no repeat after an unknown outcome, free text through `terminal.send` with force, Skip sends nothing when a check fails, a tap racing the end of the card sends nothing.
 - [x] 3.3 The answer path in `hub/chat.rs`: `terminal.get`, `terminal.read`, `terminal.keys`, re-read.
 - [x] 3.4 Run clippy, fmt and the crate suites as CI does.
+- [x] 3.5 The question hook (owner, 2026-11-25; design D1, section E): the hook script in `contrib/claude-code/`, its reader script, and the record parser (session, tool, id, the call's shape), tests first; a shell test of the script.
+- [x] 3.6 The card from the record: hub tests with the fake core first (record plus blocked plus the screen gives a card; no record, a stale record, another session or a screen that disagrees gives "Open the terminal"; a permission prompt gives none); answers use the held record.
+- [x] 3.7 Notes on a preview option (D9): key plan and hub steps with screen checks (digit, `n`, the note with force), tests first.
+- [x] 3.8 `docs/claude-code-question-hook.md`: the manual install, in neutral wording.
 
 ## 4. Android (tests first in each)
 - [x] 4.1 State: card, step, chosen, disabled-while-sending, refusal texts; the message-box refusal.
@@ -24,6 +28,7 @@ Fixtures are invented JSONL with the shapes in `design.md` section A.
 - [x] 4.3 TalkBack tree test (order, announcements once, no focus steal) in Robolectric; the owner listens at 5.2.
 - [x] 4.4 Roborazzi golden of the card at two font scales and the long description (still flags only, no looping animation).
 - [x] 4.5 Check the card against `design/` and `design-tokens.json`; no new colours. (No render of this card exists in `design/`. 2026-11-24: the owner rejected the placeholder look (the needs-you stripe); a redesign comes first. The look is all in `ChatQuestionLook.kt`. 2026-11-25: replaced by direction A (owner's pick), with the message box hidden while a card waits; goldens of 4.4 recorded again, plus multi-select and the own-words field. 2026-11-25: signed off by the owner from the round-6 goldens; renders in `design/checkpoints/question-*.png`.)
+- [x] 4.6 The preview sheet (look A, owner 2026-11-25): unwrapped sample scrolling sideways, "Note (optional)", "Choose this"; no "Something else" on a question with previews; Robolectric tests, then goldens in paper and graphite (short, long, note, large text).
 
 ## 5. Review and phone check
 - [ ] 5.1 [phone] Stage a real Claude Code in plan mode on the test phone's desk (title through /rename, crop the status bar) and have it ask: one single-choice question; one with a preview; three questions; one multi-select; one answered by free text; one skipped. Record per case: the keys as the screen shows them, any extra delay from the quiet rule, and the result text. Update the "low" rows in `design.md` section B.

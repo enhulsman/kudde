@@ -101,16 +101,50 @@ with Tab) and a TUI view for it. No rollout log on this machine holds a call
 (one `request_user_input_async` call had a different shape: title and string
 options). So its record and keys are unknown: an owner question, out for now.
 
+### E. Where a waiting question can be read (desk, 2026-11-25)
+
+Throwaway Claude Code 2.1.331 agents in plan mode, each with its own
+`--settings` file; the user's settings untouched.
+
+- Without a hook the log holds nothing of a waiting call: 1.5 minutes in
+  one case, 20 s in another, not even the turn's thinking line. After the
+  answer the call line and its result arrive together. (high)
+- A PreToolUse hook matched on `AskUserQuestion` gets `tool_input` whole (all
+  questions, options, descriptions, previews, `multiSelect`), with
+  `tool_use_id`, `session_id`, `transcript_path` and `cwd`. (high)
+- The hook runs and ends before the dialog is drawn: with `sleep 3` in it,
+  the dialog came 3.03 s after the hook started. (high)
+- With the matched hook the call line also reaches the log, about 0.1 s
+  after the dialog (two runs). The app does not rely on that side effect.
+  (moderate)
+- Notes on a preview question: `n` opens "Notes: Add notes on this design…"
+  for the focused option; a paste with Enter saves the note and answers.
+  (high, one run)
+
 ## Decisions
 
-**D1. Detection needs three witnesses.** A card shows only when (1) the log
-holds an `AskUserQuestion` tool_use with no tool_result yet, (2) the
-terminal's status is `blocked`, and (3) the chat's send target (agent, pid,
-process start, session) is unchanged. The log is the content source and the
-status the "still open" source; neither alone is enough (a log without a
-result also describes a crashed session; blocked alone says nothing about
-which dialog). A pending call with status not blocked shows no card (the
-folded line stays).
+**D1. The question comes from a hook; the screen confirms it.** (Owner,
+2026-11-25, replacing "the log is the content source".) Claude Code 2.1.331
+writes the `AskUserQuestion` call to the session log only together with its
+result: on the desk the log ended at the prompt for 1.5 minutes while the
+dialog waited, and the call line (carrying the asking time) and its result
+were appended in one go after the answer (section E). So the log cannot show
+a waiting question. A PreToolUse hook matched on `AskUserQuestion` gets the
+whole call before the dialog is drawn (section E). The hook script
+(`contrib/claude-code/kudde-question-hook.sh`) saves its input as the
+session's record on the desk; the chat reads it with `machine.exec`. A card
+can answer only when (1) the record names this session and a call with no
+result in the log, (2) the terminal's status is `blocked` (no status kind, or
+the kind `question`), (3) the chat's send target (agent, pid, process start,
+session) is unchanged, and (4) the screen shows the record's dialog (its
+question text and every option label, folded); the step is the one the
+screen shows. When the record is missing, stale or disagrees with the screen
+while a question waits (the status kind `question`, or a call in the log
+with no result), the card shows what it knows of the question with "Open the
+terminal" and sends nothing. The log stays the source of completed calls
+(the quiet line) and of the "answered" check. Installing the hook is a
+manual step in this change (docs/claude-code-question-hook.md); a settings
+button that adds it is a separate change.
 
 **D2. Sending is check, then one `terminal.keys` call.** Pressing a choice
 does, in order: `terminal.get` (same target, still `blocked`), `terminal.read`
@@ -172,9 +206,18 @@ the status leaves blocked, or when the target changes. It then collapses to a
 quiet line, "Answered: <header>" or "Skipped: <header>", opening the existing
 tool sheet. The app does not display what was answered from its own memory.
 
-**D9. Previews reuse the code box.** A preview string shows in a sheet in the
-chat's code-box style, wrapped, never scrolling sideways; the first line of a
-preview is not parsed.
+**D9. Previews open a sheet with a note (owner, 2026-11-25, look A).** The
+"Preview" pill opens a sheet titled "Preview: <label>": the sample full width
+in the code font, its lines never wrapped (ASCII layouts break when wrapped;
+a wide sample scrolls sideways), and at the bottom a "Note (optional)" field
+and "Choose this". Choose this answers that option; with a note the keys are
+the option's digit (with previews a digit only moves the focus), `n` once
+the screen shows that option focused, then the note through `terminal.send`
+with `force` once the screen shows the notes field (its Enter saves the note
+and answers). Claude Code returns the note as `annotations[<question>].notes`
+beside the chosen preview. A question with previews has no free-text row in
+the dialog, so the card does not offer "Something else" there. On a
+multi-select question the sheet shows the sample only.
 
 **D10. Everything else is refused to the terminal.** An unknown shape
 (no questions, more than 4, an option without a label, more than 4 options

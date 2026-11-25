@@ -16,6 +16,9 @@ shows when it could not send ("Already answered at the desk. Nothing was
 sent.", "The question changed. Nothing was sent.", "Could not confirm the
 answer arrived. Check the terminal.", "Not connected. Nothing was sent.")
 SHALL be announced once when it appears. The collapsed line SHALL read like its text.
+The preview sheet SHALL read its title, the sample, the note field as "Note
+(optional)" and then "Choose this" as a button. On a question with previews
+the card has no "Something else" stop.
 
 #### Scenario: TalkBack reads a card
 - **WHEN** a card with two options, "Something else" and "Skip" appears with TalkBack on
