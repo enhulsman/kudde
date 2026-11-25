@@ -77,6 +77,38 @@ Herdr app pane), so check alerts there with a real agent's quiet "Finished"
 alert, for example the checking agent's own turn ending. On a machine with no
 Herdr app layout, `set blocked` gives a "Needs you" alert after the grace delay.
 
+## A staged question (Claude Code)
+
+The question card (chat-questions) needs a real Claude Code asking with its
+question tool; the fake agent cannot. Stage a throwaway one of your own:
+
+1. Write a settings file in a scratch directory that holds only the question
+   hook (`docs/claude-code-question-hook.md`, the `PreToolUse` entry pointing
+   at `contrib/claude-code/kudde-question-hook.sh`). Never add it to the
+   person's own Claude Code settings.
+2. Start Claude Code from a scratch directory with
+   `--settings <that file> --permission-mode plan` through
+   `herdr-core run --bg --no-parent`, with no `--name` (a terminal name
+   shows instead of the session title). Title it with `/rename <title>`.
+3. On the test phone, open its chat by name and check the title before any
+   tap. Unset `HC_*` when sending to it from inside a terminal, so the text
+   arrives as the phone sends it.
+4. Ask it to use its question tool with a shape spelled out: header, text,
+   options, single or multi-select, several questions in one call. While it
+   waits, `herdr-core get` shows the status `blocked` with the kind
+   `question`, and a record for the session appears under
+   `${XDG_STATE_HOME:-~/.local/state}/kudde/questions/`.
+5. Cases worth a round: a single choice; a preview with a note; three
+   questions and the review step; multi-select with ticks and a typed answer;
+   free text; Skip; no hook (start one without `--settings`); the desk
+   answering while the card shows, and a phone tap just after the desk
+   answers (`herdr-core keys` on the throwaway, then the tap): nothing may
+   reach the next prompt.
+6. Read the result from the throwaway's screen (`herdr-core read`) and the
+   collapsed line on the phone. Crop the status bar from screenshots.
+7. Afterwards: `herdr-core kill` and `rm` the throwaway, and delete its
+   record files.
+
 ## Measuring on the desk
 
 - **SSH logins**: `ss -tn sport = :<ssh port>` lists the phone's connections;
