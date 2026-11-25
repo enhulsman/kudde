@@ -162,11 +162,15 @@ pub enum ChatAnswer {
 /// The free-text answer's limit, in characters (spec).
 pub(crate) const TEXT_MAX: usize = 2000;
 /// How often the screen is looked at after a step before it is unconfirmed,
-/// and the wait between looks.
-const CONFIRM_TRIES: usize = 6;
-const CONFIRM_GAP: Duration = Duration::from_millis(500);
+/// and the wait between looks: the same 2.5 s as six looks 500 ms apart, in
+/// shorter steps, so a redraw that lags the keys a little costs 150 ms, not
+/// 500 (Ezra's third try).
+const CONFIRM_TRIES: usize = 18;
+const CONFIRM_GAP: Duration = Duration::from_millis(150);
 /// `terminal.keys` and `terminal.send` wait for ~3 s of quiet at the desk.
 const KEYS_WAIT: Duration = Duration::from_secs(20);
+/// While a send's reply is pending, how often the screen is looked at.
+const TYPED_LOOK: Duration = Duration::from_millis(150);
 
 /// The lookup result (spec: the lookup's four results).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
@@ -272,6 +276,9 @@ pub struct Chat {
     /// Multi-select answers may be sent: shut until the phone check confirms
     /// their keys ([`question::MULTI_CONFIRMED`]).
     multi_ok: std::sync::atomic::AtomicBool,
+    /// Each desk call of a send and how long it took, for the timing harness.
+    #[cfg(test)]
+    pub(crate) trace: Mutex<Vec<(String, Duration)>>,
 }
 
 impl Chat {
@@ -288,7 +295,51 @@ impl Chat {
             step: Mutex::new(None),
             held: Mutex::new(None),
             multi_ok: std::sync::atomic::AtomicBool::new(question::MULTI_CONFIRMED),
+            #[cfg(test)]
+            trace: Mutex::new(Vec::new()),
         }
+    }
+}
+
+/// Times one desk call for [Chat::trace] when it is dropped (tests only).
+pub(crate) struct Timed<'a> {
+    #[cfg(test)]
+    chat: &'a Chat,
+    #[cfg(test)]
+    what: String,
+    #[cfg(test)]
+    began: Instant,
+    #[cfg(not(test))]
+    _chat: std::marker::PhantomData<&'a Chat>,
+}
+
+impl Chat {
+    #[cfg(test)]
+    fn timed(&self, what: &str) -> Timed<'_> {
+        Timed {
+            chat: self,
+            what: what.to_owned(),
+            began: Instant::now(),
+        }
+    }
+
+    #[cfg(not(test))]
+    fn timed(&self, _what: &str) -> Timed<'_> {
+        Timed {
+            _chat: std::marker::PhantomData,
+        }
+    }
+}
+
+#[cfg(test)]
+impl Drop for Timed<'_> {
+    fn drop(&mut self) {
+        let took = self.began.elapsed();
+        self.chat
+            .trace
+            .lock()
+            .unwrap()
+            .push((std::mem::take(&mut self.what), took));
     }
 }
 
@@ -1053,6 +1104,7 @@ fn plan_for(qs: &[question::Question], step: usize, g: &Given) -> Option<Planned
 impl Chat {
     /// One check of the send target: the terminal and a fresh lookup.
     async fn check(&self, c: &Client) -> Result<(Term, Option<u64>, Lookup), String> {
+        let _t = self.timed("check");
         let t = c
             .call("terminal.get", json!({"terminal": self.address}))
             .await
@@ -1065,6 +1117,7 @@ impl Chat {
 
     /// The terminal's screen as text.
     async fn screen(&self, c: &Client) -> Result<String, String> {
+        let _t = self.timed("read");
         let got = c
             .call("terminal.read", json!({"terminal": self.address}))
             .await
@@ -1435,7 +1488,8 @@ impl Chat {
             {
                 return ChatAnswer::Unconfirmed;
             }
-            if !self.type_forced(c, text).await {
+            let moved = |s: &str| question::progress(s, qs) != Progress::Question(step);
+            if !self.type_forced(c, text, moved).await {
                 return ChatAnswer::Unconfirmed;
             }
         }
@@ -1444,6 +1498,7 @@ impl Chat {
 
     /// One `terminal.keys` call; false when it may not have arrived.
     async fn press(&self, c: &Client, keys: &[String]) -> bool {
+        let _t = self.timed(&format!("keys {}", keys.join(",")));
         c.call_timeout(
             "terminal.keys",
             json!({"terminal": self.address, "keys": keys}),
@@ -1453,15 +1508,40 @@ impl Chat {
         .is_ok()
     }
 
-    /// The text pasted with its Enter, even though the agent is blocked.
-    async fn type_forced(&self, c: &Client, text: &str) -> bool {
-        c.call_timeout(
+    /// The text pasted with its Enter, even though the agent is blocked;
+    /// true once it went. herdr-core replies to a send only after waiting
+    /// ~5 s for the turn it starts, and text typed into the dialog starts
+    /// none (Ezra's third try: sending "took a while"). So the screen is
+    /// looked at meanwhile: once it shows `arrived` (the paste has begun), a
+    /// `terminal.keys` call with no keys waits in the terminal's input queue
+    /// behind the paste and its Enter, and its reply says both are written;
+    /// a short look later the redraw has landed. A core that refuses the
+    /// empty call leaves the send's own reply to wait for. The caller's own
+    /// screen check follows either way.
+    async fn type_forced(&self, c: &Client, text: &str, arrived: impl Fn(&str) -> bool) -> bool {
+        let _t = self.timed("paste");
+        let sent = c.call_timeout(
             "terminal.send",
             json!({"terminal": self.address, "text": text, "force": true}),
             KEYS_WAIT,
-        )
-        .await
-        .is_ok()
+        );
+        tokio::pin!(sent);
+        loop {
+            tokio::select! {
+                r = &mut sent => return r.is_ok(),
+                () = tokio::time::sleep(TYPED_LOOK) => {
+                    let Ok(s) = self.screen(c).await else { continue };
+                    if !arrived(&s) {
+                        continue;
+                    }
+                    if !self.press(c, &[]).await {
+                        return sent.await.is_ok();
+                    }
+                    tokio::time::sleep(TYPED_LOOK).await;
+                    return true;
+                }
+            }
+        }
     }
 
     /// The screen once `ok` holds for it, read up to [CONFIRM_TRIES] times
@@ -1469,6 +1549,7 @@ impl Chat {
     async fn screen_until(&self, c: &Client, ok: impl Fn(&str) -> bool) -> Option<String> {
         for i in 0..CONFIRM_TRIES {
             if i > 0 {
+                let _t = self.timed("gap");
                 tokio::time::sleep(CONFIRM_GAP).await;
             }
             if let Ok(s) = self.screen(c).await
@@ -1515,7 +1596,7 @@ impl Chat {
         {
             return ChatAnswer::Unconfirmed;
         }
-        if !self.type_forced(c, text).await {
+        if !self.type_forced(c, text, |s| !here(s)).await {
             return ChatAnswer::Unconfirmed;
         }
         self.confirm(c, id, qs, step, &Answer::Option(i)).await
@@ -1560,7 +1641,8 @@ impl Chat {
             // Already in its row and ticked (a send that stopped after it): not again.
             if question::typed_row(&s, q, text) != Some(true) {
                 if question::typed_row(&s, q, text).is_none() {
-                    if !self.type_forced(c, text).await {
+                    let typed_in = |s: &str| here(s) && question::typed_row(s, q, text).is_some();
+                    if !self.type_forced(c, text, typed_in).await {
                         return ChatAnswer::Unconfirmed;
                     }
                     let Some(after) = self
@@ -1647,6 +1729,7 @@ impl Chat {
     ) -> ChatAnswer {
         for i in 0..CONFIRM_TRIES {
             if i > 0 {
+                let _t = self.timed("gap");
                 tokio::time::sleep(CONFIRM_GAP).await;
             }
             let Ok(s) = self.screen(c).await else {
