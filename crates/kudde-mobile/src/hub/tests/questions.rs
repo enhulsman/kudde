@@ -416,7 +416,8 @@ async fn several_questions_step_by_step_then_send_answers() {
     let second = spawn_answer(&chat, "toolu_01", 1, ChatChoice::Pick { index: 1 });
     core.serves_check("blocked").await;
     core.serves_screen(LOGIN).await;
-    let k = core.takes_keys(&["2", "enter"]).await;
+    // No previews: the digit alone answers (5.1).
+    let k = core.takes_keys(&["2"]).await;
     core.reply(&k, json!({"turn": 3})).await;
     core.serves_screen(REVIEW).await;
     assert_eq!(second.await.unwrap(), ChatAnswer::Done);
@@ -583,36 +584,151 @@ async fn no_agent_in_front_any_more_sends_nothing() {
     core.nothing_more().await;
 }
 
-// Owner, 2026-11-25: on a multi-select question a typed answer joins the
-// ticks and goes out with the one send. The production gate stays shut until
-// the phone check; these tests open it.
+/// Regression (5.1): [2, enter] on the first of three questions without
+/// previews also answered the second ("Login" = "None"). The digit goes
+/// alone, and nothing follows once the screen is on the next question.
+#[tokio::test(start_paused = true)]
+async fn an_option_never_answers_the_next_question_too() {
+    let mut r = rig("q-no-carry");
+    let plain = |text: &str, header: &str, labels: [&str; 3]| {
+        json!({"question": text, "header": header, "multiSelect": false,
+               "options": labels.iter().map(|l| json!({"label": l, "description": "-"})).collect::<Vec<_>>()})
+    };
+    let qs = json!([
+        plain(
+            "Which database should the todo app use?",
+            "Database",
+            ["SQLite", "Postgres", "JSON files"]
+        ),
+        plain(
+            "How should users log in?",
+            "Login",
+            ["None", "Passkeys", "Email link"]
+        ),
+        plain(
+            "Where should it be hosted?",
+            "Hosting",
+            ["Laptop", "VPS", "Cloud"]
+        ),
+    ]);
+    let (mut core, chat, _) = with_log(&mut r, &[ask_line("toolu_01", qs)]).await;
+    let first = "\
+←  ☐ Database  ☐ Login  ☐ Hosting  ✔ Submit  →
+Which database should the todo app use?
+❯ 1. SQLite
+  2. Postgres
+  3. JSON files
+  4. Type something.
+";
+    let second = "\
+←  ☒ Database  ☐ Login  ☐ Hosting  ✔ Submit  →
+How should users log in?
+❯ 1. None
+  2. Passkeys
+  3. Email link
+  4. Type something.
+";
+    let got = spawn_answer(&chat, "toolu_01", 0, ChatChoice::Pick { index: 1 });
+    core.serves_check("blocked").await;
+    core.serves_screen(first).await;
+    let k = core.takes_keys(&["2"]).await;
+    core.reply(&k, json!({"turn": 3})).await;
+    core.serves_screen(second).await;
+    assert_eq!(got.await.unwrap(), ChatAnswer::Done);
+    core.nothing_more().await;
+}
 
-fn multi_database() -> Value {
-    let mut v = database();
-    v["multiSelect"] = json!(true);
-    v
+// Owner, 2026-11-25: on a multi-select question a typed answer joins the
+// ticks and goes out with the one send. The keys are the 5.1 desk round's;
+// the production gate stays shut until the phone round; these tests open it.
+
+const FRUIT_Q: &str = "Which fruits would you put in a fruit salad?";
+
+fn fruit() -> Value {
+    json!({"question": FRUIT_Q, "header": "Fruit", "multiSelect": true,
+           "options": [{"label": "Apple", "description": "Crisp."},
+                       {"label": "Banana", "description": "Soft."},
+                       {"label": "Mango", "description": "Juicy."}]})
+}
+
+fn bowl() -> Value {
+    json!({"question": "Which bowl?", "header": "Bowl", "multiSelect": false,
+           "options": [{"label": "Glass", "description": "-"}, {"label": "Wood", "description": "-"}]})
+}
+
+/// The multi-select dialog with these rows ticked and this free row.
+fn fruit_screen(ticked: [bool; 3], free: &str, free_on: bool) -> String {
+    let b = |on: bool| if on { "[✔]" } else { "[ ]" };
+    format!(
+        "←  ☒ Fruit  ✔ Submit  →\n{FRUIT_Q}\n❯ 1. {} Apple\n     Crisp.\n  2. {} Banana\n     Soft.\n  3. {} Mango\n     Juicy.\n  4. {} {free}\n     Submit\n  5. Chat about this\n",
+        b(ticked[0]),
+        b(ticked[1]),
+        b(ticked[2]),
+        b(free_on)
+    )
+}
+
+const FRUIT_REVIEW: &str = "\
+←  ☒ Fruit  ✔ Submit  →
+Review your answers
+ ● Which fruits would you put in a fruit salad?
+   → Apple, Mango
+❯ 1. Submit answers
+  2. Cancel
+";
+
+/// Answers every screen read with `screen` until the answer ends; any
+/// other request fails the test.
+async fn only_reads_until(
+    core: &mut Core,
+    got: tokio::task::JoinHandle<ChatAnswer>,
+    screen: &str,
+) -> ChatAnswer {
+    let mut got = got;
+    loop {
+        let req = tokio::select! {
+            req = core.request() => req,
+            a = &mut got => break a.unwrap(),
+        };
+        match req["method"].as_str() {
+            Some("terminal.read") => {
+                core.reply(
+                    &req,
+                    json!({"text": screen, "complete": true, "how": "screen"}),
+                )
+                .await
+            }
+            other => panic!("only screen reads, got {other:?}: {req}"),
+        }
+    }
 }
 
 #[tokio::test(start_paused = true)]
-async fn ticks_alone_go_as_one_keys_call() {
+async fn ticks_are_digits_then_tab_then_the_review_is_sent() {
     let mut r = rig("q-multi-ticks");
-    let (mut core, chat, end) =
-        with_log(&mut r, &[ask_line("toolu_01", json!([multi_database()]))]).await;
+    let (mut core, chat, end) = with_log(&mut r, &[ask_line("toolu_01", json!([fruit()]))]).await;
     chat.allow_multi_for_test();
     let got = spawn_answer(
         &chat,
         "toolu_01",
         0,
         ChatChoice::Multi {
-            indices: vec![1, 0],
+            indices: vec![2, 0],
             text: None,
         },
     );
     core.serves_check("blocked").await;
-    core.serves_screen(DIALOG).await;
-    let k = core
-        .takes_keys(&["1", "enter", "2", "enter", "4", "enter"])
+    core.serves_screen(&fruit_screen([false; 3], "Type something", false))
         .await;
+    let k = core.takes_keys(&["1", "3"]).await;
+    core.reply(&k, json!({"turn": 3})).await;
+    core.serves_screen(&fruit_screen([true, false, true], "Type something", false))
+        .await;
+    let k = core.takes_keys(&["tab"]).await;
+    core.reply(&k, json!({"turn": 3})).await;
+    // A call of one question: its review step, then Enter sends.
+    core.serves_screen(FRUIT_REVIEW).await;
+    let k = core.takes_keys(&["enter"]).await;
     core.reply(&k, json!({"turn": 3})).await;
     core.serves_screen(PROMPT).await;
     core.serves_log(end, &[result_line("toolu_01", false)])
@@ -622,10 +738,90 @@ async fn ticks_alone_go_as_one_keys_call() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_typed_answer_goes_out_with_the_ticks() {
+async fn a_typed_answer_is_pasted_ticked_then_sent_with_the_ticks() {
     let mut r = rig("q-multi-text");
-    let (mut core, chat, end) =
-        with_log(&mut r, &[ask_line("toolu_01", json!([multi_database()]))]).await;
+    let (mut core, chat, end) = with_log(&mut r, &[ask_line("toolu_01", json!([fruit()]))]).await;
+    chat.allow_multi_for_test();
+    let got = spawn_answer(
+        &chat,
+        "toolu_01",
+        0,
+        ChatChoice::Multi {
+            indices: vec![0, 2],
+            text: Some("Berries".into()),
+        },
+    );
+    core.serves_check("blocked").await;
+    core.serves_screen(&fruit_screen([false; 3], "Type something", false))
+        .await;
+    let k = core.takes_keys(&["1", "3"]).await;
+    core.reply(&k, json!({"turn": 3})).await;
+    core.serves_screen(&fruit_screen([true, false, true], "Type something", false))
+        .await;
+    let send = core.expect("terminal.send").await;
+    assert_eq!(send["params"]["text"], "Berries");
+    assert_eq!(send["params"]["force"], true);
+    core.reply(&send, json!({"turn": 3, "status": "blocked"}))
+        .await;
+    // The text is in the free row, unticked: one Enter ticks it.
+    core.serves_screen(&fruit_screen([true, false, true], "Berries", false))
+        .await;
+    let k = core.takes_keys(&["enter"]).await;
+    core.reply(&k, json!({"turn": 3})).await;
+    core.serves_screen(&fruit_screen([true, false, true], "Berries", true))
+        .await;
+    let k = core.takes_keys(&["tab", "enter"]).await;
+    core.reply(&k, json!({"turn": 3})).await;
+    core.serves_screen(FRUIT_REVIEW).await;
+    let k = core.takes_keys(&["enter"]).await;
+    core.reply(&k, json!({"turn": 3})).await;
+    core.serves_screen(PROMPT).await;
+    core.serves_log(end, &[result_line("toolu_01", false)])
+        .await;
+    assert_eq!(got.await.unwrap(), ChatAnswer::Done);
+    core.nothing_more().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_free_row_already_ticked_gets_no_extra_enter() {
+    let mut r = rig("q-multi-text-on");
+    let (mut core, chat, _) =
+        with_log(&mut r, &[ask_line("toolu_01", json!([fruit(), bowl()]))]).await;
+    chat.allow_multi_for_test();
+    let got = spawn_answer(
+        &chat,
+        "toolu_01",
+        0,
+        ChatChoice::Multi {
+            indices: vec![],
+            text: Some("Berries".into()),
+        },
+    );
+    core.serves_check("blocked").await;
+    core.serves_screen(&fruit_screen([false; 3], "Type something", false))
+        .await;
+    core.serves_screen(&fruit_screen([false; 3], "Type something", false))
+        .await;
+    let send = core.expect("terminal.send").await;
+    core.reply(&send, json!({"turn": 3, "status": "blocked"}))
+        .await;
+    core.serves_screen(&fruit_screen([false; 3], "Berries", true))
+        .await;
+    core.serves_screen(&fruit_screen([false; 3], "Berries", true))
+        .await;
+    let k = core.takes_keys(&["tab", "enter"]).await;
+    core.reply(&k, json!({"turn": 3})).await;
+    // A call with a second question: the screen moves on to it; no Enter.
+    core.serves_screen("←  ☒ Fruit  ☐ Bowl  ✔ Submit  →\nWhich bowl?\n❯ 1. Glass\n  2. Wood\n")
+        .await;
+    assert_eq!(got.await.unwrap(), ChatAnswer::Done);
+    core.nothing_more().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn ticks_the_screen_does_not_show_stop_before_leaving_the_question() {
+    let mut r = rig("q-multi-mismatch");
+    let (mut core, chat, _) = with_log(&mut r, &[ask_line("toolu_01", json!([fruit()]))]).await;
     chat.allow_multi_for_test();
     let got = spawn_answer(
         &chat,
@@ -633,34 +829,27 @@ async fn a_typed_answer_goes_out_with_the_ticks() {
         0,
         ChatChoice::Multi {
             indices: vec![0],
-            text: Some("Berries".into()),
+            text: None,
         },
     );
     core.serves_check("blocked").await;
-    core.serves_screen(DIALOG).await;
-    let k = core.takes_keys(&["1", "enter", "3"]).await;
-    core.reply(&k, json!({"turn": 3})).await;
-    core.serves_screen(DIALOG).await;
-    let send = core.expect("terminal.send").await;
-    assert_eq!(send["params"]["text"], "Berries");
-    assert_eq!(send["params"]["force"], true);
-    core.reply(&send, json!({"turn": 3, "status": "blocked"}))
+    core.serves_screen(&fruit_screen([false; 3], "Type something", false))
         .await;
-    core.serves_screen(DIALOG).await;
-    let k = core.takes_keys(&["4", "enter"]).await;
+    let k = core.takes_keys(&["1"]).await;
     core.reply(&k, json!({"turn": 3})).await;
-    core.serves_screen(PROMPT).await;
-    core.serves_log(end, &[result_line("toolu_01", false)])
-        .await;
-    assert_eq!(got.await.unwrap(), ChatAnswer::Done);
+    // The tick never shows: no Tab, no Enter, nothing again.
+    let screen = fruit_screen([false; 3], "Type something", false);
+    assert_eq!(
+        only_reads_until(&mut core, got, &screen).await,
+        ChatAnswer::Unconfirmed
+    );
     core.nothing_more().await;
 }
 
 #[tokio::test(start_paused = true)]
 async fn a_typed_answer_over_the_limit_or_nothing_at_all_sends_nothing() {
     let mut r = rig("q-multi-empty");
-    let (mut core, chat, _) =
-        with_log(&mut r, &[ask_line("toolu_01", json!([multi_database()]))]).await;
+    let (mut core, chat, _) = with_log(&mut r, &[ask_line("toolu_01", json!([fruit()]))]).await;
     chat.allow_multi_for_test();
     for choice in [
         ChatChoice::Multi {
@@ -685,8 +874,7 @@ async fn a_typed_answer_over_the_limit_or_nothing_at_all_sends_nothing() {
 #[tokio::test(start_paused = true)]
 async fn the_screen_leaving_the_question_before_the_text_stops_it() {
     let mut r = rig("q-multi-moved");
-    let (mut core, chat, _) =
-        with_log(&mut r, &[ask_line("toolu_01", json!([multi_database()]))]).await;
+    let (mut core, chat, _) = with_log(&mut r, &[ask_line("toolu_01", json!([fruit()]))]).await;
     chat.allow_multi_for_test();
     let got = spawn_answer(
         &chat,
@@ -698,10 +886,13 @@ async fn the_screen_leaving_the_question_before_the_text_stops_it() {
         },
     );
     core.serves_check("blocked").await;
-    core.serves_screen(DIALOG).await;
-    let k = core.takes_keys(&["1", "enter", "3"]).await;
+    core.serves_screen(&fruit_screen([false; 3], "Type something", false))
+        .await;
+    let k = core.takes_keys(&["1"]).await;
     core.reply(&k, json!({"turn": 3})).await;
-    core.serves_screen(PROMPT).await;
-    assert_eq!(got.await.unwrap(), ChatAnswer::Unconfirmed);
+    assert_eq!(
+        only_reads_until(&mut core, got, PROMPT).await,
+        ChatAnswer::Unconfirmed
+    );
     core.nothing_more().await;
 }

@@ -354,8 +354,29 @@ fn keys(v: &[&str]) -> Vec<String> {
     v.iter().map(|s| s.to_string()).collect()
 }
 
+// Phone round 5.1 (desk, Claude Code 2.1.331): without previews a digit
+// alone answers and moves on; with previews it only moves the focus.
+
 #[test]
-fn option_n_is_its_digit_and_enter() {
+fn option_n_is_its_digit_alone_without_previews() {
+    let qs = readable(json!([q(
+        "Which login?",
+        "Login",
+        &["None", "Passkeys", "Email link"]
+    )]));
+    assert_eq!(
+        question::plan(&qs[0], &Answer::Option(0)),
+        Some(keys(&["1"]))
+    );
+    assert_eq!(
+        question::plan(&qs[0], &Answer::Option(2)),
+        Some(keys(&["3"]))
+    );
+    assert_eq!(question::plan(&qs[0], &Answer::Option(3)), None);
+}
+
+#[test]
+fn with_previews_option_n_is_its_digit_and_enter() {
     let qs = readable(json!([database()]));
     assert_eq!(
         question::plan(&qs[0], &Answer::Option(0)),
@@ -366,6 +387,28 @@ fn option_n_is_its_digit_and_enter() {
         Some(keys(&["2", "enter"]))
     );
     assert_eq!(question::plan(&qs[0], &Answer::Option(2)), None);
+}
+
+/// Regression (5.1): [2, enter] on the first of three questions without
+/// previews also answered the second ("Login" = "None"). No plan for an
+/// option of such a question holds more than its digit.
+#[test]
+fn an_option_never_carries_a_key_into_the_next_question() {
+    let qs = readable(json!([
+        q(
+            "Which database?",
+            "Database",
+            &["SQLite", "Postgres", "JSON files"]
+        ),
+        q("Which login?", "Login", &["None", "Passkeys", "Email link"]),
+        q("Where to host it?", "Hosting", &["Laptop", "VPS", "Cloud"]),
+    ]));
+    for (s, q) in qs.iter().enumerate() {
+        for i in 0..3 {
+            let k = question::plan(q, &Answer::Option(i)).unwrap();
+            assert_eq!(k, vec![(i + 1).to_string()], "question {s}, option {i}");
+        }
+    }
 }
 
 #[test]
@@ -387,17 +430,12 @@ fn skip_is_esc_and_send_answers_is_enter() {
 }
 
 #[test]
-fn multi_select_toggles_each_ticked_option_then_submits() {
+fn multi_select_goes_through_its_own_plan() {
     let mut v = q("Which parts?", "Parts", &["A", "B", "C"]);
     v["multiSelect"] = json!(true);
     let qs = readable(json!([v]));
-    // Ticked in any order, each once; the submit row follows the free row.
-    assert_eq!(
-        question::plan(&qs[0], &Answer::Multi(vec![2, 0, 2])),
-        Some(keys(&["1", "enter", "3", "enter", "5", "enter"]))
-    );
-    assert_eq!(question::plan(&qs[0], &Answer::Multi(vec![])), None);
-    assert_eq!(question::plan(&qs[0], &Answer::Multi(vec![3])), None);
+    // Ticks need screen checks between their keys ([question::plan_multi]).
+    assert_eq!(question::plan(&qs[0], &Answer::Multi(vec![0])), None);
     // Not for a single-choice question, nor an option tap for a multi-select one.
     let single = readable(json!([database()]));
     assert_eq!(question::plan(&single[0], &Answer::Multi(vec![0])), None);
@@ -416,10 +454,12 @@ fn a_plan_never_holds_an_arrow_or_a_digit_above_nine() {
     all.extend(question::plan(&qs[0], &Answer::Other).unwrap());
     all.extend(question::plan(&qs[0], &Answer::Skip).unwrap());
     all.extend(question::plan(&qs[0], &Answer::Submit).unwrap());
-    all.extend(question::plan(&qs[1], &Answer::Multi(vec![0, 1, 2, 3])).unwrap());
+    let m = question::plan_multi(&qs[1], &[0, 1, 2, 3], true).unwrap();
+    all.extend(m.ticks);
+    all.extend(m.next);
     for k in &all {
         assert!(
-            ["enter", "esc"].contains(&k.as_str())
+            ["enter", "esc", "tab"].contains(&k.as_str())
                 || (k.len() == 1 && ('1'..='9').contains(&k.chars().next().unwrap())),
             "unexpected key {k}"
         );
@@ -533,6 +573,22 @@ fn progress_reads_next_question_review_or_gone() {
     assert_eq!(question::progress(review, &qs), Progress::Review);
     let gone = "⏺ Using Postgres and passkeys.\n\n> \n";
     assert_eq!(question::progress(gone, &qs), Progress::Gone);
+}
+
+#[test]
+fn a_single_multi_select_question_has_a_review_step() {
+    let mut v = q("Which fruits?", "Fruit", &["Apple", "Banana", "Mango"]);
+    v["multiSelect"] = json!(true);
+    let qs = readable(json!([v]));
+    let review = "\
+←  ☒ Fruit  ✔ Submit  →
+Review your answers
+ ● Which fruits?
+   → Apple, Mango
+❯ 1. Submit answers
+  2. Cancel
+";
+    assert_eq!(question::progress(review, &qs), Progress::Review);
 }
 
 #[test]
@@ -654,12 +710,16 @@ mod steps {
     }
 }
 
-// ---- multi-select with a typed answer (owner, 2026-11-25): it joins the ticks
-// and goes out with the one send; low confidence until the phone check.
+// ---- multi-select (owner, 2026-11-25: a typed answer joins the ticks and
+// goes out with the one send). Keys from the 5.1 desk round: a digit toggles
+// its row in place (Enter on a row toggles it too); the typed text pasted
+// with Enter lands in the free row unticked, and one more Enter ticks it;
+// Tab leaves the question (from the free row's editor: Tab to Submit, then
+// Enter). The hub checks the screen between these steps.
 
-mod multi_text {
+mod multi {
     use super::*;
-    use kudde_chat::question::{MultiPlan, plan_multi};
+    use kudde_chat::question::{MultiPlan, plan_multi, row_ticked, ticks_shown, typed_row};
 
     fn three() -> Question {
         let mut v = q("Which fruits?", "Fruit", &["Apple", "Banana", "Mango"]);
@@ -667,42 +727,108 @@ mod multi_text {
         readable(json!([v])).remove(0)
     }
 
+    const TICKED: &str = "\
+←  ☒ Fruit  ✔ Submit  →
+Which fruits?
+  1. [✔] Apple
+         Crisp.
+  2. [ ] Banana
+         Soft.
+  3. [✔] Mango
+         Juicy.
+❯ 4. [✔] Berries
+     Submit
+  5. Chat about this
+";
+
     #[test]
-    fn ticks_then_the_free_row_then_submit() {
+    fn ticks_are_digits_alone_then_tab() {
         assert_eq!(
-            plan_multi(&three(), &[2, 0], true),
+            plan_multi(&three(), &[2, 0, 2], false),
             Some(MultiPlan {
-                before: keys(&["1", "enter", "3", "enter", "4"]),
-                after: keys(&["5", "enter"]),
+                ticks: keys(&["1", "3"]),
+                next: keys(&["tab"]),
             })
         );
     }
 
     #[test]
-    fn a_typed_answer_alone_is_enough() {
+    fn with_a_typed_answer_tab_reaches_submit_from_the_editor() {
+        assert_eq!(
+            plan_multi(&three(), &[0], true),
+            Some(MultiPlan {
+                ticks: keys(&["1"]),
+                next: keys(&["tab", "enter"]),
+            })
+        );
         assert_eq!(
             plan_multi(&three(), &[], true),
             Some(MultiPlan {
-                before: keys(&["4"]),
-                after: keys(&["5", "enter"]),
+                ticks: vec![],
+                next: keys(&["tab", "enter"]),
             })
         );
     }
 
     #[test]
-    fn without_text_it_is_the_plain_multi_plan() {
-        let q = three();
-        let plain = question::plan(&q, &Answer::Multi(vec![0, 2])).unwrap();
-        let m = plan_multi(&q, &[0, 2], false).unwrap();
-        assert_eq!([m.before, m.after].concat(), plain);
-        assert_eq!(plan_multi(&q, &[], false), None);
-        assert_eq!(plan_multi(&q, &[3], true), None);
+    fn no_digit_ever_names_the_free_row_or_chat_about_this() {
+        let m = plan_multi(&three(), &[0, 1, 2], true).unwrap();
+        assert!(!m.ticks.contains(&"4".to_string()));
+        assert!(!m.ticks.contains(&"5".to_string()));
+        assert!(!m.next.iter().any(|k| k.chars().all(|c| c.is_ascii_digit())));
     }
 
     #[test]
-    fn own_words_on_a_multi_select_question_go_with_the_ticks_only() {
-        assert_eq!(question::plan(&three(), &Answer::Other), None);
+    fn nothing_or_out_of_range_or_single_choice_is_no_plan() {
+        let q = three();
+        assert_eq!(plan_multi(&q, &[], false), None);
+        assert_eq!(plan_multi(&q, &[3], true), None);
         let single = readable(json!([database()])).remove(0);
         assert_eq!(plan_multi(&single, &[0], true), None);
+        assert_eq!(question::plan(&q, &Answer::Other), None);
+    }
+
+    #[test]
+    fn a_row_reads_ticked_or_not_from_the_screen() {
+        assert_eq!(row_ticked(TICKED, 1), Some(true));
+        assert_eq!(row_ticked(TICKED, 2), Some(false));
+        assert_eq!(row_ticked(TICKED, 4), Some(true));
+        assert_eq!(row_ticked(TICKED, 5), None);
+        assert_eq!(row_ticked("> hello\n", 1), None);
+    }
+
+    #[test]
+    fn the_dialog_at_the_bottom_wins_over_older_text() {
+        let screen = format!("● Earlier: 2. [✔] Banana\n{TICKED}");
+        assert_eq!(row_ticked(&screen, 2), Some(false));
+    }
+
+    #[test]
+    fn the_free_row_is_read_once_it_holds_the_text() {
+        let q = three();
+        assert_eq!(typed_row(TICKED, &q, "Berries"), Some(true));
+        let unticked = TICKED.replace("4. [✔] Berries", "4. [ ] Berries");
+        assert_eq!(typed_row(&unticked, &q, "Berries"), Some(false));
+        // Not there yet: the row still says "Type something".
+        let before = TICKED.replace("4. [✔] Berries", "4. [ ] Type something");
+        assert_eq!(typed_row(&before, &q, "Berries"), None);
+        // A long answer is matched on its start.
+        let long = "Berries and a spoon of yoghurt, only if it is plain and cold";
+        let wrapped = TICKED.replace(
+            "Berries",
+            "Berries and a spoon of yoghurt, only\n   if it is plain and cold",
+        );
+        assert_eq!(typed_row(&wrapped, &q, long), Some(true));
+    }
+
+    #[test]
+    fn the_screen_must_show_exactly_the_planned_ticks() {
+        let q = three();
+        assert!(ticks_shown(TICKED, &q, &[0, 2], true));
+        assert!(ticks_shown(TICKED, &q, &[2, 0], true));
+        assert!(!ticks_shown(TICKED, &q, &[0, 2], false));
+        assert!(!ticks_shown(TICKED, &q, &[0], true));
+        assert!(!ticks_shown(TICKED, &q, &[0, 1, 2], true));
+        assert!(!ticks_shown("> hello\n", &q, &[0], false));
     }
 }
