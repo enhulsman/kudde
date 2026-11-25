@@ -59,10 +59,17 @@
     <!-- Step 3: C1 to C9 -->
     <string name="c_heading">Connected</string>
     <string name="c_connected">%1$s is connected.</string>
-    <plurals name="c_agents">
-        <item quantity="one">%1$d agent is running there.</item>
-        <item quantity="other">%1$d agents are running there.</item>
+    <!-- Connected tiles, approved by the owner 2026-11-25 -->
+    <string name="c_tile_core">herdr-core</string>
+    <plurals name="c_tile_agents">
+        <item quantity="one">agent running</item>
+        <item quantity="other">agents running</item>
     </plurals>
+    <plurals name="c_tile_terminals">
+        <item quantity="one">terminal open</item>
+        <item quantity="other">terminals open</item>
+    </plurals>
+    <string name="c_tile_spoken">%1$s %2$s</string>
     <string name="c_none">No agents are running there yet. One you start at your desk in herdr shows up here by itself.</string>
     <string name="c_continue">Continue</string>
     <!-- Step 4: AL1 to AL11, C4, C6, C7 -->

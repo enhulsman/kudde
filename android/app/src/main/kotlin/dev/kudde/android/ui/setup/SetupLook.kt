@@ -332,3 +332,65 @@ internal fun PasswordField(label: String, state: TextFieldState, onDone: () -> U
         )
     }
 }
+
+// The Connected step's stat tiles (components.firstRunTiles): herdr-core, agents running, terminals open.
+
+private class Tile(val value: String, val label: String, val spoken: String, val live: Boolean)
+
+/**
+ * Three tiles in a row; at large text one above the other, so "herdr-core" never breaks. Each is one item for
+ * a screen reader ("3 agents running"); the two counts update politely, the version does not.
+ */
+@Composable
+internal fun StatTiles(ui: ConnectedUi) {
+    val res = androidx.compose.ui.platform.LocalContext.current.resources
+    val core = stringResource(R.string.c_tile_core)
+    val tiles = buildList {
+        ui.version?.let { add(Tile(it, core, "$core $it", live = false)) }
+        val agents = androidx.compose.ui.res.pluralStringResource(R.plurals.c_tile_agents, ui.agents)
+        add(Tile(ui.agents.toString(), agents, stringResource(R.string.c_tile_spoken, ui.agents, agents), live = true))
+        val terminals = androidx.compose.ui.res.pluralStringResource(R.plurals.c_tile_terminals, ui.terminals)
+        add(Tile(ui.terminals.toString(), terminals, stringResource(R.string.c_tile_spoken, ui.terminals, terminals), live = true))
+    }
+    val stacked = androidx.compose.ui.platform.LocalDensity.current.fontScale >= 1.3f
+    if (stacked) {
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            tiles.forEach { TileView(it, stacked = true, Modifier.fillMaxWidth()) }
+        }
+    } else {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            tiles.forEach { TileView(it, stacked = false, Modifier.weight(1f)) }
+        }
+    }
+}
+
+@Composable
+private fun TileView(tile: Tile, stacked: Boolean, modifier: Modifier) {
+    val c = KuddeTheme.colors
+    val shape = RoundedCornerShape(14.dp)
+    val value = KuddeType.screenTitle.copy(color = c.fg, fontSize = 22.sp)
+    val label = KuddeType.secondary.copy(color = c.muted, fontSize = 13.sp, lineHeight = 17.sp)
+    Box(
+        modifier.clip(shape).background(c.canvas).border(KuddeBorder.thin, c.border, shape)
+            .clearAndSetSemantics {
+                contentDescription = tile.spoken
+                if (tile.live) liveRegion = LiveRegionMode.Polite
+            },
+    ) {
+        if (stacked) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 14.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                BasicText(tile.value, style = value)
+                BasicText(tile.label, style = label)
+            }
+        } else {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                BasicText(tile.value, style = value)
+                BasicText(tile.label, style = label)
+            }
+        }
+    }
+}

@@ -13,6 +13,9 @@ import dev.kudde.android.testing.descriptions
 import dev.kudde.android.testing.nodeSaying
 import dev.kudde.android.testing.semanticsNodes
 import dev.kudde.android.testing.texts
+import dev.kudde.android.testing.unmergedSemanticsNodes
+import androidx.compose.ui.semantics.SemanticsActions
+import org.robolectric.RuntimeEnvironment
 import dev.kudde.android.ui.addmachine.MachineInput
 import dev.kudde.android.ui.machines.ReachText
 import dev.kudde.android.ui.theme.KuddeTheme
@@ -149,6 +152,69 @@ class SetupSemanticsTest {
         show { ConnectedStep(ConnectedUi("workstation", "0.1.16", 3, first = false), {}, {}) }
         assertTrue("workstation is connected." in texts())
         assertTrue("Your first machine is set up." !in texts())
+    }
+
+    private fun tileLines(text: String): Int? {
+        val node = unmergedSemanticsNodes().firstOrNull { it.texts() == listOf(text) } ?: return null
+        val results = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
+        node.config.getOrNull(SemanticsActions.GetTextLayoutResult)?.action?.invoke(results)
+        return results.firstOrNull()?.lineCount
+    }
+
+    @Test fun eachTileIsOneItemReadValueThenLabel() {
+        show { ConnectedStep(ConnectedUi("workstation", "0.1.16", 3, first = true, terminals = 5), {}, {}) }
+        val spoken = semanticsNodes().flatMap { it.descriptions() }
+        assertTrue(spoken.toString(), spoken.containsAll(listOf("herdr-core 0.1.16", "3 agents running", "5 terminals open")))
+        for (label in listOf("herdr-core 0.1.16", "3 agents running", "5 terminals open")) {
+            assertEquals(label, 1, semanticsNodes().count { label in it.descriptions() })
+        }
+    }
+
+    @Test fun tilesUseTheSingularForOne() {
+        show { ConnectedStep(ConnectedUi("workstation", "0.1.16", 1, first = false, terminals = 1), {}, {}) }
+        val spoken = semanticsNodes().flatMap { it.descriptions() }
+        assertTrue(spoken.toString(), spoken.containsAll(listOf("1 agent running", "1 terminal open")))
+        assertTrue(spoken.none { it == "1 agents running" || it == "1 terminals open" })
+    }
+
+    @Test fun theCountsUpdatePolitelyAndTheVersionStaysStill() {
+        show { ConnectedStep(ConnectedUi("workstation", "0.1.16", 3, first = true, terminals = 5), {}, {}) }
+        fun live(label: String) = semanticsNodes().first { label in it.descriptions() }.config.getOrNull(SemanticsProperties.LiveRegion)
+        assertEquals(LiveRegionMode.Polite, live("3 agents running"))
+        assertEquals(LiveRegionMode.Polite, live("5 terminals open"))
+        assertNull(live("herdr-core 0.1.16"))
+    }
+
+    @Test fun withoutAnAgentTheTilesStayAndTheLineSaysWhatToDo() {
+        show { ConnectedStep(ConnectedUi("workstation", "0.1.16", 0, first = true, terminals = 1), {}, {}) }
+        val spoken = semanticsNodes().flatMap { it.descriptions() }
+        assertTrue("0 agents running" in spoken)
+        assertTrue(texts().any { it.startsWith("No agents are running there yet.") })
+    }
+
+    @Test fun anUnknownVersionLeavesOutItsTile() {
+        show { ConnectedStep(ConnectedUi("workstation", null, 2, first = true, terminals = 2), {}, {}) }
+        assertTrue(semanticsNodes().flatMap { it.descriptions() }.none { it.startsWith("herdr-core") })
+    }
+
+    @Test fun threeTilesShareARowAtNormalTextSize() {
+        show { ConnectedStep(ConnectedUi("workstation", "0.1.16", 3, first = true, terminals = 5), {}, {}) }
+        val b = listOf("herdr-core 0.1.16", "3 agents running", "5 terminals open").map { l -> semanticsNodes().first { l in it.descriptions() }.boundsInRoot }
+        assertTrue("one row", b.all { it.top == b[0].top })
+        assertTrue("left to right", b[0].right <= b[1].left + 1f && b[1].right <= b[2].left + 1f)
+    }
+
+    @Test fun atLargeTextTheTilesStackAndHerdrCoreStaysOnOneLine() {
+        RuntimeEnvironment.setFontScale(2f)
+        try {
+            show { ConnectedStep(ConnectedUi("workstation", "0.1.16", 3, first = true, terminals = 5), {}, {}) }
+            val b = listOf("herdr-core 0.1.16", "3 agents running", "5 terminals open").map { l -> semanticsNodes().first { l in it.descriptions() }.boundsInRoot }
+            assertTrue("one above the other", b[0].bottom <= b[1].top + 1f && b[1].bottom <= b[2].top + 1f)
+            assertEquals("same width", b[0].width, b[2].width, 1f)
+            assertEquals(1, tileLines("herdr-core"))
+        } finally {
+            RuntimeEnvironment.setFontScale(1f)
+        }
     }
 
     @Test fun stepFourShowsTheRoutesInEveryStateAndStartsNothingByItself() {

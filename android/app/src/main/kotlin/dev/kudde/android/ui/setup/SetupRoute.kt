@@ -82,6 +82,7 @@ fun SetupRoute(app: KuddeApp, flows: MachineFlows) {
         2 -> KeyRoute(app, flows, snapshot, machine)
         3 -> ConnectedStep(
             ConnectedUi(flows.machine.orEmpty(), (machine?.state as? MachineState.Connected)?.version, snapshot.agents.count { it.machine == flows.machine },
+                terminals = snapshot.agents.count { it.machine == flows.machine } + snapshot.others.count { it.machine == flows.machine },
                 first = snapshot.machines.none { it.name != flows.machine && it.lastConnectedMs != null }),
             onBack = { flows.back() },
             onContinue = flows::continueToAlerts,

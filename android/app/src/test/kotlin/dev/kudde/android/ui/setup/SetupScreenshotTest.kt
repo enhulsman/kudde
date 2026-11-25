@@ -75,11 +75,11 @@ class SetupScreenshotTest {
         TrustDialog(HostKeyPrompt("workstation", "workstation:22", "ED25519", PRESENTED), null, {}, {})
     }
 
-    private val connected = ConnectedUi("workstation", "0.1.16", 3)
+    private val connected = ConnectedUi("workstation", "0.1.16", 3, terminals = 5)
 
     @Test fun connectedGraphite() = capture("first-run-connected-graphite", true) { ConnectedStep(connected, {}, {}) }
     @Test fun connectedPaper() = capture("first-run-connected-paper", false) { ConnectedStep(connected, {}, {}) }
-    @Test fun connectedLaterGraphite() = capture("first-run-connected-later-graphite", true) { ConnectedStep(connected.copy(first = false), {}, {}) }
+    @Test fun connectedLaterGraphite() = capture("first-run-connected-later-graphite", true) { ConnectedStep(connected.copy(first = false, agents = 1, terminals = 2), {}, {}) }
     @Test fun connected2x() = font2x { capture("first-run-connected-2x-graphite", true) { ConnectedStep(connected, {}, {}) } }
 
     // The password way's panel (renders first-run-password, first-run-password-trust): the hidden field,
