@@ -163,7 +163,7 @@ fun AgentsScreen(
                     AgentsEmpty.NoAgents -> item(key = "empty") { NoAgents(ui.emptyAction, actions.onNewTerminal) }
                     AgentsEmpty.NoScreenLock -> item(key = "empty") { LockNoticeCard(actions.onScreenLock) }
                     AgentsEmpty.Unfinished -> item(key = "empty") {
-                        UnfinishedHome(ui.unfinished?.machine.orEmpty(), onContinue = { ui.unfinished?.let { actions.onContinueSetup(it.machine) } })
+                        UnfinishedHome(ui.unfinished?.machine.orEmpty(), keyRefused = ui.unfinished?.keyRefused == true, onContinue = { ui.unfinished?.let { actions.onContinueSetup(it.machine) } })
                     }
                     AgentsEmpty.StartFailed -> item(key = "empty") { StartFailed(ui.startError.orEmpty(), actions.onRetry) }
                     null -> Unit

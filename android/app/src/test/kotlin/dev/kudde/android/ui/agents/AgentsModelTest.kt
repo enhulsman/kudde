@@ -284,6 +284,26 @@ class AgentsModelTest {
         assertEquals("Its setup is not finished.", u.emptyDetail)
         assertEquals("Continue setup", u.emptyAction)
     }
+    @Test fun aKeyThatWorkedBeforeAndIsRefusedNowSaysSo() {
+        val m = machine("workstation", MachineState.KeyRejected, lastConnected = NOW)
+        val u = ui(snapshot(listOf(m), emptyList()))
+        assertEquals(AgentsEmpty.Unfinished, u.empty)
+        assertEquals("workstation is not connected yet", u.emptyTitle)
+        assertEquals("It no longer accepts this phone's key.", u.emptyDetail)
+        assertEquals("Continue setup", u.emptyAction)
+    }
+    @Test fun aKeyRefusedBeforeAnyConnectionIsStillAnUnfinishedSetup() {
+        val m = machine("workstation", MachineState.KeyRejected, lastConnected = null)
+        val u = ui(snapshot(listOf(m), emptyList()))
+        assertEquals("It no longer accepts this phone's key." == u.emptyDetail, false)
+        assertEquals("Its setup is not finished.", u.emptyDetail)
+    }
+    @Test fun theFirstWaitingMachineDecidesWhichSentenceShows() {
+        val fresh = machine("alpha", MachineState.NotInstalled, lastConnected = null)
+        val refused = machine("beta", MachineState.KeyRejected, lastConnected = NOW)
+        assertEquals("Its setup is not finished.", ui(snapshot(listOf(fresh, refused), emptyList())).emptyDetail)
+        assertEquals("It no longer accepts this phone's key.", ui(snapshot(listOf(refused, fresh), emptyList())).emptyDetail)
+    }
     @Test fun connectedEmptyOffersNewTerminal() {
         val u = ui(snapshot(listOf(connected("workstation")), emptyList()))
         assertEquals(AgentsEmpty.NoAgents, u.empty)

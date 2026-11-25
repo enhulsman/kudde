@@ -673,7 +673,8 @@ replaces in `strings.xml`.
 | L2 | kudde keeps its SSH key in the phone's secure hardware. Android allows that only on a phone with a PIN, pattern or password. | the key store's message |
 | L3 | Set a screen lock | Try again |
 | U1 | %1$s · finish setup | new |
-| U2 | %1$s is not connected yet / Its setup is not finished. / Continue setup | No agents yet |
+| U2 | %1$s is not connected yet / Its setup is not finished. / Continue setup (a machine whose setup never finished) | No agents yet |
+| U2b | %1$s is not connected yet / It no longer accepts this phone's key. / Continue setup (a machine that connected before and now refuses the phone key, 2026-11-25) | new |
 | U3 | New terminal (button under "No agents yet") | new on this block |
 | U4 | Continue setup / Opens the step this machine is at (card row, when herdr-core is missing or too old) | no row |
 
@@ -757,7 +758,7 @@ from step 3; C8 is gone, step 4 replaces it. The existing alert texts in
 | AL8 | Alerts need a UnifiedPush app, such as ntfy. Install one, then try again. | `alerts_no_distributor` |
 | AL9 | Waiting for the UnifiedPush app… | `alerts_waiting` |
 | AL10 | Notifications are not allowed for kudde. / Allow | `alerts_not_allowed`, `alerts_allow` |
-| AL11 | Alerts are on on this phone. / Send test alert | new / `alerts_test` |
+| AL11 | Alerts are already on for this phone. / Send test alert (was "Alerts are on on this phone.", changed 2026-11-25) | new / `alerts_test` |
 | C4 | Show my agents | new (from step 3) |
 | C6 | Start a terminal or agent | new (from step 3) |
 | C7 | Done | new (from step 3) |

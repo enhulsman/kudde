@@ -651,11 +651,11 @@ fun EmptyHome(onSetup: () -> Unit, modifier: Modifier = Modifier) {
 
 /** The home's unfinished-setup block (U2, U3). */
 @Composable
-fun UnfinishedHome(machine: String, onContinue: () -> Unit, modifier: Modifier = Modifier) {
+fun UnfinishedHome(machine: String, onContinue: () -> Unit, modifier: Modifier = Modifier, keyRefused: Boolean = false) {
     Column(modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
         Notice {
             BasicText(stringResource(R.string.setup_unfinished_title, machine), style = bodyText.copy(color = KuddeTheme.colors.fg))
-            Paragraph(stringResource(R.string.setup_unfinished_detail))
+            Paragraph(stringResource(if (keyRefused) R.string.setup_key_refused_detail else R.string.setup_unfinished_detail))
             Outline(stringResource(R.string.setup_continue), onContinue)
         }
     }

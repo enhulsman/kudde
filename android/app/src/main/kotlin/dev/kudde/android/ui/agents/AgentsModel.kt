@@ -80,7 +80,12 @@ enum class AgentsEmpty {
 }
 
 /** Navigation data for section 4's setup notice and empty-state action. */
-data class UnfinishedSetup(val machine: String, val step: Int)
+data class UnfinishedSetup(
+    val machine: String,
+    val step: Int,
+    /** It connected before and now refuses the phone key: not a setup that was never finished. */
+    val keyRefused: Boolean = false,
+)
 
 /** A connected machine is finished; waiting setup states can recur after a past connection. */
 fun unfinishedSetup(m: MachineView): UnfinishedSetup? {
@@ -91,7 +96,11 @@ fun unfinishedSetup(m: MachineView): UnfinishedSetup? {
         else -> m.lastConnectedMs == null
     }
     if (!waitsForSetup) return null
-    return UnfinishedSetup(m.name, if (m.hostKey == null && m.state !is MachineState.HostKeyUnconfirmed) 1 else 2)
+    return UnfinishedSetup(
+        m.name,
+        if (m.hostKey == null && m.state !is MachineState.HostKeyUnconfirmed) 1 else 2,
+        keyRefused = m.state == MachineState.KeyRejected && m.lastConnectedMs != null,
+    )
 }
 
 @Immutable
@@ -167,7 +176,9 @@ fun agentsUi(
         },
         emptyDetail = when (empty) {
             AgentsEmpty.NoScreenLock -> res.getString(R.string.setup_no_lock_detail)
-            AgentsEmpty.Unfinished -> res.getString(R.string.setup_unfinished_detail)
+            AgentsEmpty.Unfinished -> res.getString(
+                if (unfinished.first().keyRefused) R.string.setup_key_refused_detail else R.string.setup_unfinished_detail,
+            )
             else -> null
         },
         emptyAction = when (empty) {

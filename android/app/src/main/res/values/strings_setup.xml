@@ -85,7 +85,7 @@
     <string name="al_waiting">Waiting for the UnifiedPush app…</string>
     <string name="al_not_allowed">Notifications are not allowed for kudde.</string>
     <string name="al_allow">Allow</string>
-    <string name="al_already_on">Alerts are on on this phone.</string>
+    <string name="al_already_on">Alerts are already on for this phone.</string>
     <string name="al_send_test">Send test alert</string>
     <string name="al_show_agents">Show my agents</string>
     <string name="al_start_terminal">Start a terminal or agent</string>

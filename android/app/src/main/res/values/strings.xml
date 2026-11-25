@@ -381,6 +381,7 @@
     <string name="setup_finish_notice">%1$s · finish setup</string>
     <string name="setup_unfinished_title">%1$s is not connected yet</string>
     <string name="setup_unfinished_detail">Its setup is not finished.</string>
+    <string name="setup_key_refused_detail">It no longer accepts this phone\'s key.</string>
     <string name="setup_new_terminal">New terminal</string>
     <string name="setup_no_lock_title">Set a screen lock first</string>
     <string name="setup_no_lock_detail">kudde keeps its SSH key in the phone\'s secure hardware. Android allows that only on a phone with a PIN, pattern or password.</string>
