@@ -369,6 +369,31 @@ Codex, read-only, against main. Its findings and what was done:
   `mktemp` file; the reader refuses a linked or foreign record ("unsafe",
   which is not a missing hook).
 
+### The second adversarial review (task 7.6, 2026-11-25)
+
+Codex, read-only, against main, after Ezra's third try. Findings and what
+was done:
+
+- High, a queued Enter reaching the next prompt after the quiet rule's
+  wait: the same finding as the first review; the guard belongs in
+  herdr-core (the follow-up issue). Unchanged.
+- High, a stale card answering a new call that asks the same words before
+  the next poll: fixed. Before each question's keys and before the review's
+  Enter the hook's record is read again and must still name the card's call.
+- High, the review with gaps accepting a different answer ("Unit" against
+  "Unit and integration", "Apple" against "Apple, Pear"): fixed. The answer
+  after each arrow must be exactly the phone's (labels in order, then the
+  typed text, which may only be cut short by the dialog).
+- Medium, the paste followed on the screen deciding on a frame from before
+  its Enter: fixed. Gone on from the screen, only the unticked free row (the
+  state after the paste's Enter) counts.
+- Medium, focus landing on an older answered line when the card goes before
+  its own line is logged: fixed. The latest done question line when the send
+  began is never the landing line.
+- Medium, a step whose key arrived but was not confirmed leaving a resume
+  that refuses the screen: unchanged; the card says "Typed N of M answers,
+  then stopped. Check the terminal." and the terminal is the way on.
+
 ## Test and phone strategy
 
 Fixtures are invented JSONL with the shapes above (single, multi-question,
