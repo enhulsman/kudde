@@ -445,33 +445,65 @@ pub fn has_review(qs: &[Question]) -> bool {
     qs.len() > 1 || qs.iter().any(|q| q.multi)
 }
 
+/// What the review step lists after a question's arrow: these labels in
+/// this order, then the typed text, joined with ", ".
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Expected {
+    pub labels: Vec<String>,
+    pub typed: Option<String>,
+}
+
+impl Expected {
+    /// The answer `shown` after the arrow (folded) is exactly this one
+    /// (second review: "Unit" is not "Unit and integration", "Apple" not
+    /// "Apple, Pear"). Typed text may be cut short by the dialog: then its
+    /// first 20 characters at least, and nothing it does not hold.
+    fn shown_as(&self, shown: &str) -> bool {
+        let shown = shown.trim();
+        let labels = self.labels.join(", ");
+        let Some(t) = &self.typed else {
+            return shown == labels;
+        };
+        let rest = if labels.is_empty() {
+            Some(shown)
+        } else {
+            shown
+                .strip_prefix(labels.as_str())
+                .and_then(|r| r.strip_prefix(", "))
+        };
+        rest.is_some_and(|r| {
+            let cut = r.trim_end_matches('\u{2026}').trim_end();
+            r == t || (cut.chars().count() >= 20 && t.starts_with(cut))
+        })
+    }
+}
+
 /// What the dialog's review step lists for `answer` to `q` (design D11):
 /// the option's label (a note is not listed), the typed text, or the ticked
-/// labels and the typed text. Long text is matched by its start.
-pub fn expected_answer(q: &Question, answer: &Answer, typed: Option<&str>) -> Vec<String> {
-    let start = |t: &str| fold(t).chars().take(20).collect::<String>();
+/// labels in the options' order and the typed text.
+pub fn expected_answer(q: &Question, answer: &Answer, typed: Option<&str>) -> Expected {
     let label = |i: usize| q.options.get(i).map(|o| fold(&o.label));
-    match answer {
-        Answer::Option(i) => label(*i).into_iter().collect(),
-        Answer::Other => typed.map(start).into_iter().collect(),
+    let (labels, typed) = match answer {
+        Answer::Option(i) => (label(*i).into_iter().collect(), None),
+        Answer::Other => (vec![], typed.map(fold)),
         Answer::Multi(ticked) => {
             let mut sorted = ticked.clone();
             sorted.sort_unstable();
-            sorted
-                .into_iter()
-                .filter_map(label)
-                .chain(typed.map(start))
-                .collect()
+            (
+                sorted.into_iter().filter_map(label).collect(),
+                typed.map(fold),
+            )
         }
-        Answer::Skip | Answer::Pass | Answer::Submit => vec![],
-    }
+        Answer::Skip | Answer::Pass | Answer::Submit => (vec![], None),
+    };
+    Expected { labels, typed }
 }
 
 /// The review step of this call shows, ready to send, listing exactly the
 /// questions with an answer, each with `expected` (from [expected_answer])
 /// after its arrow; a question without one (None) is not listed, and then
 /// the review warns of the gap.
-pub fn review_matches(screen: &str, qs: &[Question], expected: &[Option<Vec<String>>]) -> bool {
+pub fn review_matches(screen: &str, qs: &[Question], expected: &[Option<Expected>]) -> bool {
     let d = dialog(screen);
     if !review_shown(d, qs) || expected.len() != qs.len() {
         return false;
@@ -488,9 +520,10 @@ pub fn review_matches(screen: &str, qs: &[Question], expected: &[Option<Vec<Stri
         let part = parts.iter().find(|(j, _)| *j == i).map(|(_, p)| *p);
         match (want, part) {
             (None, None) => true,
-            (Some(w), Some(p)) => {
-                p.trim_start().starts_with('\u{2192}') && w.iter().all(|x| p.contains(x.as_str()))
-            }
+            (Some(w), Some(p)) => p
+                .trim_start()
+                .strip_prefix('\u{2192}')
+                .is_some_and(|shown| w.shown_as(shown)),
             _ => false,
         }
     })

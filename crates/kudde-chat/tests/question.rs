@@ -838,8 +838,66 @@ fn abc() -> Vec<Question> {
     ]))
 }
 
-fn want(v: &[Option<&str>]) -> Vec<Option<Vec<String>>> {
-    v.iter().map(|o| o.map(|s| vec![s.to_string()])).collect()
+fn want(v: &[Option<&str>]) -> Vec<Option<question::Expected>> {
+    v.iter()
+        .map(|o| {
+            o.map(|s| question::Expected {
+                labels: vec![s.to_string()],
+                typed: None,
+            })
+        })
+        .collect()
+}
+
+/// Second review (2026-11-25): the review must list exactly the phone's
+/// answer, not one that only holds it.
+#[test]
+fn a_review_listing_more_than_the_phones_answer_is_not_it() {
+    let gap = |b: &str, c: &str| {
+        format!(
+            "←  ☐ A  ☒ B  ☒ C  ✔ Submit  →\nReview your answers\n⚠ Some questions are unanswered\n ● Second?\n   → {b}\n ● Third?\n   → {c}\n❯ 1. Submit answers\n  2. Cancel\n"
+        )
+    };
+    let qs = readable(json!([
+        q("First?", "A", &["Yes", "No"]),
+        q("Second?", "B", &["Unit", "Unit and integration"]),
+        {"question": "Third?", "header": "C", "multiSelect": true,
+         "options": [{"label": "Apple", "description": "-"}, {"label": "Pear", "description": "-"}]},
+    ]));
+    let unit = question::expected_answer(&qs[1], &Answer::Option(0), None);
+    let apple = question::expected_answer(&qs[2], &Answer::Multi(vec![0]), None);
+    let apple_tea = question::expected_answer(&qs[2], &Answer::Multi(vec![0]), Some("tea"));
+    let want = |c: &question::Expected| vec![None, Some(unit.clone()), Some(c.clone())];
+    assert!(question::review_matches(
+        &gap("Unit", "Apple"),
+        &qs,
+        &want(&apple)
+    ));
+    assert!(!question::review_matches(
+        &gap("Unit and integration", "Apple"),
+        &qs,
+        &want(&apple)
+    ));
+    assert!(!question::review_matches(
+        &gap("Unit", "Apple, Pear"),
+        &qs,
+        &want(&apple)
+    ));
+    assert!(question::review_matches(
+        &gap("Unit", "Apple, tea"),
+        &qs,
+        &want(&apple_tea)
+    ));
+    assert!(!question::review_matches(
+        &gap("Unit", "Apple, Pear, tea"),
+        &qs,
+        &want(&apple_tea)
+    ));
+    assert!(!question::review_matches(
+        &gap("Unit", "Apple, teapot"),
+        &qs,
+        &want(&apple_tea)
+    ));
 }
 
 #[test]
