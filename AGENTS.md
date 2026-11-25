@@ -28,6 +28,11 @@ project board shows what is in progress.
   in two places.
 - Move an issue to In Progress when work on it starts; close it from the
   PR with `Closes #n`.
+- A feature that spans several agents (Claude Code, Codex, ...) gets an
+  epic: a parent issue labelled `epic` with the what and why, and one
+  sub-issue per agent plus one for any shared part. Agent-specific issues
+  carry an `agent:<name>` label. An epic has no OpenSpec change of its
+  own; each sub-issue links its own.
 - Issue text is public: the wording rules above apply to it.
 
 ## Putting a build on a phone
