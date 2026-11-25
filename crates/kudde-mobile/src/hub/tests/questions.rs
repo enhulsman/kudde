@@ -1404,3 +1404,339 @@ async fn the_screen_leaving_the_question_before_the_text_stops_it() {
     );
     core.nothing_more().await;
 }
+
+// ---- the phone keeps the answers until Send (design D11, owner 2026-11-25)
+
+fn spawn_send(
+    chat: &Arc<Chat>,
+    id: &str,
+    answers: Vec<ChatChoice>,
+    from: u32,
+) -> tokio::task::JoinHandle<ChatAnswer> {
+    let chat = chat.clone();
+    let id = id.to_owned();
+    tokio::spawn(async move { chat.send_answers_async(id, answers, from).await })
+}
+
+/// [database] without its preview: digits alone, and a free-text row.
+fn plain_db() -> Value {
+    let mut v = database();
+    v["options"][1].as_object_mut().unwrap().remove("preview");
+    v
+}
+
+fn pick(index: u32) -> ChatChoice {
+    ChatChoice::Pick { index }
+}
+
+/// Three single-choice questions: database, login, tests.
+fn three_qs() -> Value {
+    json!([plain_db(), login(), {"question": "Which tests first?", "header": "Tests", "multiSelect": false,
+        "options": [{"label": "Unit", "description": "-"}, {"label": "End to end", "description": "-"}]}])
+}
+
+/// The dialog on question `at` (0-based) of [three_qs], earlier ones ticked.
+fn three_screen(at: usize) -> String {
+    let marks: Vec<String> = ["Database", "Login", "Tests"]
+        .iter()
+        .enumerate()
+        .map(|(i, h)| format!("{} {h}", if i < at { "☒" } else { "☐" }))
+        .collect();
+    let (text, a, b) = match at {
+        0 => (
+            "Which database should the todo app use?",
+            "SQLite (Recommended)",
+            "Postgres",
+        ),
+        1 => ("Which login should it have?", "Password", "Passkey"),
+        _ => ("Which tests first?", "Unit", "End to end"),
+    };
+    format!(
+        "←  {}  ✔ Submit  →\n{text}\n❯ 1. {a}\n  2. {b}\n  3. Type something.\n",
+        marks.join("  ")
+    )
+}
+
+/// The dialog's review step listing these answers for [three_qs].
+fn three_review(answers: [&str; 3]) -> String {
+    format!(
+        "←  ☒ Database  ☒ Login  ☒ Tests  ✔ Submit  →\nReview your answers\n ● Which database should the todo app use?\n   → {}\n ● Which login should it have?\n   → {}\n ● Which tests first?\n   → {}\n❯ 1. Submit answers\n  2. Cancel\n",
+        answers[0], answers[1], answers[2]
+    )
+}
+
+impl Core {
+    /// One question typed: the check, the screen showing it, its keys, the
+    /// screen after them.
+    async fn types(&mut self, before: &str, keys: &[&str], after: &str) {
+        self.serves_check("blocked").await;
+        self.serves_screen(before).await;
+        let k = self.takes_keys(keys).await;
+        self.reply(&k, json!({"turn": 3})).await;
+        self.serves_screen(after).await;
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn send_types_each_answer_after_its_screen_then_enter_on_the_review() {
+    let mut r = rig("send-all");
+    let (mut core, chat, end) = with_log(&mut r, &[ask_line("toolu_01", three_qs())]).await;
+    let got = spawn_send(&chat, "toolu_01", vec![pick(1), pick(1), pick(0)], 0);
+    core.types(&three_screen(0), &["2"], &three_screen(1)).await;
+    core.types(&three_screen(1), &["2"], &three_screen(2)).await;
+    let review = three_review(["Postgres", "Passkey", "Unit"]);
+    core.types(&three_screen(2), &["1"], &review).await;
+    // The dialog's review step lists what the phone typed: then Enter.
+    core.serves_check("blocked").await;
+    core.serves_screen(&review).await;
+    let k = core.takes_keys(&["enter"]).await;
+    core.reply(&k, json!({"turn": 3})).await;
+    core.serves_screen(PROMPT).await;
+    core.serves_log(end, &[result_line("toolu_01", false)])
+        .await;
+    assert_eq!(got.await.unwrap(), ChatAnswer::Done);
+    core.nothing_more().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn sending_stops_halfway_and_says_how_many_were_typed() {
+    let mut r = rig("send-halfway");
+    let (mut core, chat, _) = with_log(&mut r, &[ask_line("toolu_01", three_qs())]).await;
+    let got = spawn_send(&chat, "toolu_01", vec![pick(1), pick(1), pick(0)], 0);
+    core.types(&three_screen(0), &["2"], &three_screen(1)).await;
+    core.types(&three_screen(1), &["2"], &three_screen(2)).await;
+    // The third question's check finds another dialog: nothing more is sent.
+    core.serves_check("blocked").await;
+    core.serves_screen(OTHER).await;
+    assert_eq!(got.await.unwrap(), ChatAnswer::Stopped { sent: 2 });
+    core.nothing_more().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_step_that_cannot_be_confirmed_stops_with_the_ones_before_it() {
+    let mut r = rig("send-unconfirmed");
+    let (mut core, chat, _) = with_log(&mut r, &[ask_line("toolu_01", three_qs())]).await;
+    let got = spawn_send(&chat, "toolu_01", vec![pick(1), pick(1), pick(0)], 0);
+    core.types(&three_screen(0), &["2"], &three_screen(1)).await;
+    core.serves_check("blocked").await;
+    core.serves_screen(&three_screen(1)).await;
+    let k = core.takes_keys(&["2"]).await;
+    core.reply(&k, json!({"turn": 3})).await;
+    // The dialog never moves on from the second question.
+    assert_eq!(
+        only_reads_until(&mut core, got, &three_screen(1)).await,
+        ChatAnswer::Stopped { sent: 1 }
+    );
+    core.nothing_more().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn the_rest_goes_on_only_from_the_first_question_not_yet_typed() {
+    let mut r = rig("send-rest");
+    let (mut core, chat, end) = with_log(&mut r, &[ask_line("toolu_01", three_qs())]).await;
+    // The screen shows another question than the third: nothing is sent.
+    let got = spawn_send(&chat, "toolu_01", vec![pick(1), pick(1), pick(0)], 2);
+    core.serves_check("blocked").await;
+    core.serves_screen(&three_screen(1)).await;
+    assert_eq!(got.await.unwrap(), ChatAnswer::Changed);
+    core.nothing_more().await;
+    // On the third question: only its answer, then the review's Enter.
+    let got = spawn_send(&chat, "toolu_01", vec![pick(1), pick(1), pick(0)], 2);
+    let review = three_review(["Postgres", "Passkey", "Unit"]);
+    core.types(&three_screen(2), &["1"], &review).await;
+    core.serves_check("blocked").await;
+    core.serves_screen(&review).await;
+    let k = core.takes_keys(&["enter"]).await;
+    core.reply(&k, json!({"turn": 3})).await;
+    core.serves_screen(PROMPT).await;
+    core.serves_log(end, &[result_line("toolu_01", false)])
+        .await;
+    assert_eq!(got.await.unwrap(), ChatAnswer::Done);
+    core.nothing_more().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_first_send_needs_the_first_question_on_screen() {
+    let mut r = rig("send-first");
+    let (mut core, chat, _) = with_log(&mut r, &[ask_line("toolu_01", three_qs())]).await;
+    let got = spawn_send(&chat, "toolu_01", vec![pick(1), pick(1), pick(0)], 0);
+    core.serves_check("blocked").await;
+    core.serves_screen(&three_screen(1)).await;
+    assert_eq!(got.await.unwrap(), ChatAnswer::Changed);
+    core.nothing_more().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn other_answers_on_the_review_step_stop_before_enter() {
+    let mut r = rig("send-review-differs");
+    let (mut core, chat, _) = with_log(&mut r, &[ask_line("toolu_01", three_qs())]).await;
+    let got = spawn_send(&chat, "toolu_01", vec![pick(1), pick(1), pick(0)], 0);
+    core.types(&three_screen(0), &["2"], &three_screen(1)).await;
+    core.types(&three_screen(1), &["2"], &three_screen(2)).await;
+    let differs = three_review(["SQLite (Recommended)", "Passkey", "Unit"]);
+    core.types(&three_screen(2), &["1"], &differs).await;
+    core.serves_check("blocked").await;
+    assert_eq!(
+        only_reads_until(&mut core, got, &differs).await,
+        ChatAnswer::Stopped { sent: 3 }
+    );
+    core.nothing_more().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn one_multi_select_question_with_a_typed_answer_ends_on_its_review() {
+    let mut r = rig("send-multi");
+    let (mut core, chat, end) = with_log(&mut r, &[ask_line("toolu_01", json!([fruit()]))]).await;
+    let got = spawn_send(
+        &chat,
+        "toolu_01",
+        vec![ChatChoice::Multi {
+            indices: vec![0],
+            text: Some("Berries".into()),
+        }],
+        0,
+    );
+    core.serves_check("blocked").await;
+    core.serves_screen(&fruit_screen([false; 3], "Type something", false))
+        .await;
+    let k = core.takes_keys(&["1"]).await;
+    core.reply(&k, json!({"turn": 3})).await;
+    core.serves_screen(&fruit_screen([true, false, false], "Type something", false))
+        .await;
+    let send = core.expect("terminal.send").await;
+    assert_eq!(send["params"]["text"], "Berries");
+    core.reply(&send, json!({"turn": 3, "status": "blocked"}))
+        .await;
+    core.serves_screen(&fruit_screen([true, false, false], "Berries", false))
+        .await;
+    let k = core.takes_keys(&["enter"]).await;
+    core.reply(&k, json!({"turn": 3})).await;
+    core.serves_screen(&fruit_screen([true, false, false], "Berries", true))
+        .await;
+    let k = core.takes_keys(&["tab"]).await;
+    core.reply(&k, json!({"turn": 3})).await;
+    core.serves_screen(&on_submit(&fruit_screen(
+        [true, false, false],
+        "Berries",
+        true,
+    )))
+    .await;
+    let k = core.takes_keys(&["enter"]).await;
+    core.reply(&k, json!({"turn": 3})).await;
+    let review = FRUIT_REVIEW.replace("Apple, Mango", "Apple, Berries");
+    core.serves_screen(&review).await;
+    core.serves_check("blocked").await;
+    core.serves_screen(&review).await;
+    let k = core.takes_keys(&["enter"]).await;
+    core.reply(&k, json!({"turn": 3})).await;
+    core.serves_screen(PROMPT).await;
+    core.serves_log(end, &[result_line("toolu_01", false)])
+        .await;
+    assert_eq!(got.await.unwrap(), ChatAnswer::Done);
+    core.nothing_more().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn own_words_and_a_note_are_typed_in_their_turn() {
+    let mut r = rig("send-mixed");
+    let layout = json!({"question": "Which layout?", "header": "Layout", "multiSelect": false,
+        "options": [{"label": "Compact", "description": "-", "preview": "+--+"},
+                    {"label": "Cards", "description": "-", "preview": "+----+"}]});
+    let (mut core, chat, end) =
+        with_log(&mut r, &[ask_line("toolu_01", json!([plain_db(), layout]))]).await;
+    let got = spawn_send(
+        &chat,
+        "toolu_01",
+        vec![
+            ChatChoice::Other {
+                text: "Through Docker".into(),
+            },
+            ChatChoice::Note {
+                index: 1,
+                text: "Bigger titles".into(),
+            },
+        ],
+        0,
+    );
+    let first = "←  ☐ Database  ☐ Layout  ✔ Submit  →\nWhich database should the todo app use?\n❯ 1. SQLite (Recommended)\n  2. Postgres\n  3. Type something.\n";
+    let first_free = first
+        .replace("❯ 1.", "  1.")
+        .replace("  3. Type something.", "❯ 3. Type something.");
+    let second = "←  ☒ Database  ☐ Layout  ✔ Submit  →\nWhich layout?\n❯ 1. Compact      ┌──────┐\n  2. Cards        │ +--+ │\n                  Notes: press n to add notes\n";
+    let second_on = second
+        .replace("❯ 1.", "  1.")
+        .replace("  2. Cards", "❯ 2. Cards");
+    let notes = second_on.replace(
+        "Notes: press n to add notes",
+        "Notes: Add notes on this design…",
+    );
+    let review = "←  ☒ Database  ☒ Layout  ✔ Submit  →\nReview your answers\n ● Which database should the todo app use?\n   → Through Docker\n ● Which layout?\n   → Cards\n❯ 1. Submit answers\n  2. Cancel\n";
+    core.serves_check("blocked").await;
+    core.serves_screen(first).await;
+    let k = core.takes_keys(&["3"]).await;
+    core.reply(&k, json!({"turn": 3})).await;
+    core.serves_screen(&first_free).await;
+    let send = core.expect("terminal.send").await;
+    assert_eq!(send["params"]["text"], "Through Docker");
+    core.reply(&send, json!({"turn": 3, "status": "blocked"}))
+        .await;
+    core.serves_screen(second).await;
+    core.serves_check("blocked").await;
+    core.serves_screen(second).await;
+    let k = core.takes_keys(&["2"]).await;
+    core.reply(&k, json!({"turn": 3})).await;
+    core.serves_screen(&second_on).await;
+    let k = core.takes_keys(&["n"]).await;
+    core.reply(&k, json!({"turn": 3})).await;
+    core.serves_screen(&notes).await;
+    let send = core.expect("terminal.send").await;
+    assert_eq!(send["params"]["text"], "Bigger titles");
+    core.reply(&send, json!({"turn": 3, "status": "blocked"}))
+        .await;
+    core.serves_screen(review).await;
+    core.serves_check("blocked").await;
+    core.serves_screen(review).await;
+    let k = core.takes_keys(&["enter"]).await;
+    core.reply(&k, json!({"turn": 3})).await;
+    core.serves_screen(PROMPT).await;
+    core.serves_log(end, &[result_line("toolu_01", false)])
+        .await;
+    assert_eq!(got.await.unwrap(), ChatAnswer::Done);
+    core.nothing_more().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn one_single_choice_question_has_no_review_to_wait_for() {
+    let mut r = rig("send-one");
+    let (mut core, chat, end) =
+        with_log(&mut r, &[ask_line("toolu_01", json!([plain_db()]))]).await;
+    let plain = DIALOG;
+    let got = spawn_send(&chat, "toolu_01", vec![pick(1)], 0);
+    core.serves_check("blocked").await;
+    core.serves_screen(plain).await;
+    let k = core.takes_keys(&["2"]).await;
+    core.reply(&k, json!({"turn": 3})).await;
+    core.serves_screen(PROMPT).await;
+    core.serves_log(end, &[result_line("toolu_01", false)])
+        .await;
+    assert_eq!(got.await.unwrap(), ChatAnswer::Done);
+    core.nothing_more().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn answers_that_do_not_fit_the_call_send_nothing() {
+    let mut r = rig("send-misfit");
+    let (mut core, chat, _) = with_log(&mut r, &[ask_line("toolu_01", three_qs())]).await;
+    for (answers, from) in [
+        (vec![pick(1), pick(1)], 0),
+        (vec![pick(1), ChatChoice::Skip, pick(0)], 0),
+        (vec![pick(1), pick(5), pick(0)], 0),
+        (vec![pick(1), pick(1), pick(0)], 4),
+    ] {
+        let got = spawn_send(&chat, "toolu_01", answers, from);
+        assert!(matches!(got.await.unwrap(), ChatAnswer::Failed { .. }));
+    }
+    let got = spawn_send(&chat, "toolu_02", vec![pick(1), pick(1), pick(0)], 0);
+    assert_eq!(got.await.unwrap(), ChatAnswer::Changed);
+    core.nothing_more().await;
+}
