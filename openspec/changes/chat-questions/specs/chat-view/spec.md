@@ -14,7 +14,9 @@ the record is missing, stale (another session, or its call already has a
 result in the log) or the screen does not show its dialog, while the status
 is `blocked` with the kind `question` or the log holds a call with no result,
 the card SHALL show the question text it knows (none when it knows none)
-with "Open the terminal" and no choices, and SHALL send nothing. A status of
+with "Open the terminal" and no choices, and SHALL send nothing; when the
+desk holds no record at all for the session, it SHALL also say how to answer
+from the phone (the hook text in the table). A status of
 another kind (a permission prompt) SHALL show no card. The log SHALL stay
 the source of completed calls. The card SHALL show the question's text, its
 options numbered from 1 in the call's order, each with its label and,
@@ -44,7 +46,7 @@ stands for it); a row left with nothing to show SHALL be hidden.
 
 #### Scenario: No hook installed
 - **WHEN** the status is blocked with the kind `question` and the desk holds no record for the session
-- **THEN** the card shows "Open the terminal" and no choices, and nothing can be sent from it
+- **THEN** the card reads "The agent asked a question in the terminal. To answer it here, add the question hook on the desk." with "Open the terminal" and no choices, and nothing can be sent from it
 
 #### Scenario: A stale record
 - **WHEN** the record names a call whose result is already in the log and the agent waits on a new question
@@ -173,8 +175,9 @@ collapse the card to "Skipped: <header>".
 A call with more than one question SHALL show one question at a time with
 "Question N of M", following the question the screen shows. A tap answers
 that question on the desk at once; the card then shows the next question. When the dialog shows
-its review step ("Submit answers"), the card SHALL show "Send answers" and
-"Skip" and nothing else, and Send answers SHALL send Enter after the same
+its review step ("Submit answers"), the card SHALL show "All questions
+answered. Send your answers, or skip them all.", "Send answers" and "Skip"
+and nothing else, and Send answers SHALL send Enter after the same
 checks. The card SHALL follow the screen: a question answered at the desk
 moves the card on, and no keys for it are sent from the card.
 
@@ -206,9 +209,10 @@ review step, Enter. Each of these steps SHALL wait for the screen it
 depends on, and a screen that does not come SHALL stop the answer with
 "Could not confirm the answer arrived. Check the terminal.", sending nothing
 again. The card SHALL report the same when the screen does not move on. The keys for this question
-kind are not confirmed against the program (design, section B); until the
-phone check confirms them, a multi-select question SHALL show "Open the
-terminal" with its options as plain text.
+kind were confirmed on the desk and the phone (design, section B); the core
+keeps a switch that, turned off, shows a multi-select question with "Open
+the terminal" and its options as plain text, should a later Claude Code
+change the dialog.
 
 #### Scenario: Two of three ticked
 - **WHEN** a multi-select question lists A, B and C and Ezra ticks A and C and taps Send
@@ -328,6 +332,8 @@ The card SHALL use these texts and no others of its own:
 | Nothing sent: not connected | Not connected. Nothing was sent. |
 | Not confirmed | Could not confirm the answer arrived. Check the terminal. |
 | Unreadable or unsupported | Open the terminal |
+| Review step | All questions answered. Send your answers, or skip them all. |
+| No hook record | The agent asked a question in the terminal. To answer it here, add the question hook on the desk. |
 | Collapsed, answered | Answered: `<header>` (several: the headers joined with ", ") |
 | Collapsed, declined | Skipped: `<header>` |
 

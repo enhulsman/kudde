@@ -249,7 +249,7 @@ Codex: the card shows the question as read-only text and "Open the terminal".
   instead, with the same checks.
 - **Rebound keys or a changed dialog** in a later Claude Code: D4 notices
   and stops; a compatibility note joins the supported-version list.
-- **Free-text paste and multi-select** were confirmed on the desk and the phone (section B); the multi-select gate in the core stays shut until the owner lifts it.
+- **Free-text paste and multi-select** were confirmed on the desk and the phone (section B); the owner lifted the multi-select gate on 2026-11-25 (the switch stays, off as a way back).
 - **Long text**: a 700-character description wraps; a card taller than the
   screen scrolls inside its own area, with the options reachable.
 
