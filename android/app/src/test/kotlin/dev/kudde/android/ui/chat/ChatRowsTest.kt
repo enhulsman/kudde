@@ -8,6 +8,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import uniffi.kudde_mobile.ChatCall
 import uniffi.kudde_mobile.ChatImage
+import uniffi.kudde_mobile.ChatQuestion
 import uniffi.kudde_mobile.ChatRow
 
 // Spec "The chat shows the conversation as the agents' apps do", "Images show
@@ -92,6 +93,36 @@ class ChatRowsTest {
         assertEquals("Ran 3 commands, read 2 files, started 1 agent", toolLine(calls))
         assertEquals("Read title", toolLine(listOf(call("Read"))))
         assertEquals("Ran 2 commands · 1 failed · running", toolLine(listOf(call("Bash", failed = true), call("Bash", done = false))))
+    }
+
+    // Coordinator, after the phone round (2026-11-25): the card stands for the waiting call.
+    private val card = ChatQuestion(id = "toolu_01", readable = true, questions = emptyList(), texts = listOf("Theme?"), step = 0u, review = false)
+
+    @Test
+    fun theWaitingQuestionCallHidesWhileItsCardShows() {
+        val alone = row("t1", "tools", calls = listOf(call("AskUserQuestion", done = false)))
+        val mixed = row("t2", "tools", calls = listOf(call("Bash"), call("AskUserQuestion", done = false)))
+        val said = row("s1", text = "Let me ask first.")
+        val shown = shownRows(listOf(said, alone, mixed), card)
+        assertEquals("a row left empty goes", listOf("s1", "t2"), shown.map { it.key })
+        assertEquals("the others folded with it stay", listOf("Bash"), shown[1].calls.map { it.name })
+        assertEquals("Bash title", toolLine(shown[1].calls))
+    }
+
+    @Test
+    fun withoutACardOrOnceAnsweredTheQuestionLineShows() {
+        val waiting = row("t1", "tools", calls = listOf(call("AskUserQuestion", done = false)))
+        val answered = row("t1", "tools", calls = listOf(call("AskUserQuestion", done = true)))
+        assertEquals(listOf(waiting), shownRows(listOf(waiting), null))
+        assertEquals(listOf(answered), shownRows(listOf(answered), card))
+    }
+
+    @Test
+    fun aRowWithTextKeepsItsTextWhenItsQuestionCallHides() {
+        val r = row("t1", "tools", text = "Before I start:", calls = listOf(call("AskUserQuestion", done = false)))
+        val shown = shownRows(listOf(r), card)
+        assertEquals(listOf("t1"), shown.map { it.key })
+        assertTrue(shown[0].calls.isEmpty())
     }
 
     // --- images ---

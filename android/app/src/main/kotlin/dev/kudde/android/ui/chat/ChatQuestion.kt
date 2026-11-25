@@ -244,6 +244,15 @@ fun QuestionCard(
     }
     // Back closes the own-words field (and its keyboard), keeping the card.
     BackHandler(enabled = card.otherOpen) { card.otherOpen = false }
+    // An answer on its way, from any button or TalkBack: no keyboard until the card moves on.
+    val focusManager = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
+    LaunchedEffect(card.busy) {
+        if (card.busy) {
+            focusManager.clearFocus()
+            keyboard?.hide()
+        }
+    }
     CardSurface(
         modifier,
         body = {
@@ -368,6 +377,8 @@ private fun RowScope.Other(card: QuestionCard, takeFocus: Boolean, answer: (Chat
     ) { style, cursor ->
         BasicTextField(
             text, { card.otherText = it },
+            // While the answer is on its way the field holds its text but takes no focus.
+            enabled = !card.busy,
             textStyle = style,
             cursorBrush = cursor,
             maxLines = 6,

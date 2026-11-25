@@ -4,6 +4,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextLayoutResult
 import uniffi.kudde_mobile.ChatCall
+import uniffi.kudde_mobile.ChatQuestion
 import uniffi.kudde_mobile.ChatRow
 
 // The chat's rows apart from drawing them: tool lines, image order, which
@@ -17,6 +18,18 @@ fun toolLine(calls: List<ChatCall>): String {
     val failed = calls.count { it.failed }
     val base = if (calls.size == 1) calls[0].title else toolKinds(calls)
     return base + (if (failed > 0) " · $failed failed" else "") + (if (running) " · running" else "")
+}
+
+/** The rows the chat draws: while [card] shows, its waiting call is the card, not a line. */
+fun shownRows(rows: List<ChatRow>, card: ChatQuestion?): List<ChatRow> {
+    if (card == null) return rows
+    fun waiting(c: ChatCall) = c.name == QUESTION_TOOL && !c.done
+    if (rows.none { r -> r.calls.any(::waiting) }) return rows
+    return rows.mapNotNull { r ->
+        if (r.calls.none(::waiting)) return@mapNotNull r
+        val rest = r.calls.filterNot(::waiting)
+        r.copy(calls = rest).takeIf { rest.isNotEmpty() || r.text.isNotEmpty() || r.images.isNotEmpty() }
+    }
 }
 
 internal enum class ToolKind(val one: String, val many: String) {

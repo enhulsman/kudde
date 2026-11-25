@@ -281,7 +281,8 @@ private fun Bottom(text: String, onTerminal: (() -> Unit)?) {
 
 @Composable
 private fun Messages(poll: ChatPoll, state: ChatState, images: ChatImageSource, now: () -> Long, animate: Boolean, onOlder: () -> Unit, onTerminal: () -> Unit) {
-    val rows = poll.rows
+    // The list indexes these rows (kept places, following the bottom): the drawn ones, not the poll's.
+    val rows = remember(poll.rows, poll.question) { shownRows(poll.rows, poll.question) }
     val pending = state.pending
     if (rows.isEmpty() && pending.isEmpty()) {
         // The recent part may hold no message (one huge record): read further back.
