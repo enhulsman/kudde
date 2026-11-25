@@ -195,8 +195,8 @@ sending more keys.
 
 **D5. One card, stepped.** Several questions show "Question 2 of 3" and one
 question's options at a time, because a phone screen cannot hold four
-questions with descriptions up to 700 characters. Going back is the desk's
-(tab left); the card shows only the question the screen shows.
+questions with descriptions up to 700 characters. (2026-11-25, D11: the
+steps are the phone's own; going back is on the phone.)
 
 **D6. Free text is the dialog's own row.** The text is pasted into the focused
 free-text row, not sent as a chat message: a chat message would be
@@ -226,6 +226,50 @@ and answers). Claude Code returns the note as `annotations[<question>].notes`
 beside the chosen preview. A question with previews has no free-text row in
 the dialog, so the card does not offer "Something else" there. On a
 multi-select question the sheet shows the sample only.
+
+**D11. The phone keeps the answers until Send (owner, 2026-11-25, after the
+TalkBack listen; replaces "a tap answers that question on the desk at once"
+from decision 1).** In a call with several questions or a multi-select
+question (the calls whose desk dialog has a review step) the card keeps each
+answer on the phone: Question N of M with previous and next controls, a
+review step listing every answer with a control back to its question, and
+Send answers, which types the answers in order and then presses the dialog's
+own Submit. A call of one single-choice question has no review step on the
+desk and still answers at the tap. The desk dialog stays on its first
+question until Send (as in Anthropic's own app). Reviews behind it: reports
+058 (Codex and Fable), both for reworking inside #51.
+
+How Send types (the core, `send_answers`): the phone passes the call id, the
+answers in order and how many of them were already typed (`from`, 0 at
+first). For each question from `from` on: the target check (same agent,
+process, session, still blocked), the screen shows that question (ordered
+numbered rows), then that question's keys exactly as one answer at the tap
+sends them (D3, D6, D9), and the screen moving on. Then, where the dialog
+has a review step, the screen must show it listing every question with the
+answer typed (the review shows the label, the typed text, or the ticked
+labels and typed text joined with ", "; a note is not listed, so its option's
+label is checked), with "1. Submit answers" in focus; then Enter and the
+result in the log. Every screen is read again before each step; nothing is
+sent twice.
+
+Stopping halfway: when a step's check fails or cannot be confirmed after k
+answers were typed, the core returns `Stopped { sent: k }` and sends nothing
+more. The card keeps the answers and says "Typed k of n answers, then
+stopped. Check the terminal." (draft) with the terminal button. Send answers
+again calls `send_answers` with `from = k`; the core goes on only if the
+screen shows question k+1 (or the review step when k = n), else "The
+question changed. Nothing was sent." So a retry never retypes an answer the
+dialog already holds, and an answer changed on the phone after the stop is
+not sent for a question already typed: the dialog's review step then lists
+another answer and Enter is not sent. With k = 0 the card shows the plain
+refusal it would show for one tap. Why not resume from wherever the screen
+is: the phone cannot tell whose answers the dialog holds for questions it
+did not type itself; the review check covers what it did type.
+
+The card's steps no longer follow the screen. The poll's step stays the
+dialog's (for Send's checks and the hub's kept step); the card resets only
+on a new call. A desk user answering on the desk while the phone holds
+answers makes Send refuse (the dialog is not on the first question).
 
 **D10. Everything else is refused to the terminal.** An unknown shape
 (no questions, more than 4, an option without a label, more than 4 options

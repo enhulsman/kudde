@@ -68,8 +68,12 @@ stands for it); a row left with nothing to show SHALL be hidden.
 - **WHEN** the call's `questions` holds an option with no label
 - **THEN** the card shows the question text and "Open the terminal", and no option can be tapped
 
-### Requirement: A tapped option answers on the desk
-A tap on an option SHALL send the keys that answer it only after, in this
+### Requirement: Each answer is typed on the desk after its checks
+A tap on an option SHALL type its answer at once in a call of one
+single-choice question (the desk dialog has no review step there); in every other call
+the phone keeps the answers until Send (requirement "The phone keeps the
+answers until Send"), which types them one question after the other. Either
+way each question's keys SHALL be sent only after, in this
 order: `terminal.get` shows the same target and the status still `blocked`;
 `terminal.read` shows the call's question text (box-drawing characters and
 runs of spaces folded) and each of its options as its numbered row, in the
@@ -82,9 +86,10 @@ no longer `blocked` says "Already answered at the desk. Nothing was sent.",
 and another agent, process or session in front (or none) or a screen without
 the question says "The question changed. Nothing was sent." The card SHALL
 show a tapped option as chosen and its buttons as disabled from the tap
-until the step ends. A tap SHALL answer the call and step of the card it was
-made on: one made on a step the card has since left sends nothing, and the
-result of an answer for a step the card has left changes nothing on it. After the keys, the app SHALL read the screen again; the
+until the answer ends. A send SHALL answer the call the card was showing
+when it was tapped: one made on a card that has since moved to another call
+sends nothing, and the result of a send for a call the card has left changes
+nothing on it. After the keys, the app SHALL read the screen again; the
 step is done when the dialog shows its next question or step, or is gone
 and the log holds the call's result. When none matches, the card SHALL say
 "Could not confirm the answer arrived. Check the terminal." with the
@@ -97,16 +102,16 @@ connected. Nothing was sent." The app SHALL NOT read the result text of the
 call to learn the answer.
 
 #### Scenario: Choosing the second option
-- **WHEN** Ezra taps "2. Postgres" on a question whose options have no preview while the same dialog shows on the desk
+- **WHEN** Ezra taps "2. Postgres" on the only question of a call, whose options have no preview, while the same dialog shows on the desk
 - **THEN** one `terminal.keys` call sends `2` alone, the card marks Postgres as chosen, and when the log's result arrives the card collapses to "Answered: Database"
 
 #### Scenario: Choosing an option of a question with previews
-- **WHEN** Ezra taps "2. Postgres" and an option of the question has a preview
-- **THEN** one `terminal.keys` call sends `2` and Enter
+- **WHEN** Ezra's answer to a question is "2. Postgres" and an option of the question has a preview
+- **THEN** when it is typed, one `terminal.keys` call sends `2` and Enter
 
 #### Scenario: The first of three questions
 - **WHEN** a call holds three questions without previews and Ezra taps "2. Postgres" on the first
-- **THEN** only `2` is sent, the dialog moves to the second question with nothing chosen there, and the card moves on to it
+- **THEN** nothing is sent, the desk dialog stays on the first question, and the card moves on to the second with Postgres kept for the first
 
 #### Scenario: The status is no longer blocked
 - **WHEN** Ezra taps an option and `terminal.get` reports the status working
@@ -134,14 +139,14 @@ call to learn the answer.
 
 ### Requirement: Your own words answer through the dialog's text row
 "Something else" (offered only on a question without previews) SHALL open a
-text field ("Type your answer") with a "Send" button, enabled for non-blank text of at most 2000 characters. Send SHALL
+text field ("Type your answer") with a button, enabled for non-blank text of at most 2000 characters, that answers like an option: at once in a call of one single-choice question ("Send"), kept in the others ("Next"). Typing it SHALL
 pass the same checks as an option, send the key that focuses the dialog's
 free-text row, then, once the screen shows that row in focus, send the text
 as one `terminal.send` with `force`, so that the text and its Enter land in
 that row; a screen that never shows it SHALL stop the answer with "Could not
 confirm the answer arrived. Check the terminal." and send no text. The text SHALL NOT be sent as
 a chat message and no bubble SHALL show for it. Past 2000 characters the
-field SHALL say so ("Too long: 2000 characters at most") and Send SHALL stay
+field SHALL say so ("Too long: 2000 characters at most") and its button SHALL stay
 disabled. The keyboard SHALL open for this field when "Something else" is
 tapped, and SHALL close when the text is sent or the field is dismissed
 (Back), which closes the field and keeps the card.
@@ -176,36 +181,85 @@ collapse the card to "Skipped: <header>".
 - **WHEN** Ezra taps Skip and the status is working at the check
 - **THEN** no Esc is sent and the card says "Already answered at the desk. Nothing was sent."
 
-### Requirement: Several questions are answered one at a time
-A call with more than one question SHALL show one question at a time with
-"Question N of M", following the question the screen shows. A tap answers
-that question on the desk at once; the card then shows the next question. When the dialog shows
-its review step (the line after the header reads "Review your answers",
-every question of the call is listed, and "1. Submit answers" is in focus;
-words in a question or an option, another call's review, or Cancel in focus
-are not it), the card SHALL show "All questions
-answered. Send your answers, or skip them all.", "Send answers" and "Skip"
-and nothing else, and Send answers SHALL send Enter after the same
-checks. The card SHALL follow the screen: a question answered at the desk
-moves the card on, and no keys for it are sent from the card.
+### Requirement: The phone keeps the answers until Send
+The card SHALL keep each answer on the phone, in a call with more than one
+question or with a multi-select question, and send nothing until Send
+answers; the desk dialog stays on its first question until then. The card
+SHALL show one question at a time with "Question N of M" and controls to go
+to the previous question and, once the question shown has an answer, to the
+next one. Answering a question (an option, your own words, "Choose this", or
+the multi-select footer's button) SHALL keep that answer and show the next
+question without an answer, or the review step when every question has one.
+Going back to a question SHALL show its kept answer (the option marked, the
+ticks and the typed text restored) and a new answer SHALL replace it. The
+review step SHALL show "All questions answered. Send your answers, or skip
+them all.", then each question with its kept answer (the option's label;
+your own words; on multi-select the ticked labels in the options' order and
+the typed text, joined with ", "; a note beneath its option as "Note:
+<note>"), each with a control that goes back to that question, then "Send
+answers" and "Skip". Send answers SHALL type the answers in the call's
+order, each question only after the checks of requirement "Each answer is
+typed on the desk after its checks" and once the screen shows that question;
+then, once the screen shows the dialog's review step (the line after the
+header reads "Review your answers", every question of the call is listed
+with the answer the phone typed, and "1. Submit answers" is in focus; words
+in a question or an option, another call's review, other answers, or Cancel
+in focus are not it), Enter. When a step cannot be confirmed or a check
+fails after some answers were typed, the app SHALL send nothing more and the
+card SHALL say how many were typed ("Typed N of M answers, then stopped.
+Check the terminal." with the terminal button) and keep the answers; a
+second Send answers SHALL go on only from the question the screen then
+shows, and only when that is the first one not yet typed. A first Send
+answers whose screen does not show the first question SHALL send nothing
+("The question changed. Nothing was sent."). Skip SHALL stay available on
+every step and declines the whole call.
 
 #### Scenario: Three questions
 - **WHEN** a call asks three single-choice questions and Ezra taps an option for each
-- **THEN** the card reads "Question 1 of 3", "Question 2 of 3", "Question 3 of 3", then shows "Send answers", and the call ends when Ezra taps it
+- **THEN** nothing is sent while he answers, the card reads "Question 1 of 3", "Question 2 of 3", "Question 3 of 3", then shows the review step listing the three answers
 
-#### Scenario: The second question answered at the desk
-- **WHEN** the card shows question 2 and the desk answers it
-- **THEN** the card shows question 3 (or Send answers) without sending anything
+#### Scenario: Back to an earlier question
+- **WHEN** the card shows question 3 and Ezra goes back to question 1
+- **THEN** question 1 shows with his answer marked, nothing is sent, and a new tap replaces the answer
+
+#### Scenario: A change from the review step
+- **WHEN** the review step lists "Database: SQLite" and Ezra taps its change control and picks Postgres
+- **THEN** the card shows the review step again listing Postgres, and nothing has been sent
+
+#### Scenario: Send types everything
+- **WHEN** Ezra taps Send answers on the review step of three questions
+- **THEN** each answer is typed after its checks and once the screen shows its question, then Enter once the screen shows the dialog's review step with those answers, and the card collapses to "Answered: Database, Login, Tests" when the result arrives
+
+#### Scenario: Sending stops halfway
+- **WHEN** the first two answers were typed and the screen never shows the third question
+- **THEN** nothing more is sent and the card says "Typed 2 of 3 answers, then stopped. Check the terminal." with the terminal button, keeping the answers
+
+#### Scenario: Sending the rest
+- **WHEN** after that the screen shows the third question and Ezra taps Send answers again
+- **THEN** only the third answer is typed, then Enter on the dialog's review step
+
+#### Scenario: The desk dialog moved meanwhile
+- **WHEN** Ezra taps Send answers and the desk shows the second question because someone answered the first there
+- **THEN** nothing is sent and the card says "The question changed. Nothing was sent."
+
+#### Scenario: Other answers on the dialog's review step
+- **WHEN** all answers were typed and the dialog's review step lists another answer than the phone typed
+- **THEN** Enter is not sent and the card says "Typed 3 of 3 answers, then stopped. Check the terminal."
+
+#### Scenario: One multi-select question
+- **WHEN** a call has one multi-select question and Ezra ticks Apple, types "Berries" and taps the footer's button
+- **THEN** the card shows the review step listing "Apple, Berries"; Send answers types them and presses Enter on the dialog's review step
 
 ### Requirement: A question where you may choose several
 A question with `multiSelect` SHALL show its options with checkboxes, the
 hint "Choose any number", how many are chosen ("N selected", "0 selected" at
-first) and one "Send" button in the footer, enabled with at least one box
-ticked or a typed answer. "Something else" SHALL be its last row; a typed
+first) and one button in the footer, enabled with at least one box ticked
+or a typed answer, that keeps the answer (every call with a multi-select
+question has a review step, so it is sent with Send answers). "Something else" SHALL be its last row; a typed
 answer there SHALL show as a ticked row with its text, SHALL count as one
-chosen, and SHALL go out with the ticked options through the footer's Send:
-the field gets no send button of its own on a multi-select question (a
-single-choice question keeps the field's own Send). Tapping Send SHALL send,
+chosen, and SHALL go out with the ticked options:
+the field gets no button of its own on a multi-select question (a
+single-choice question keeps the field's own). When the answer is typed the app SHALL send,
 after the checks, the digit alone of each option whose tick the screen
 shows otherwise than chosen (a digit toggles its row, so a retry or a tick
 made at the desk is not undone) and no digit for the free-text row or the
@@ -214,8 +268,7 @@ answer, once the screen shows the ticks, the text as one `terminal.send`
 with `force`, and an Enter when the screen then shows the text in the
 free-text row unticked; once the screen shows exactly the planned rows
 ticked, the key that leaves the question (Tab; from the free-text row Tab,
-then Enter once the screen shows Submit in focus); and in a call of one question, once the screen shows the
-review step, Enter. Each of these steps SHALL wait for the screen it
+then Enter once the screen shows Submit in focus). Each of these steps SHALL wait for the screen it
 depends on, and a screen that does not come SHALL stop the answer with
 "Could not confirm the answer arrived. Check the terminal.", sending nothing
 again. The card SHALL report the same when the screen does not move on. The keys for this question
@@ -225,12 +278,12 @@ the terminal" and its options as plain text, should a later Claude Code
 change the dialog.
 
 #### Scenario: Two of three ticked
-- **WHEN** a multi-select question lists A, B and C and Ezra ticks A and C and taps Send
-- **THEN** `1` and `3` are sent after the checks, then, once the screen shows A and C ticked, Tab, and the card moves on
+- **WHEN** a multi-select question lists A, B and C, Ezra ticks A and C and the answers are sent
+- **THEN** `1` and `3` are sent after the checks, then, once the screen shows A and C ticked, Tab
 
 #### Scenario: A typed answer joins the ticks
-- **WHEN** a multi-select question lists Apple, Banana and Mango, Ezra ticks Apple, types "Berries" in "Something else" and taps the footer's Send
-- **THEN** the card reads "2 selected", the Berries row shows ticked, and after the checks `1`, the text "Berries" (with an Enter to tick its row when the screen shows it unticked), Tab and Enter, and on the review step Enter are sent in that order, each after the screen it depends on
+- **WHEN** a multi-select question lists Apple, Banana and Mango, Ezra ticks Apple, types "Berries" in "Something else", and the answers are sent
+- **THEN** the card read "2 selected" with the Berries row ticked, and after the checks `1`, the text "Berries" (with an Enter to tick its row when the screen shows it unticked), Tab and Enter are sent in that order, each after the screen it depends on
 
 #### Scenario: A tick the screen does not show
 - **WHEN** the ticks were sent and the screen never shows the planned rows ticked
@@ -238,7 +291,7 @@ change the dialog.
 
 #### Scenario: Nothing ticked
 - **WHEN** no option is ticked and no text is typed
-- **THEN** Send is disabled
+- **THEN** the footer's button is disabled
 
 ### Requirement: A preview is shown on request
 An option with a `preview` SHALL show a "Preview" button; it SHALL open a
@@ -246,7 +299,7 @@ sheet titled "Preview: <label>" with the preview text in the chat's code
 font, its lines never wrapped (a wide sample scrolls sideways, a long one up
 and down), and below it, fixed, a "Note (optional)" field and a "Choose
 this" button; closing it SHALL leave the card as it was. "Choose this"
-SHALL answer that option. Without a note it sends what a tap on the option
+SHALL answer that option, at once or kept as a tap on the option is. Without a note it sends what a tap on the option
 sends. With a note, after the same checks, it SHALL send the option's digit
 (which moves the dialog's focus there); once the screen shows that option
 focused, `n`; once the screen shows the notes field open, the note as one
@@ -294,8 +347,8 @@ While a question card shows, the chat's message box SHALL NOT be shown and
 its keyboard SHALL NOT open; a keyboard already open when the card appears
 SHALL close. The draft SHALL be kept. The only keyboard while the card shows
 is the one for "Something else" (and the note in a preview sheet). Every send
-from the card (an option, Send, the multi-select Send, Choose this, Skip,
-Send answers) SHALL close that keyboard, and nothing in the card SHALL take
+from the card (an option, the field's button, the multi-select button, Choose this, Skip,
+Send answers) or keeping an answer SHALL close that keyboard, and nothing in the card SHALL take
 the focus while an answer is on its way. When the card ends (answered, skipped, or
 gone because the agent moved on or the session changed), the message box
 SHALL show again with its draft. When no card shows, the refusal for a
@@ -306,7 +359,7 @@ blocked agent stays "The agent is waiting for you in the terminal".
 - **THEN** the message box and its keyboard are gone, and the card is the last thing above the bottom edge
 
 #### Scenario: No keyboard while the multi-select answer is sent
-- **WHEN** Ezra ticks an option, types "Berries" in "Something else" and taps the multi-select Send
+- **WHEN** Ezra ticks an option, types "Berries" in "Something else", keeps the answer and taps Send answers
 - **THEN** the keyboard closes at the tap and stays closed for the whole send
 
 #### Scenario: The message box comes back
@@ -325,14 +378,14 @@ The card SHALL use these texts and no others of its own:
 | Option row | `N.` + the log's label, the log's description beneath |
 | Free-text row | Something else |
 | Free-text field hint | Type your answer |
-| Free-text button | Send |
+| Free-text button | Send (one single-choice question); Next (draft) in the other calls |
 | Free-text too long | Too long: 2000 characters at most |
 | Skip button | Skip |
 | Step | Question N of M |
 | Last step button | Send answers |
 | Multi-select hint | Choose any number |
 | Multi-select count | `N` selected ("0 selected", "2 selected") |
-| Multi-select button | Send |
+| Multi-select button | Next (draft) |
 | Preview button | Preview |
 | Preview sheet title | Preview: `<label>` |
 | Preview sheet note hint | Note (optional) |
@@ -343,6 +396,10 @@ The card SHALL use these texts and no others of its own:
 | Not confirmed | Could not confirm the answer arrived. Check the terminal. |
 | Unreadable or unsupported | Open the terminal |
 | Review step | All questions answered. Send your answers, or skip them all. |
+| Review step, each answer | `<question>` above `<answer>`; a note beneath as "Note: `<note>`" (draft) |
+| Review step, change control | Change (draft); read as "Change the answer to: `<question>`" (draft) |
+| Previous / next question | Previous question, Next question (drafts, read by TalkBack; icons on screen) |
+| Sending stopped halfway | Typed N of M answers, then stopped. Check the terminal. (draft) |
 | No hook record | The agent asked a question in the terminal. To answer it here, add the question hook on the desk. |
 | Collapsed, answered | Answered: `<header>` (several: the headers joined with ", ") |
 | Collapsed, declined | Skipped: `<header>` |

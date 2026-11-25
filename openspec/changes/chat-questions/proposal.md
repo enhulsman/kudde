@@ -13,6 +13,10 @@ before the build.
    - *(pick)* One card, one question at a time ("Question 2 of 3"). A tap
      answers that question on the desk at once and moves on; the last step
      is a "Send answers" button that presses Claude Code's own Submit.
+     **Changed 2026-11-25 (Ezra, after the TalkBack listen; design D11):**
+     the phone keeps the answers until Send; you move freely between the
+     questions, the review step lists each answer with a way back to change
+     it, and Send answers types them all.
    - All questions stacked in one scrolling card, one Send at the end.
    - Several questions: terminal only.
 2. **Questions where you may choose several options** (8% of calls had one).

@@ -34,10 +34,18 @@ Fixtures are invented JSONL with the shapes in `design.md` section A.
 
 ## 5. Review and phone check
 - [x] 5.1 [phone] Stage a real Claude Code in plan mode on the test phone's desk (title through /rename, crop the status bar) and have it ask: one single-choice question; one with a preview; three questions; one multi-select; one answered by free text; one skipped. Record per case: the keys as the screen shows them, any extra delay from the quiet rule, and the result text. Update the "low" rows in `design.md` section B. (2026-11-25: all six cases passed with the hook as the source; the dialog-only screen check was fixed during the round; results in `design.md` section B.)
-- [ ] 5.2 **[owner]** Listen to the card with TalkBack on the phone and the test phone's second profile left alone (install `--user 0`).
+- [x] 5.2 **[owner]** Listen to the card with TalkBack on the phone and the test phone's second profile left alone (install `--user 0`). (2026-11-25: passed; the desk got Noodle bar, and Coffee and Cake. Feedback: no way back to an earlier question, and the review step does not show the answers: group 7.)
 - [x] 5.3 [phone] Answer at the desk while the card shows; tap while the desk answers; confirm "Already answered at the desk" and that no key reached the next prompt. (2026-11-25: the desk answer collapsed the card; in two races (tap 0.2 s after the desk) nothing reached the next prompt, its dialog untouched and the input empty. "Already answered at the desk" did not show: the card ended with the same poll; a question for the owner.)
 - [x] 5.4 Run `/codex:adversarial-review` against main (it sends input to a terminal) and handle what it finds. (2026-11-25: seven findings; six fixed tests first, the window is a herdr-core follow-up; `design.md`, "The adversarial review".)
 - [x] 5.5 Update `docs/phone-testing.md` with the staged-question check.
+
+## 7. The phone keeps the answers until Send (Ezra, 2026-11-25; design D11)
+- [x] 7.1 Spec deltas, design D11, the proposal's decision 1 and `decisions.md`.
+- [ ] 7.2 Core, tests first: `send_answers` (call id, answers in order, `from`): each question after its checks and its screen, the dialog's review step checked against the typed answers before Enter; `Stopped { sent }` halfway; a resume only from question `from + 1`; one single-choice question still answers at once.
+- [ ] 7.3 Android, tests first: the card keeps answers per question, previous and next, the review list with a change control per answer, Send answers, the halfway notice, Skip and the preview sheet unchanged; TalkBack (announced once, no focus steal, the list readable); goldens.
+- [ ] 7.4 The texts marked draft go to the owner verbatim before they replace the placeholders.
+- [ ] 7.5 **[owner]** Ten minutes with the debug build before the review and the phone round.
+- [ ] 7.6 A second `/codex:adversarial-review` against main, then a phone round on the test phone.
 
 ## 6. Records
 - [ ] 6.1 `openspec validate chat-questions --strict`, then archive on the feature branch as the last content commit.
