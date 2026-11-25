@@ -533,7 +533,7 @@ private fun PasswordFooter(password: PasswordUi, actions: KeyActions) {
 
 @Immutable
 /** [first]: no other machine had connected before, so the success moment says so. */
-data class ConnectedUi(val machine: String, val version: String?, val agents: Int, val first: Boolean = true)
+data class ConnectedUi(val machine: String, val version: String?, val agents: Int, val first: Boolean = true, val terminals: Int = 0)
 
 @Composable
 fun ConnectedStep(ui: ConnectedUi, onBack: () -> Unit, onContinue: () -> Unit, modifier: Modifier = Modifier) {
@@ -542,12 +542,10 @@ fun ConnectedStep(ui: ConnectedUi, onBack: () -> Unit, onContinue: () -> Unit, m
         footer = { Solid(stringResource(R.string.c_continue), onContinue) },
     ) {
         SuccessMoment(ui.machine, ui.first, bodyText, small)
-        ui.version?.let { Paragraph("herdr-core $it") }
-        Paragraph(
-            if (ui.agents > 0) pluralStringResource(R.plurals.c_agents, ui.agents, ui.agents)
-            else stringResource(R.string.c_none),
-            Modifier.semantics { liveRegion = LiveRegionMode.Polite },
-        )
+        StatTiles(ui)
+        if (ui.agents == 0) {
+            Paragraph(stringResource(R.string.c_none), Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+        }
     }
 }
 
