@@ -10,8 +10,12 @@ description (in one stop, with "Preview available" when it has a preview, and
 then "Skip". Every action SHALL be a button reachable without the terminal. While the
 card shows the message box is not shown (chat-view), so the card is the
 last thing read; the reading order above is unchanged by the card's look.
-A step change ("Question 2 of 3"), going back included, SHALL be announced
-once; the review step SHALL be announced once as "Send answers". The step
+A step the person takes (previous, next, an answer, a change) SHALL move
+the focus at once to what it shows: the new question, read with its step as
+one stop ("Question 2 of 3. Which login should it have?"); the review step's
+first line; or, after a change, the answer just changed. It is not
+announced besides (Ezra's try, 2026-11-25: the focus jumped to the title
+bar's Back). The card's arrival SHALL NOT move the focus. The step
 line's previous and next controls SHALL be buttons read as "Previous
 question" and "Next question". On the review step each answer SHALL be one
 stop read as its question, its answer (and its note), then its change

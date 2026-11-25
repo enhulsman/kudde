@@ -266,6 +266,20 @@ refusal it would show for one tap. Why not resume from wherever the screen
 is: the phone cannot tell whose answers the dialog holds for questions it
 did not type itself; the review check covers what it did type.
 
+Ezra's try (2026-11-25): on a multi-select question that is not the call's
+last, the dialog's unnumbered button row reads "Next", not "Submit"; the
+plan waited for "Submit" and stopped after the ticks and the typed answer
+were in ("Typed 1 of 3": only answers confirmed whole are counted). Now the
+button row is either word, and leaving a multi-select question goes from
+where the screen shows the focus: on the button row Enter, in the free
+row's editor Tab then Enter, on an option row Tab alone; a typed answer
+already in its row and ticked is not typed again, so a second Send answers
+finishes a question that was typed in part. Forward is free too: the review
+step lists a question without an answer as "No answer yet" with "Answer",
+and Send answers waits for every answer (the dialog's review lists what was
+typed, so a gap could not be checked). A step moves the focus to what it
+shows; the step is no longer announced.
+
 The card's steps no longer follow the screen. The poll's step stays the
 dialog's (for Send's checks and the hub's kept step); the card resets only
 on a new call. A desk user answering on the desk while the phone holds

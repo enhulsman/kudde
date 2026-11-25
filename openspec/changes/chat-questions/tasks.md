@@ -44,7 +44,9 @@ Fixtures are invented JSONL with the shapes in `design.md` section A.
 - [x] 7.2 Core, tests first: `send_answers` (call id, answers in order, `from`): each question after its checks and its screen, the dialog's review step checked against the typed answers before Enter; `Stopped { sent }` halfway; a resume only from question `from + 1`; one single-choice question still answers at once.
 - [x] 7.3 Android, tests first: the card keeps answers per question, previous and next, the review list with a change control per answer, Send answers, the halfway notice, Skip and the preview sheet unchanged; TalkBack (announced once, no focus steal, the list readable); goldens.
 - [x] 7.4 The texts marked draft go to the owner verbatim before they replace the placeholders. (2026-11-25: all approved word for word.)
-- [ ] 7.5 **[owner]** Ten minutes with the debug build before the review and the phone round.
+- [x] 7.5 **[owner]** Ten minutes with the debug build before the review and the phone round. (2026-11-25: three findings, 7.7.)
+- [x] 7.7 After Ezra's try, tests first: the "Next" button row of a multi-select question before another one, and a resume of a question typed in part; free forward with "No answer yet" on the review step and Send answers waiting for every answer; a step lands the focus on what it shows, at once, and is no longer announced.
+- [ ] 7.8 The texts marked draft from 7.7 go to the owner verbatim.
 - [ ] 7.6 A second `/codex:adversarial-review` against main, then a phone round on the test phone.
 
 ## 6. Records

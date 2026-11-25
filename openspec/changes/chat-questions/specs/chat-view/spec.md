@@ -186,18 +186,23 @@ The card SHALL keep each answer on the phone, in a call with more than one
 question or with a multi-select question, and send nothing until Send
 answers; the desk dialog stays on its first question until then. The card
 SHALL show one question at a time with "Question N of M" and controls to go
-to the previous question and, once the question shown has an answer, to the
-next one. Answering a question (an option, your own words, "Choose this", or
+to the previous and to the next question, answered or not (Ezra's try,
+2026-11-25); next on the last question is the review step. A step SHALL
+show at once (nothing is sent while stepping). Answering a question (an option, your own words, "Choose this", or
 the multi-select footer's button) SHALL keep that answer and show the next
-question without an answer, or the review step when every question has one.
+question without an answer, or the review step when every question has one;
+an answer to a question opened from the review step goes back to the review
+step.
 Going back to a question SHALL show its kept answer (the option marked, the
 ticks and the typed text restored) and a new answer SHALL replace it. The
 review step SHALL show "All questions answered. Send your answers, or skip
-them all.", then each question with its kept answer (the option's label;
+them all." (with a question still unanswered: "Some questions have no answer
+yet. Answer them to send, or skip them all."), then each question with its
+kept answer ("No answer yet" with an "Answer" control where there is none) (the option's label;
 your own words; on multi-select the ticked labels in the options' order and
 the typed text, joined with ", "; a note beneath its option as "Note:
 <note>"), each with a control that goes back to that question, then "Send
-answers" and "Skip". Send answers SHALL type the answers in the call's
+answers", enabled only when every question has an answer, and "Skip". Send answers SHALL type the answers in the call's
 order, each question only after the checks of requirement "Each answer is
 typed on the desk after its checks" and once the screen shows that question;
 then, once the screen shows the dialog's review step (the line after the
@@ -217,6 +222,10 @@ every step and declines the whole call.
 #### Scenario: Three questions
 - **WHEN** a call asks three single-choice questions and Ezra taps an option for each
 - **THEN** nothing is sent while he answers, the card reads "Question 1 of 3", "Question 2 of 3", "Question 3 of 3", then shows the review step listing the three answers
+
+#### Scenario: Ahead before answering
+- **WHEN** the card shows question 1 of 2 with no answer and Ezra goes to the next question, answers it and goes on to the review step
+- **THEN** the review step reads "Some questions have no answer yet. Answer them to send, or skip them all.", lists question 1 as "No answer yet" with "Answer", and Send answers is disabled until question 1 has an answer
 
 #### Scenario: Back to an earlier question
 - **WHEN** the card shows question 3 and Ezra goes back to question 1
@@ -400,6 +409,8 @@ The card SHALL use these texts and no others of its own:
 | Review step, change control | Change; read as "Change the answer to: `<question>`" |
 | Previous / next question | Previous question, Next question (read by TalkBack; icons on screen) |
 | Sending stopped halfway | Typed N of M answers, then stopped. Check the terminal. |
+| Review step, a question unanswered | Some questions have no answer yet. Answer them to send, or skip them all. (draft) |
+| Review step, no answer | No answer yet (draft); its control "Answer" (draft), read as "Answer the question: `<question>`" (draft) |
 | No hook record | The agent asked a question in the terminal. To answer it here, add the question hook on the desk. |
 | Collapsed, answered | Answered: `<header>` (several: the headers joined with ", ") |
 | Collapsed, declined | Skipped: `<header>` |
