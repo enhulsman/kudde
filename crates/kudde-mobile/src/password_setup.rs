@@ -47,6 +47,49 @@ impl std::fmt::Debug for SetupPassword {
     }
 }
 
+/// The person's Cancel for a running setup. Checked before the password is sent and before the key
+/// line is written; a dial in progress stops at once. It cannot undo a key already written.
+#[derive(uniffi::Object)]
+pub struct SetupCancel {
+    flag: AtomicBool,
+    notify: tokio::sync::Notify,
+}
+
+#[uniffi::export]
+impl SetupCancel {
+    #[uniffi::constructor]
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self {
+            flag: AtomicBool::new(false),
+            notify: tokio::sync::Notify::new(),
+        })
+    }
+
+    pub fn cancel(&self) {
+        self.flag.store(true, Ordering::SeqCst);
+        self.notify.notify_waiters();
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        self.flag.load(Ordering::SeqCst)
+    }
+}
+
+impl SetupCancel {
+    /// Completes once cancelled (at once when it already was).
+    async fn cancelled(&self) {
+        loop {
+            let notified = self.notify.notified();
+            tokio::pin!(notified);
+            notified.as_mut().enable();
+            if self.is_cancelled() {
+                return;
+            }
+            notified.await;
+        }
+    }
+}
+
 /// What the probe found out about signing in with a password.
 #[derive(Debug, uniffi::Enum)]
 pub enum ProbeOutcome {
@@ -92,6 +135,12 @@ pub enum SetupOutcome {
         kind: ReachKind,
         detail: String,
     },
+    /// Cancelled before the password was sent: nothing was sent and nothing changed.
+    Cancelled,
+    /// Cancelled after signing in and before the key line was written: signed out again, nothing changed.
+    CancelledSignedIn,
+    /// Cancelled, but the key line had already been written and ran well: the key is on the machine.
+    CancelledKeyAdded,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -110,6 +159,7 @@ impl Default for SetupLimits {
 }
 
 enum Early {
+    Cancelled,
     Changed(String),
     NetworkOff,
     Unreachable(ReachKind, String),
@@ -118,6 +168,7 @@ enum Early {
 impl From<Early> for SetupOutcome {
     fn from(e: Early) -> Self {
         match e {
+            Early::Cancelled => SetupOutcome::Cancelled,
             Early::Changed(presented) => SetupOutcome::HostKeyChanged { presented },
             Early::NetworkOff => SetupOutcome::NetworkOff,
             Early::Unreachable(kind, detail) => SetupOutcome::Unreachable { kind, detail },
@@ -128,6 +179,11 @@ impl From<Early> for SetupOutcome {
 impl From<Early> for ProbeOutcome {
     fn from(e: Early) -> Self {
         match e {
+            // The probe has no token: this arm only keeps the match whole.
+            Early::Cancelled => ProbeOutcome::Unreachable {
+                kind: ReachKind::Other,
+                detail: "cancelled".into(),
+            },
             Early::Changed(presented) => ProbeOutcome::HostKeyChanged { presented },
             Early::NetworkOff => ProbeOutcome::NetworkOff,
             Early::Unreachable(kind, detail) => ProbeOutcome::Unreachable { kind, detail },
@@ -243,6 +299,7 @@ async fn sign_in(
     handle: &mut Handle<HostKeyCheck>,
     user: &str,
     password: &SetupPassword,
+    cancel: &SetupCancel,
 ) -> Result<Option<SetupOutcome>, Early> {
     let wrong = |partial: bool| {
         Some(if partial {
@@ -253,6 +310,8 @@ async fn sign_in(
     };
     match offered(handle, user).await? {
         Offer::Nothing => Ok(Some(SetupOutcome::NoPasswordMethod)),
+        // Before any password goes: the token is looked at again here.
+        _ if cancel.is_cancelled() => Ok(Some(SetupOutcome::Cancelled)),
         Offer::Password => {
             let result = handle
                 .authenticate_password(user, (*password.text).clone())
@@ -281,6 +340,9 @@ async fn sign_in(
                         let answers = if prompts.is_empty() {
                             Vec::new()
                         } else if !sent && prompts.len() == 1 && !prompts[0].echo {
+                            if cancel.is_cancelled() {
+                                return Ok(Some(SetupOutcome::Cancelled));
+                            }
                             sent = true;
                             vec![(*password.text).clone()]
                         } else {
@@ -340,18 +402,36 @@ async fn setup_async(
     password: &SetupPassword,
     script: &str,
     limits: SetupLimits,
+    cancel: &SetupCancel,
 ) -> SetupOutcome {
     let signed_in = AtomicBool::new(false);
     let run = async {
-        let mut handle = dial(host, port, pinned, Duration::from_millis(limits.dial_ms)).await?;
-        if let Some(ended) = sign_in(&mut handle, user, password).await? {
+        if cancel.is_cancelled() {
+            return Err(Early::Cancelled);
+        }
+        let mut handle = tokio::select! {
+            biased;
+            _ = cancel.cancelled() => return Err(Early::Cancelled),
+            dialled = dial(host, port, pinned, Duration::from_millis(limits.dial_ms)) => dialled?,
+        };
+        if let Some(ended) = sign_in(&mut handle, user, password, cancel).await? {
             let _ = handle
                 .disconnect(russh::Disconnect::ByApplication, "", "en")
                 .await;
             return Ok(ended);
         }
         signed_in.store(true, Ordering::Relaxed);
-        let outcome = run_script(&mut handle, script).await;
+        // Signed in, the key line not written yet: the last place a cancel can stop it.
+        if cancel.is_cancelled() {
+            let _ = handle
+                .disconnect(russh::Disconnect::ByApplication, "", "en")
+                .await;
+            return Ok(SetupOutcome::CancelledSignedIn);
+        }
+        let mut outcome = run_script(&mut handle, script).await;
+        if matches!(outcome, SetupOutcome::Done) && cancel.is_cancelled() {
+            outcome = SetupOutcome::CancelledKeyAdded;
+        }
         let _ = handle
             .disconnect(russh::Disconnect::ByApplication, "", "en")
             .await;
@@ -404,6 +484,7 @@ pub fn probe_password_methods(
 }
 
 /// Installs the phone key with the password, once: one connection, no retry.
+#[allow(clippy::too_many_arguments)]
 #[uniffi::export]
 pub fn setup_with_password(
     host: String,
@@ -413,6 +494,7 @@ pub fn setup_with_password(
     password: Arc<SetupPassword>,
     spki: Vec<u8>,
     comment: String,
+    cancel: Arc<SetupCancel>,
 ) -> Result<SetupOutcome, SshError> {
     setup_with_password_limits(
         host,
@@ -423,6 +505,7 @@ pub fn setup_with_password(
         spki,
         comment,
         SetupLimits::default(),
+        cancel,
     )
 }
 
@@ -437,9 +520,10 @@ pub fn setup_with_password_limits(
     spki: Vec<u8>,
     comment: String,
     limits: SetupLimits,
+    cancel: Arc<SetupCancel>,
 ) -> Result<SetupOutcome, SshError> {
     let script = setup_command(spki, comment, None)?;
     Ok(runtime()?.block_on(setup_async(
-        &host, port, &user, &pinned, &password, &script, limits,
+        &host, port, &user, &pinned, &password, &script, limits, &cancel,
     )))
 }

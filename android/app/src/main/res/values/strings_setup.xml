@@ -126,6 +126,12 @@
     <string name="r_dropped_detail">kudde cannot tell whether it went in. Try again: adding it twice does no harm.</string>
     <string name="r_code_title">The setup on %1$s ended with code %2$d.</string>
     <string name="r_code_detail">Choose "Add it yourself" to run the command at the machine to see why.</string>
+    <!-- X1 to X3: Cancel while the key is being added. PLACEHOLDERS until the owner approves the words. -->
+    <string name="x_cancelled_title">[X1 pending approval]</string>
+    <string name="x_signed_in_title">[X2 pending approval]</string>
+    <string name="x_signed_in_detail">[X2 detail pending approval]</string>
+    <string name="x_key_added_title">[X3 pending approval]</string>
+    <string name="x_key_added_detail">[X3 detail pending approval]</string>
     <string name="r_refused_title">kudde added the key, but %1$s still refuses it.</string>
     <string name="r_refused_detail">The SSH server may read keys from another file, or refuse the home directory\'s permissions (StrictModes). The setup guide\'s check script finds out which.</string>
 </resources>

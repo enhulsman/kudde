@@ -101,6 +101,30 @@ class PasswordViewTest {
         assertEquals(listOf(PanelButton.TryAgain, PanelButton.Manual), v.buttons)
     }
 
+    // The cancel outcomes' texts are placeholders until the owner approves them (X1 to X3).
+    @Test fun aCancelBeforeAnythingWasSentSaysNothingWasSentAndOffersAnotherTry() {
+        val v = view(PasswordPanel.Cancelled)
+        assertNull(v.marks)
+        assertTrue(v.outcome!!.title.isNotBlank())
+        assertEquals(listOf(PanelButton.TryAgain, PanelButton.Manual), v.buttons)
+        assertNull(v.field)
+    }
+
+    @Test fun aCancelAfterSigningInShowsSigningInDoneAndTheRestEmpty() {
+        val v = view(PasswordPanel.CancelledSignedIn)
+        assertEquals(listOf(StepMark.Done, StepMark.Todo, StepMark.Todo), v.marks)
+        assertTrue(v.outcome!!.title.isNotBlank())
+        assertEquals(listOf(PanelButton.TryAgain, PanelButton.Manual), v.buttons)
+    }
+
+    @Test fun aCancelAfterTheKeyWentInShowsAllThreeDoneAndConnects() {
+        val v = view(PasswordPanel.CancelledKeyAdded)
+        assertEquals(listOf(StepMark.Done, StepMark.Done, StepMark.Done), v.marks)
+        assertTrue(v.outcome!!.title.isNotBlank())
+        assertEquals("Connecting to workstation…", v.waiting)
+        assertTrue(v.buttons.isEmpty())
+    }
+
     @Test fun doneWaitsForTheHubWithAllThreeDone() {
         val v = view(PasswordPanel.Done)
         assertEquals(listOf(StepMark.Done, StepMark.Done, StepMark.Done), v.marks)

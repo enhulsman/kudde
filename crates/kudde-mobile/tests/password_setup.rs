@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use kudde_mobile::{
-    ProbeOutcome, ReachKind, SetupLimits, SetupOutcome, SetupPassword,
+    ProbeOutcome, ReachKind, SetupCancel, SetupLimits, SetupOutcome, SetupPassword,
     host_key_fingerprint_command, probe_password_methods, setup_command, setup_with_password,
     setup_with_password_limits,
 };
@@ -55,8 +55,20 @@ enum Exit {
     Hang,
 }
 
+/// Where the fake machine cancels the phone's token, to put a cancel at an exact moment.
+#[derive(Clone, Copy, PartialEq)]
+enum Stage {
+    /// On the first (no password yet) authentication request.
+    AuthNone,
+    /// When the password arrives, accepted.
+    AuthPassword,
+    /// When the command is asked for, before the script is read.
+    Exec,
+}
+
 #[derive(Clone)]
 struct Script {
+    cancel_at: Option<(Stage, Arc<SetupCancel>)>,
     methods: Vec<MethodKind>,
     none_accepts: bool,
     /// Keyboard-interactive rounds: each round's prompts (text, echo).
@@ -74,6 +86,7 @@ impl Script {
             rounds: vec![],
             partial: false,
             exit: Exit::Status(0),
+            cancel_at: None,
         }
     }
     fn kbd(rounds: Vec<Vec<(&'static str, bool)>>) -> Self {
@@ -138,6 +151,13 @@ impl Fake {
     fn count(&self) {
         self.seen.lock().unwrap().auth_calls += 1;
     }
+    fn cancel_if(&self, stage: Stage) {
+        if let Some((at, token)) = &self.script.cancel_at
+            && *at == stage
+        {
+            token.cancel();
+        }
+    }
     fn reject(&self) -> Auth {
         Auth::Reject {
             proceed_with_methods: None,
@@ -152,6 +172,7 @@ impl russh::server::Handler for Fake {
     async fn auth_none(&mut self, user: &str) -> Result<Auth, Self::Error> {
         self.count();
         self.seen.lock().unwrap().users.push(user.into());
+        self.cancel_if(Stage::AuthNone);
         Ok(if self.script.none_accepts {
             Auth::Accept
         } else {
@@ -166,6 +187,7 @@ impl russh::server::Handler for Fake {
             seen.users.push(user.into());
             seen.passwords.push(password.into());
         }
+        self.cancel_if(Stage::AuthPassword);
         Ok(if password == GOOD && !self.script.partial {
             Auth::Accept
         } else {
@@ -230,6 +252,7 @@ impl russh::server::Handler for Fake {
             .unwrap()
             .execs
             .push(String::from_utf8_lossy(data).into_owned());
+        self.cancel_if(Stage::Exec);
         session.channel_success(channel)?;
         Ok(())
     }
@@ -403,6 +426,7 @@ fn setup(m: &Machine, password: &str) -> SetupOutcome {
         SetupPassword::new(password.into()),
         phone_spki(),
         COMMENT.into(),
+        SetupCancel::new(),
     )
     .unwrap()
 }
@@ -670,6 +694,7 @@ fn a_drop_before_authentication_maps_to_its_reach_kind() {
         SetupPassword::new(GOOD.into()),
         phone_spki(),
         COMMENT.into(),
+        SetupCancel::new(),
     )
     .unwrap();
     assert!(matches!(
@@ -705,6 +730,7 @@ fn running_out_of_time_dialling_is_no_answer() {
         phone_spki(),
         COMMENT.into(),
         limits(300, 5_000),
+        SetupCancel::new(),
     )
     .unwrap();
     assert!(
@@ -738,9 +764,163 @@ fn running_out_of_time_after_signing_in_reads_as_dropped() {
         phone_spki(),
         COMMENT.into(),
         limits(5_000, 700),
+        SetupCancel::new(),
     )
     .unwrap();
     assert!(matches!(outcome, SetupOutcome::Dropped), "{outcome:?}");
+}
+
+// Cancelling (review 7.1): the token is checked before the password is sent and before the key line is
+// written, and a cancel that comes after the key went in says so.
+
+fn setup_with(m: &Machine, cancel: Arc<SetupCancel>) -> SetupOutcome {
+    setup_with_password(
+        "127.0.0.1".into(),
+        m.port,
+        "alice".into(),
+        m.pinned.clone(),
+        SetupPassword::new(GOOD.into()),
+        phone_spki(),
+        COMMENT.into(),
+        cancel,
+    )
+    .unwrap()
+}
+
+#[test]
+fn a_token_cancelled_before_the_call_sends_nothing() {
+    let m = machine(Script::password(), 1);
+    let cancel = SetupCancel::new();
+    cancel.cancel();
+    let outcome = setup_with(&m, cancel);
+    assert!(matches!(outcome, SetupOutcome::Cancelled), "{outcome:?}");
+    let seen = m.seen.lock().unwrap();
+    assert!(seen.passwords.is_empty() && seen.users.is_empty() && seen.execs.is_empty());
+}
+
+#[test]
+fn a_cancel_while_dialling_stops_the_dial_at_once() {
+    // Accepts the connection and says nothing: the handshake never ends.
+    let silent = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = silent.local_addr().unwrap().port();
+    let cancel = SetupCancel::new();
+    let token = cancel.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(150));
+        token.cancel();
+    });
+    let started = std::time::Instant::now();
+    let outcome = setup_with_password_limits(
+        "127.0.0.1".into(),
+        port,
+        "alice".into(),
+        "SHA256:x".into(),
+        SetupPassword::new(GOOD.into()),
+        phone_spki(),
+        COMMENT.into(),
+        limits(10_000, 20_000),
+        cancel,
+    )
+    .unwrap();
+    assert!(matches!(outcome, SetupOutcome::Cancelled), "{outcome:?}");
+    assert!(
+        started.elapsed() < Duration::from_secs(3),
+        "waited out the dial"
+    );
+    drop(silent);
+}
+
+#[test]
+fn a_cancel_that_lands_before_the_password_goes_never_sends_it() {
+    let cancel = SetupCancel::new();
+    let m = machine(
+        Script {
+            cancel_at: Some((Stage::AuthNone, cancel.clone())),
+            ..Script::password()
+        },
+        1,
+    );
+    let outcome = setup_with(&m, cancel);
+    assert!(matches!(outcome, SetupOutcome::Cancelled), "{outcome:?}");
+    let seen = m.seen.lock().unwrap();
+    assert!(
+        seen.passwords.is_empty(),
+        "the password was sent after the cancel"
+    );
+    assert!(seen.answers.is_empty() && seen.execs.is_empty());
+}
+
+#[test]
+fn a_cancel_after_signing_in_writes_no_key_line_and_says_it_signed_in() {
+    let cancel = SetupCancel::new();
+    let m = machine(
+        Script {
+            cancel_at: Some((Stage::AuthPassword, cancel.clone())),
+            ..Script::password()
+        },
+        1,
+    );
+    let outcome = setup_with(&m, cancel);
+    assert!(
+        matches!(outcome, SetupOutcome::CancelledSignedIn),
+        "{outcome:?}"
+    );
+    let seen = m.seen.lock().unwrap();
+    assert_eq!(seen.passwords.len(), 1, "the password had already gone");
+    assert!(
+        seen.execs.is_empty() && seen.stdin.is_empty(),
+        "the key line was written after the cancel"
+    );
+}
+
+#[test]
+fn a_cancel_after_the_key_went_in_says_the_key_was_added() {
+    let cancel = SetupCancel::new();
+    let m = machine(
+        Script {
+            cancel_at: Some((Stage::Exec, cancel.clone())),
+            ..Script::password()
+        },
+        1,
+    );
+    let outcome = setup_with(&m, cancel);
+    assert!(
+        matches!(outcome, SetupOutcome::CancelledKeyAdded),
+        "{outcome:?}"
+    );
+    assert!(
+        !m.seen.lock().unwrap().stdin.is_empty(),
+        "the script did run"
+    );
+}
+
+#[test]
+fn a_cancel_during_a_run_that_then_fails_keeps_the_real_outcome() {
+    let cancel = SetupCancel::new();
+    let m = machine(
+        Script {
+            cancel_at: Some((Stage::Exec, cancel.clone())),
+            exit: Exit::Status(3),
+            ..Script::password()
+        },
+        1,
+    );
+    let outcome = setup_with(&m, cancel);
+    assert!(
+        matches!(outcome, SetupOutcome::ScriptFailed { code: 3 }),
+        "{outcome:?}"
+    );
+}
+
+#[test]
+fn the_cancel_outcomes_hold_no_password() {
+    for outcome in [
+        SetupOutcome::Cancelled,
+        SetupOutcome::CancelledSignedIn,
+        SetupOutcome::CancelledKeyAdded,
+    ] {
+        assert_no_sentinel("outcome", &format!("{outcome:?}"));
+    }
 }
 
 // The fingerprint line and the password type.
@@ -782,6 +962,7 @@ fn the_password_never_appears_in_an_outcome_or_error_and_its_debug_is_redacted()
         SetupPassword::new(GOOD.into()),
         vec![0x30, 0x00],
         COMMENT.into(),
+        SetupCancel::new(),
     )
     .unwrap_err();
     assert_no_sentinel("error Debug", &format!("{error:?}"));

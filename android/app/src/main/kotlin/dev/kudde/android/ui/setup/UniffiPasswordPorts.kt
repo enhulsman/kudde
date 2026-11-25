@@ -4,6 +4,7 @@ import dev.kudde.android.key.KeyManager
 import java.util.concurrent.Executor
 import uniffi.kudde_mobile.ProbeOutcome
 import uniffi.kudde_mobile.ReachKind
+import uniffi.kudde_mobile.SetupCancel
 import uniffi.kudde_mobile.SetupOutcome
 import uniffi.kudde_mobile.SetupPassword
 import uniffi.kudde_mobile.probePasswordMethods
@@ -21,18 +22,25 @@ class UniffiPasswordPorts(private val keys: KeyManager, private val main: Execut
         }.start()
     }
 
-    override fun setup(host: String, port: Int, user: String, pinned: String, password: String, done: (SetupOutcome) -> Unit) {
+    override fun setup(host: String, port: Int, user: String, pinned: String, password: String, done: (SetupOutcome) -> Unit): SetupHandle {
+        val token = SetupCancel()
+        val finished = java.util.concurrent.atomic.AtomicBoolean(false)
         Thread {
             val outcome = try {
                 // The public key is read first, and the native secret handle is closed as soon as the call returns.
                 val publicKey = keys.publicKey()
                 SetupPassword(password).use { secret ->
-                    setupWithPassword(host, port.toUShort(), user, pinned, secret, publicKey, KeyManager.COMMENT)
+                    setupWithPassword(host, port.toUShort(), user, pinned, secret, publicKey, KeyManager.COMMENT, token)
                 }
             } catch (e: Exception) {
                 SetupOutcome.Unreachable(ReachKind.OTHER, "the phone key could not be read")
             }
+            finished.set(true)
+            runCatching { token.close() }
             main.execute { done(outcome) }
         }.start()
+        return object : SetupHandle {
+            override fun cancel() { if (!finished.get()) runCatching { token.cancel() } }
+        }
     }
 }
