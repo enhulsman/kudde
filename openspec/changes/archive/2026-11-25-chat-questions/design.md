@@ -394,6 +394,20 @@ was done:
   that refuses the screen: unchanged; the card says "Typed N of M answers,
   then stopped. Check the terminal." and the terminal is the way on.
 
+### The phone round after the second review (2026-11-25)
+
+The debug build r16 on the test phone, TalkBack off, a staged Claude Code
+asking Lunch, Extras (multi-select) and When:
+
+- Skip question on Lunch, Coffee and Cake ticked with "tea" typed, Noon:
+  the review step read "Some questions have no answer yet. Send what you
+  have, or skip them all." with Lunch as "No answer yet". Send answers: the
+  desk got Extras = Coffee, Cake, tea and When = Noon, Lunch left out; the
+  card folded to "Answered: Extras, When". From the tap to the folded line
+  about 2 s (screen recording).
+- Every question skipped: Send answers disabled (a tap sent nothing), Skip
+  all declined the call, folded to "Skipped: Lunch, Extras, When".
+
 ## Test and phone strategy
 
 Fixtures are invented JSONL with the shapes above (single, multi-question,

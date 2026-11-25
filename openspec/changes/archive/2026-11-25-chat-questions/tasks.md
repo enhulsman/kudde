@@ -51,9 +51,9 @@ Fixtures are invented JSONL with the shapes in `design.md` section A.
 - [x] 7.10 **[owner]** Skip on a question step, and Send with gaps. (2026-11-25, Ezra: "Skip question" moves on without an answer, "Skip all" on the review step, Send with gaps through Tab; texts approved word for word.)
 - [x] 7.11 Tests first: `Answer::Pass` as Tab, the gap-aware review check (warning line, only the answered questions, none of another call's), all-skipped sends nothing; on the phone "Skip question", "Skip all", Send answers with one answer, TalkBack stops; goldens.
 - [x] 7.12 Ezra's third try, tests first: sending faster (the send's held-back reply, shorter looks; measured before and after on the desk), the folded line without skipped questions, the focus on the folded line after Send.
-- [ ] 7.6 A second `/codex:adversarial-review` against main, then a phone round on the test phone. (Review done 2026-11-25, design "The second adversarial review"; the phone round waits for a phone adb can tap.)
+- [x] 7.6 A second `/codex:adversarial-review` against main, then a phone round on the test phone. (2026-11-25: review in design "The second adversarial review"; phone round with r16 passed, design "The phone round after the second review".)
 
 ## 6. Records
-- [ ] 6.1 `openspec validate chat-questions --strict`, then archive on the feature branch as the last content commit.
+- [x] 6.1 `openspec validate chat-questions --strict`, then archive on the feature branch as the last content commit.
 - [ ] 6.2 Issue text for any follow-up (Codex questions, a keys guard in herdr-core) in public wording.
 - [ ] 6.3 Closes #51 in the PR.
