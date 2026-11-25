@@ -6,8 +6,9 @@ log only once it has been answered, so kudde reads the question from a small
 hook instead: Claude Code runs it just before it draws the dialog, and the
 hook saves the question where kudde can read it over SSH.
 
-Without the hook the chat still shows that a question is waiting, with "Open
-the terminal", and answers nothing.
+Without the hook the chat still shows that a question is waiting: "The agent
+asked a question in the terminal. To answer it here, add the question hook on
+the desk.", with "Open the terminal", and it answers nothing.
 
 ## What the hook does
 
