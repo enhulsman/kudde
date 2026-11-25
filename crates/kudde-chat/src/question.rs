@@ -392,6 +392,56 @@ fn shows_folded(screen: &str, q: &Question) -> bool {
     true
 }
 
+/// The dialog of a call with several questions, or with a multi-select
+/// question, ends on a review step; one single-choice question does not.
+pub fn has_review(qs: &[Question]) -> bool {
+    qs.len() > 1 || qs.iter().any(|q| q.multi)
+}
+
+/// What the dialog's review step lists for `answer` to `q` (design D11):
+/// the option's label (a note is not listed), the typed text, or the ticked
+/// labels and the typed text. Long text is matched by its start.
+pub fn expected_answer(q: &Question, answer: &Answer, typed: Option<&str>) -> Vec<String> {
+    let start = |t: &str| fold(t).chars().take(20).collect::<String>();
+    let label = |i: usize| q.options.get(i).map(|o| fold(&o.label));
+    match answer {
+        Answer::Option(i) => label(*i).into_iter().collect(),
+        Answer::Other => typed.map(start).into_iter().collect(),
+        Answer::Multi(ticked) => {
+            let mut sorted = ticked.clone();
+            sorted.sort_unstable();
+            sorted
+                .into_iter()
+                .filter_map(label)
+                .chain(typed.map(start))
+                .collect()
+        }
+        Answer::Skip | Answer::Submit => vec![],
+    }
+}
+
+/// The review step of this call shows, ready to send, with each question's
+/// part listing `expected` (from [expected_answer]) after its arrow.
+pub fn review_matches(screen: &str, qs: &[Question], expected: &[Vec<String>]) -> bool {
+    let d = dialog(screen);
+    if !review_shown(d, qs) || expected.len() != qs.len() {
+        return false;
+    }
+    let body = fold(d.split_once('\n').map_or("", |(_, b)| b));
+    let end = body
+        .rfind(&format!("\u{276F} 1. {REVIEW}"))
+        .unwrap_or(body.len());
+    qs.iter().zip(expected).all(|(q, want)| {
+        let head = format!("\u{25CF} {}", fold(&q.text));
+        let Some(at) = body[..end].find(&head) else {
+            return false;
+        };
+        let rest = &body[at + head.len()..end];
+        let part = rest.find("\u{25CF} ").map_or(rest, |n| &rest[..n]);
+        part.trim_start().starts_with('\u{2192}') && want.iter().all(|w| part.contains(w.as_str()))
+    })
+}
+
 /// The review step of this call, ready to send: the line after the header
 /// reads "Review your answers", every question of the call is listed ("●
 /// <question>"), and the focus is on "1. Submit answers" (5.4 review: a

@@ -153,6 +153,10 @@ pub enum ChatAnswer {
     /// not have offered. The card says "Could not confirm the answer
     /// arrived. Check the terminal." (owner, 2026-11-24).
     Failed { reason: String },
+    /// Sending the kept answers stopped after `sent` of them were typed
+    /// (design D11): "Typed N of M answers, then stopped. Check the
+    /// terminal." Nothing more is sent.
+    Stopped { sent: u32 },
 }
 
 /// The free-text answer's limit, in characters (spec).
@@ -921,6 +925,16 @@ impl Chat {
         core.runtime().block_on(self.answer_async(id, step, choice))
     }
 
+    /// Sends the card's kept answers to call `id`, one per question in
+    /// order, from question `from` on (design D11); see
+    /// [`Chat::send_answers_async`]. Same lock as [`Chat::answer_question`].
+    /// Blocks.
+    pub fn send_answers(&self, id: String, answers: Vec<ChatChoice>, from: u32) -> ChatAnswer {
+        let core = self.core.clone();
+        core.runtime()
+            .block_on(self.send_answers_async(id, answers, from))
+    }
+
     /// The bytes of one image from [`ChatImage::key`], fetched from the desk
     /// the first time; `None` when it is gone or cannot be read. Blocks.
     pub fn image(&self, key: String) -> Option<Vec<u8>> {
@@ -959,6 +973,81 @@ enum Planned {
     Multi(question::MultiPlan),
     /// A note on a preview option: the digit first ([question::plan_note]).
     Note(Vec<String>),
+}
+
+/// One answer from the card, checked on its own: what it answers, the text
+/// it types (own words, a note, a multi-select typed answer), and whether
+/// that text is a note.
+struct Given {
+    answer: Answer,
+    typed: Option<String>,
+    note: bool,
+}
+
+/// The card's choice as an answer; refused (nothing sent) when blank, too
+/// long or not offered.
+fn given(choice: &ChatChoice, multi_ok: bool) -> Result<Given, ChatAnswer> {
+    let failed = |r: &str| Err(ChatAnswer::Failed { reason: r.into() });
+    let plain = |answer| {
+        Ok(Given {
+            answer,
+            typed: None,
+            note: false,
+        })
+    };
+    match choice {
+        ChatChoice::Pick { index } => plain(Answer::Option(*index as usize)),
+        ChatChoice::Other { text } if text.trim().is_empty() => failed("Type your answer"),
+        ChatChoice::Other { text } if text.chars().count() > TEXT_MAX => {
+            failed("Too long: 2000 characters at most")
+        }
+        ChatChoice::Other { text } => Ok(Given {
+            answer: Answer::Other,
+            typed: Some(text.clone()),
+            note: false,
+        }),
+        ChatChoice::Skip => plain(Answer::Skip),
+        ChatChoice::Submit => plain(Answer::Submit),
+        ChatChoice::Multi { .. } if !multi_ok => failed("Open the terminal"),
+        ChatChoice::Note { index, text } if text.trim().is_empty() => {
+            plain(Answer::Option(*index as usize))
+        }
+        ChatChoice::Note { text, .. } if text.chars().count() > TEXT_MAX => {
+            failed("Too long: 2000 characters at most")
+        }
+        ChatChoice::Note { index, text } => Ok(Given {
+            answer: Answer::Option(*index as usize),
+            typed: Some(text.clone()),
+            note: true,
+        }),
+        ChatChoice::Multi { indices, text } => {
+            let typed = text.clone().filter(|t| !t.trim().is_empty());
+            if typed.as_ref().is_some_and(|t| t.chars().count() > TEXT_MAX) {
+                return failed("Too long: 2000 characters at most");
+            }
+            if indices.is_empty() && typed.is_none() {
+                return failed("Nothing to send");
+            }
+            Ok(Given {
+                answer: Answer::Multi(indices.iter().map(|i| *i as usize).collect()),
+                typed,
+                note: false,
+            })
+        }
+    }
+}
+
+/// The keys of answer `g` to question `step`; none when it does not fit.
+fn plan_for(qs: &[question::Question], step: usize, g: &Given) -> Option<Planned> {
+    let q = qs.get(step)?;
+    match &g.answer {
+        Answer::Option(i) if g.note => question::plan_note(q, *i).map(Planned::Note),
+        Answer::Multi(ticked) => {
+            question::plan_multi(q, ticked, g.typed.is_some()).map(Planned::Multi)
+        }
+        Answer::Skip | Answer::Submit => None,
+        a => question::plan(q, a).map(Planned::Keys),
+    }
 }
 
 impl Chat {
@@ -1097,91 +1186,21 @@ impl Chat {
         step: u32,
         choice: ChatChoice,
     ) -> ChatAnswer {
-        let failed = |r: &str| ChatAnswer::Failed { reason: r.into() };
         let step = step as usize;
-        // The person's own words, typed into the dialog's free row.
-        let mut typed: Option<String> = None;
-        // A note on a preview option: the typed text goes in its notes field.
-        let mut note = false;
-        let answer = match &choice {
-            ChatChoice::Pick { index } => Answer::Option(*index as usize),
-            ChatChoice::Other { text } if text.trim().is_empty() => {
-                return failed("Type your answer");
-            }
-            ChatChoice::Other { text } if text.chars().count() > TEXT_MAX => {
-                return failed("Too long: 2000 characters at most");
-            }
-            ChatChoice::Other { text } => {
-                typed = Some(text.clone());
-                Answer::Other
-            }
-            ChatChoice::Skip => Answer::Skip,
-            ChatChoice::Submit => Answer::Submit,
-            ChatChoice::Multi { .. }
-                if !self.multi_ok.load(std::sync::atomic::Ordering::Relaxed) =>
-            {
-                return failed("Open the terminal");
-            }
-            ChatChoice::Note { index, text } if text.trim().is_empty() => {
-                Answer::Option(*index as usize)
-            }
-            ChatChoice::Note { text, .. } if text.chars().count() > TEXT_MAX => {
-                return failed("Too long: 2000 characters at most");
-            }
-            ChatChoice::Note { index, text } => {
-                typed = Some(text.clone());
-                note = true;
-                Answer::Option(*index as usize)
-            }
-            ChatChoice::Multi { indices, text } => {
-                typed = text.clone().filter(|t| !t.trim().is_empty());
-                if typed.as_ref().is_some_and(|t| t.chars().count() > TEXT_MAX) {
-                    return failed("Too long: 2000 characters at most");
-                }
-                if indices.is_empty() && typed.is_none() {
-                    return failed("Nothing to send");
-                }
-                Answer::Multi(indices.iter().map(|i| *i as usize).collect())
-            }
+        let g = match given(&choice, self.multi_ok()) {
+            Ok(g) => g,
+            Err(a) => return a,
         };
         // From what is held, no call: the call must still be the one the
         // hook's record gave the card (design D1).
-        let held = self.held.lock().unwrap().clone();
-        let (agent, session, qs) = {
-            let st = self.state.lock().unwrap();
-            let Some((agent, session)) = st.shown() else {
-                return ChatAnswer::Changed;
-            };
-            let open = held.filter(|a| st.asked(&a.id).is_none_or(|l| l.state == State::Pending));
-            match open {
-                Some(a) if a.id == id => match a.shape {
-                    Shape::Readable(qs) => (agent, session, qs),
-                    Shape::Unreadable { .. } => return failed("Open the terminal"),
-                },
-                _ => {
-                    return match st.asked(&id) {
-                        Some(a) if a.state != State::Pending => ChatAnswer::AlreadyAnswered,
-                        _ => ChatAnswer::Changed,
-                    };
-                }
-            }
+        let (agent, session, qs) = match self.held_call(&id) {
+            Ok(h) => h,
+            Err(a) => return a,
         };
-        // A multi-select answer runs in checked steps ([Chat::answer_multi]).
-        let planned = match &answer {
-            Answer::Option(i) if note => qs
-                .get(step)
-                .and_then(|q| question::plan_note(q, *i))
-                .map(Planned::Note),
-            Answer::Multi(ticked) => qs
-                .get(step)
-                .and_then(|q| question::plan_multi(q, ticked, typed.is_some()))
-                .map(Planned::Multi),
+        let planned = match &g.answer {
             Answer::Submit if qs.len() < 2 => None,
-            Answer::Submit | Answer::Skip => question::plan(&qs[0], &answer).map(Planned::Keys),
-            _ => qs
-                .get(step)
-                .and_then(|q| question::plan(q, &answer))
-                .map(Planned::Keys),
+            Answer::Submit | Answer::Skip => question::plan(&qs[0], &g.answer).map(Planned::Keys),
+            _ => plan_for(&qs, step, &g),
         };
         let Some(planned) = planned else {
             return ChatAnswer::Changed;
@@ -1190,53 +1209,213 @@ impl Chat {
             return ChatAnswer::NotConnected;
         };
         let c = conn.client;
-        match self.check(&c).await {
-            Ok((t, start, l)) => match question::check(agent, &session, &seen(&t, start, &l)) {
-                Ok(_) => {}
-                Err(question::Refusal::Answered) => return ChatAnswer::AlreadyAnswered,
-                Err(question::Refusal::Changed) => return ChatAnswer::Changed,
-            },
-            Err(e) => return failed(&e),
-        }
-        let before = match self.screen(&c).await {
-            Ok(s) if question::before(&answer, step, question::progress(&s, &qs)) => s,
-            Ok(_) => return ChatAnswer::Changed,
-            Err(e) => return failed(&e),
+        let before = match self
+            .checked(&c, agent, &session, &qs, |p| {
+                question::before(&g.answer, step, p)
+            })
+            .await
+        {
+            Ok(s) => s,
+            Err(a) => return a,
         };
         // From here keys may have gone: nothing is sent again.
+        self.one_step(&c, &id, &qs, step, &g, planned, &before, true)
+            .await
+    }
+
+    /// Sends the card's kept answers (design D11): from question `from` on,
+    /// each after the target check and once the screen shows it, then, where
+    /// the dialog has a review step, Enter once that step lists what was
+    /// typed. Halfway it stops with [`ChatAnswer::Stopped`] and the count of
+    /// answers typed; it goes on later only from the question the screen
+    /// then shows, and only when that is question `from`.
+    pub(crate) async fn send_answers_async(
+        &self,
+        id: String,
+        answers: Vec<ChatChoice>,
+        from: u32,
+    ) -> ChatAnswer {
+        let failed = |r: &str| ChatAnswer::Failed { reason: r.into() };
+        let from = from as usize;
+        let mut gs = Vec::with_capacity(answers.len());
+        for a in &answers {
+            match given(a, self.multi_ok()) {
+                Ok(g) if !matches!(g.answer, Answer::Skip | Answer::Submit) => gs.push(g),
+                Ok(_) => return failed("Not an answer"),
+                Err(a) => return a,
+            }
+        }
+        let (agent, session, qs) = match self.held_call(&id) {
+            Ok(h) => h,
+            Err(a) => return a,
+        };
+        if gs.len() != qs.len() || from > qs.len() {
+            return failed("The answers do not fit the question");
+        }
+        let mut plans = Vec::with_capacity(qs.len());
+        for (i, g) in gs.iter().enumerate() {
+            match plan_for(&qs, i, g) {
+                Some(p) => plans.push(p),
+                None => return failed("The answers do not fit the question"),
+            }
+        }
+        let Some(conn) = self.core.live_conn(&self.machine) else {
+            return ChatAnswer::NotConnected;
+        };
+        let c = conn.client;
+        let stopped = |i: usize| ChatAnswer::Stopped { sent: i as u32 };
+        for (i, planned) in plans.into_iter().enumerate().skip(from) {
+            let before = match self
+                .checked(&c, agent, &session, &qs, |p| p == Progress::Question(i))
+                .await
+            {
+                Ok(s) => s,
+                Err(a) if i == from => return a,
+                Err(_) => return stopped(i),
+            };
+            match self
+                .one_step(&c, &id, &qs, i, &gs[i], planned, &before, false)
+                .await
+            {
+                ChatAnswer::Done => {}
+                a if i == 0 => return a,
+                _ => return stopped(i),
+            }
+        }
+        let n = qs.len();
+        if !question::has_review(&qs) {
+            // The one question's step closed the dialog (its result is in the log).
+            return ChatAnswer::Done;
+        }
+        // Nothing pressed in this send yet when every answer was typed before.
+        let refused = |a: ChatAnswer| if from == n { a } else { stopped(n) };
+        if let Err(a) = self.target_ok(&c, agent, &session).await {
+            return refused(a);
+        }
+        let expected: Vec<Vec<String>> = qs
+            .iter()
+            .zip(&gs)
+            .map(|(q, g)| question::expected_answer(q, &g.answer, g.typed.as_deref()))
+            .collect();
+        if self
+            .screen_until(&c, |s| question::review_matches(s, &qs, &expected))
+            .await
+            .is_none()
+        {
+            return refused(ChatAnswer::Changed);
+        }
+        if !self.press(&c, &["enter".to_string()]).await {
+            return stopped(n);
+        }
+        match self.confirm(&c, &id, &qs, n - 1, &Answer::Submit).await {
+            ChatAnswer::Done => ChatAnswer::Done,
+            _ => stopped(n),
+        }
+    }
+
+    fn multi_ok(&self) -> bool {
+        self.multi_ok.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// The held call `id`: the agent and session shown and its questions.
+    fn held_call(&self, id: &str) -> Result<(Agent, String, Vec<question::Question>), ChatAnswer> {
+        let held = self.held.lock().unwrap().clone();
+        let st = self.state.lock().unwrap();
+        let Some((agent, session)) = st.shown() else {
+            return Err(ChatAnswer::Changed);
+        };
+        let open = held.filter(|a| st.asked(&a.id).is_none_or(|l| l.state == State::Pending));
+        match open {
+            Some(a) if a.id == id => match a.shape {
+                Shape::Readable(qs) => Ok((agent, session, qs)),
+                Shape::Unreadable { .. } => Err(ChatAnswer::Failed {
+                    reason: "Open the terminal".into(),
+                }),
+            },
+            _ => Err(match st.asked(id) {
+                Some(a) if a.state != State::Pending => ChatAnswer::AlreadyAnswered,
+                _ => ChatAnswer::Changed,
+            }),
+        }
+    }
+
+    /// The send target is unchanged and still blocked (design D2).
+    async fn target_ok(&self, c: &Client, agent: Agent, session: &str) -> Result<(), ChatAnswer> {
+        match self.check(c).await {
+            Ok((t, start, l)) => match question::check(agent, session, &seen(&t, start, &l)) {
+                Ok(_) => Ok(()),
+                Err(question::Refusal::Answered) => Err(ChatAnswer::AlreadyAnswered),
+                Err(question::Refusal::Changed) => Err(ChatAnswer::Changed),
+            },
+            Err(e) => Err(ChatAnswer::Failed { reason: e }),
+        }
+    }
+
+    /// The target check, then the screen, which must be where `at` says.
+    async fn checked(
+        &self,
+        c: &Client,
+        agent: Agent,
+        session: &str,
+        qs: &[question::Question],
+        at: impl Fn(Progress) -> bool,
+    ) -> Result<String, ChatAnswer> {
+        self.target_ok(c, agent, session).await?;
+        match self.screen(c).await {
+            Ok(s) if at(question::progress(&s, qs)) => Ok(s),
+            Ok(_) => Err(ChatAnswer::Changed),
+            Err(e) => Err(ChatAnswer::Failed { reason: e }),
+        }
+    }
+
+    /// One question's keys, the screen showing `before`, and the screen
+    /// moving on. `submit`: a one-question multi-select call then sends from
+    /// its review step too (one tap answers it).
+    #[allow(clippy::too_many_arguments)]
+    async fn one_step(
+        &self,
+        c: &Client,
+        id: &str,
+        qs: &[question::Question],
+        step: usize,
+        g: &Given,
+        planned: Planned,
+        before: &str,
+        submit: bool,
+    ) -> ChatAnswer {
         let keys = match planned {
             Planned::Keys(keys) => keys,
             Planned::Note(digit) => {
-                let (Answer::Option(i), Some(text)) = (&answer, typed.as_deref()) else {
+                let (Answer::Option(i), Some(text)) = (&g.answer, g.typed.as_deref()) else {
                     return ChatAnswer::Changed;
                 };
-                return self.answer_note(&c, &id, &qs, step, *i, text, &digit).await;
+                return self.answer_note(c, id, qs, step, *i, text, &digit).await;
             }
             Planned::Multi(mut m) => {
-                let Answer::Multi(ticked) = &answer else {
+                let Answer::Multi(ticked) = &g.answer else {
                     return ChatAnswer::Changed;
                 };
                 // Only the rows the screen shows otherwise: a digit toggles its
                 // row, so a retry or a desk tick must not undo one (5.4 review).
-                let Some(ticks) = question::toggles(&before, &qs[step], ticked) else {
+                let Some(ticks) = question::toggles(before, &qs[step], ticked) else {
                     return ChatAnswer::Changed;
                 };
                 m.ticks = ticks;
                 return self
-                    .answer_multi(&c, &id, &qs, step, ticked, typed.as_deref(), m)
+                    .answer_multi(c, id, qs, step, ticked, g.typed.as_deref(), m, submit)
                     .await;
             }
         };
-        if !self.press(&c, &keys).await {
+        if !self.press(c, &keys).await {
             return ChatAnswer::Unconfirmed;
         }
-        if let Some(text) = &typed {
+        if let Some(text) = &g.typed {
             // The text and its Enter go into the free-text row only once the
             // screen shows it focused on this question (design D6; 5.4 review).
             let row = qs[step].options.len() + 1;
             if self
-                .screen_until(&c, |s| {
-                    question::progress(s, &qs) == Progress::Question(step)
+                .screen_until(c, |s| {
+                    question::progress(s, qs) == Progress::Question(step)
                         && question::focused(s, row)
                 })
                 .await
@@ -1244,11 +1423,11 @@ impl Chat {
             {
                 return ChatAnswer::Unconfirmed;
             }
-            if !self.type_forced(&c, text).await {
+            if !self.type_forced(c, text).await {
                 return ChatAnswer::Unconfirmed;
             }
         }
-        self.confirm(&c, &id, &qs, step, &answer).await
+        self.confirm(c, id, qs, step, &g.answer).await
     }
 
     /// One `terminal.keys` call; false when it may not have arrived.
@@ -1346,6 +1525,7 @@ impl Chat {
         ticked: &[usize],
         typed: Option<&str>,
         m: question::MultiPlan,
+        submit: bool,
     ) -> ChatAnswer {
         let q = &qs[step];
         let here = |s: &str| question::progress(s, qs) == Progress::Question(step);
@@ -1406,7 +1586,7 @@ impl Chat {
                 return ChatAnswer::Unconfirmed;
             }
         }
-        if qs.len() > 1 {
+        if qs.len() > 1 || !submit {
             return self
                 .confirm(c, id, qs, step, &Answer::Multi(ticked.to_vec()))
                 .await;
