@@ -1240,10 +1240,19 @@ impl Chat {
         let mut gs = Vec::with_capacity(answers.len());
         for a in &answers {
             match given(a, self.multi_ok()) {
-                Ok(g) if !matches!(g.answer, Answer::Skip | Answer::Submit) => gs.push(g),
+                // In the kept answers Skip is "Skip question": no answer, Tab past it.
+                Ok(g) if g.answer == Answer::Skip => gs.push(Given {
+                    answer: Answer::Pass,
+                    typed: None,
+                    note: false,
+                }),
+                Ok(g) if g.answer != Answer::Submit => gs.push(g),
                 Ok(_) => return failed("Not an answer"),
                 Err(a) => return a,
             }
+        }
+        if gs.iter().all(|g| g.answer == Answer::Pass) {
+            return failed("Nothing to send");
         }
         let (agent, session, qs) = match self.held_call(&id) {
             Ok(h) => h,
@@ -1292,10 +1301,13 @@ impl Chat {
         if let Err(a) = self.target_ok(&c, agent, &session).await {
             return refused(a);
         }
-        let expected: Vec<Vec<String>> = qs
+        let expected: Vec<Option<Vec<String>>> = qs
             .iter()
             .zip(&gs)
-            .map(|(q, g)| question::expected_answer(q, &g.answer, g.typed.as_deref()))
+            .map(|(q, g)| {
+                (g.answer != Answer::Pass)
+                    .then(|| question::expected_answer(q, &g.answer, g.typed.as_deref()))
+            })
             .collect();
         if self
             .screen_until(&c, |s| question::review_matches(s, &qs, &expected))

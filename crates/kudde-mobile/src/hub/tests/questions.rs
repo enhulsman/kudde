@@ -1753,7 +1753,7 @@ async fn answers_that_do_not_fit_the_call_send_nothing() {
     let (mut core, chat, _) = with_log(&mut r, &[ask_line("toolu_01", three_qs())]).await;
     for (answers, from) in [
         (vec![pick(1), pick(1)], 0),
-        (vec![pick(1), ChatChoice::Skip, pick(0)], 0),
+        (vec![pick(1), ChatChoice::Submit, pick(0)], 0),
         (vec![pick(1), pick(5), pick(0)], 0),
         (vec![pick(1), pick(1), pick(0)], 4),
     ] {
@@ -1902,5 +1902,43 @@ async fn a_multi_select_revisited_with_its_answer_in_place_leaves_with_tab() {
     core.serves_screen(WHEN).await;
     core.ends_on_when_and_review(end).await;
     assert_eq!(got.await.unwrap(), ChatAnswer::Done);
+    core.nothing_more().await;
+}
+
+// ---- Send with gaps (Ezra, 2026-11-25): "Skip question" leaves a question
+// unanswered; Send answers passes it with Tab, as the desk does.
+
+#[tokio::test(start_paused = true)]
+async fn send_with_a_gap_tabs_past_the_unanswered_question() {
+    let mut r = rig("send-gap");
+    let (mut core, chat, end) = with_log(&mut r, &[ask_line("toolu_01", three_qs())]).await;
+    let got = spawn_send(
+        &chat,
+        "toolu_01",
+        vec![ChatChoice::Skip, pick(1), pick(0)],
+        0,
+    );
+    core.types(&three_screen(0), &["tab"], &three_screen(1))
+        .await;
+    core.types(&three_screen(1), &["2"], &three_screen(2)).await;
+    let review = "←  ☐ Database  ☒ Login  ☒ Tests  ✔ Submit  →\nReview your answers\n⚠ Some questions are unanswered\n ● Which login should it have?\n   → Passkey\n ● Which tests first?\n   → Unit\n❯ 1. Submit answers\n  2. Cancel\n";
+    core.types(&three_screen(2), &["1"], review).await;
+    core.serves_check("blocked").await;
+    core.serves_screen(review).await;
+    let k = core.takes_keys(&["enter"]).await;
+    core.reply(&k, json!({"turn": 3})).await;
+    core.serves_screen(PROMPT).await;
+    core.serves_log(end, &[result_line("toolu_01", false)])
+        .await;
+    assert_eq!(got.await.unwrap(), ChatAnswer::Done);
+    core.nothing_more().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn nothing_answered_is_nothing_to_send() {
+    let mut r = rig("send-all-gaps");
+    let (mut core, chat, _) = with_log(&mut r, &[ask_line("toolu_01", three_qs())]).await;
+    let got = spawn_send(&chat, "toolu_01", vec![ChatChoice::Skip; 3], 0);
+    assert!(matches!(got.await.unwrap(), ChatAnswer::Failed { .. }));
     core.nothing_more().await;
 }
