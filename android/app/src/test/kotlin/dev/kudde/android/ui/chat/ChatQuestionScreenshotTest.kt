@@ -220,6 +220,21 @@ class ChatQuestionScreenshotTest {
         capture("second", q) { ChatState().apply { card.follow(q); card.keep(ChatChoice.Pick(1u)) } }
     }
 
+    // Ahead before answering (Ezra's try): the review step shows the gap; Send answers waits.
+    @Test
+    fun reviewWithAGap() {
+        val q = one(database, login)
+        capture("review-gap", q) {
+            ChatState().apply {
+                card.follow(q)
+                card.next()
+                card.keep(ChatChoice.Pick(0u))
+                card.next()
+                card.next()
+            }
+        }
+    }
+
     // Sending that stopped halfway: the notice on the review step.
     @Test
     fun stoppedHalfway() {
