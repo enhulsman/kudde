@@ -1182,7 +1182,7 @@ function fdWorking(d, fail){
            : fdRow(d,'done','Signing in as dev')}
     ${fdRow(d, fail?'todo':'now','Adding the key')}
     ${fdRow(d,'todo','Signing out')}
-  </div>`), fail ? frButton('Add the key') + frButton('Add it yourself', false) + frButton('Cancel', false) : frButton('Add it yourself', false) + frButton('Cancel', false));
+  </div>${fail ? `<div class="fr-field"><span>Password for dev on workstation</span><div class="field">\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022</div></div>` : ''}`), fail ? frButton('Add the key') + frButton('Add it yourself', false) + frButton('Cancel', false) : frButton('Add it yourself', false) + frButton('Cancel', false));
 }
 // Draft success line for B only: "Your first machine is set up."
 function fdSuccess(d){
