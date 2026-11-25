@@ -12,7 +12,7 @@
   --bg:#17191d; --chrome:#101114; --canvas:#131518; --popover:#25272b; --raised:#2c2e31;
   --hover:#ffffff0e; --selected:#ffffff17; --border:#ffffff18; --input:#ffffff24;
   --fg:#eeeeef; --term-fg:#d2d4d9; --muted:#98999b; --dim:#696a6d; --idle:#696a6d; --ring:#aeaeb0;
-  --accent:#96b2d7; --solid:#eeeeef; --solid-fg:#111215; --selection:#394454;
+  --accent:#96b2d7; --solid:#eeeeef; --solid-fg:#111215; --halo:#a6bd912e; --selection:#394454;
   --working:#e5c07b; --blocked:#f0705f; --done:#76a8ff;
   --a0:#45484f;--a1:#dc8c95;--a2:#a6bd91;--a3:#d8be87;--a4:#96b2d7;--a5:#b5a2ce;--a6:#8cbdc3;--a7:#d2d4d9;
   --a8:#818793;--a9:#f0a5ad;--a10:#bad5a2;--a11:#ead2a1;--a12:#b0cbef;--a13:#cbb7e6;--a14:#a4d5db;--a15:#f0f0f2;
@@ -22,7 +22,7 @@
   --bg:#ffffff; --chrome:#f1f1ee; --canvas:#fafaf9; --popover:#ffffff; --raised:#f6f6f6;
   --hover:#0000000c; --selected:#00000012; --border:#00000017; --input:#00000026;
   --fg:#1b1b1e; --term-fg:#25272c; --muted:#69696a; --dim:#969698; --idle:#a8a8aa; --ring:#5f5f62;
-  --accent:#1f62d0; --solid:#1b1b1e; --solid-fg:#ffffff; --selection:#cfdcf5;
+  --accent:#1f62d0; --solid:#1b1b1e; --solid-fg:#ffffff; --halo:#1a7f372e; --selection:#cfdcf5;
   --working:#9a6700; --blocked:#c93c2c; --done:#2f6fe4;
   --a0:#25272c;--a1:#c62a2a;--a2:#1a7f37;--a3:#8f5d00;--a4:#1f62d0;--a5:#7a45c8;--a6:#0f6f74;--a7:#5f6068;
   --a8:#7b7e87;--a9:#d1242f;--a10:#1f883d;--a11:#9a6700;--a12:#0969da;--a13:#8250df;--a14:#1b7c83;--a15:#111214;
@@ -284,6 +284,10 @@ button{font-family:inherit;color:inherit}
 .fd-bar.b i.cur{flex:2.2}
 .fd-b h2{font-size:27px;letter-spacing:-.015em}
 .fd-b{gap:20px}
+.fin .fd-bar.b i{height:3px;border-radius:2px}
+.fr-body.fin h2{font-size:27px;letter-spacing:-.015em;line-height:1.2}
+.fr-body.fin{gap:20px}
+.fin .fd-list{gap:18px}
 .fd-choices{display:flex;flex-direction:column;gap:12px}
 .fd-card{position:relative;display:flex;flex-direction:column;gap:6px;padding:16px;border-radius:14px;border:1px solid var(--input)}
 .fd-card b{font-weight:500;font-size:16px;line-height:1.3}
@@ -307,7 +311,7 @@ button{font-family:inherit;color:inherit}
 .fd-ok{display:flex;align-items:center;gap:12px;padding:14px;border:1px solid var(--border);background:var(--canvas);border-radius:12px;font-size:15px}
 .fd-ok.a>span{display:flex;width:22px;height:22px;border-radius:50%;border:2px solid var(--a2);color:var(--a2);align-items:center;justify-content:center;box-sizing:border-box}
 .fd-ok.b{flex-direction:column;align-items:center;text-align:center;gap:18px;padding:28px 14px;border-radius:20px}
-.fd-halo{display:flex;width:104px;height:104px;border-radius:50%;background:color-mix(in srgb,var(--a2) 18%,transparent);align-items:center;justify-content:center}
+.fd-halo{display:flex;width:104px;height:104px;border-radius:50%;background:var(--halo);align-items:center;justify-content:center}
 .fd-disc{display:flex;width:68px;height:68px;border-radius:50%;background:var(--a2);color:var(--solid-fg);align-items:center;justify-content:center}
 .fd-disc svg{width:30px;height:30px}
 .fd-okt b{font-weight:500;font-size:17px}
@@ -1011,12 +1015,10 @@ const frTop = () => `<div class="top" style="padding-left:4px"><button class="ic
 const frGuide = () => `<a class="fr-link" href="../../README.md#setting-up">Setup guide</a>`;
 const frButton = (text, solid=true) => `<button class="btn${solid?' solid':''}">${text}</button>`;
 const frPhone = (theme,body,footer='',top=frTop()) => `<div class="phone ${theme}">${sysbar()}${top}${body}${footer?`<div class="fr-footer">${footer}</div>`:''}${navbar()}</div>`;
-const frBody = (n,title,body) => `<div class="fr-body">${n?`<div class="fr-step">Step ${n} of 4</div>`:''}<h2>${title}</h2>${body}</div>`;
+const frBody = (n,title,body) => `<div class="fr-body fin fd-b">${n?fdBar('b',n):''}<h2>${title}</h2>${body}</div>`;
 const frBoth = variants => `<div class="fr-set">${variants.flatMap(([label,fn])=>['graphite','paper'].map(theme=>`<div class="fr-variant"><div class="fr-label">${label} · ${theme}</div>${fn(theme)}</div>`)).join('')}</div>`;
-const frChoices = (descriptions=false) => `<div class="fr-choices">
-  <div class="fr-choice">${frButton('kudde adds it for you',false)}${descriptions?`<p>kudde signs in once as dev with that account's password, adds the same key and signs out. The password is not stored.</p>`:''}</div>
-  <div class="fr-choice">${frButton('Add it yourself',false)}${descriptions?`<p>Run one command at the machine. kudde never sees a password.</p>`:''}</div>
-</div>`;
+// Final look (task 052): two stacked cards at every text size; the first filled, the second plain.
+const frChoices = () => fdChoices('b');
 function frWelcome(theme){
   return frPhone(theme,`<div class="fr-body" style="padding-top:28px;gap:22px">
     <img src="../brand/kudde-tag-A1.svg" alt="kudde" width="64" height="64">
@@ -1058,10 +1060,10 @@ function frManual(theme){
 }
 function frRefused(theme){
   return frPhone(theme,frBody(2,"This phone's key",`<div class="fr-notice"><b style="font-weight:500">workstation did not accept the phone key.</b><p>Choose how to add it, signed in as dev. If you already ran the command, check that its quotes arrived unchanged, then try again.</p></div>
-    ${frChoices(true)}<p>Both ways add only this phone's public key, limited to herdr-core. Existing keys stay in place.</p>`),frButton('Try again')+frButton('Change the address',false));
+    ${frChoices()}<p>Both ways add only this phone's public key, limited to herdr-core. Existing keys stay in place.</p>`),frButton('Try again')+frButton('Change the address',false));
 }
-function frConnected(theme){
-  return frPhone(theme,frBody(3,'Connected',`<div class="fr-notice"><div style="display:flex;align-items:center;gap:10px"><span class="dot" style="background:var(--a2)"></span><span>workstation is connected.</span></div><p>herdr-core 0.1.16</p></div><p>3 agents are running there.</p>`),frButton('Continue'));
+function frConnected(theme,first=true){
+  return fdSuccess('b',first)(theme);
 }
 function frAlerts(theme,state='received'){
   const missed=state==='missed';
@@ -1108,10 +1110,9 @@ function frHint(theme, kind, tb=false, oneCell=false){
 }
 
 const frStackStyle = 'zoom:1.45';
-const frChoicesStacked = (descriptions=true) => frChoices(descriptions).replace('class="fr-choices"', 'class="fr-choices" style="flex-direction:column"');
-function frKeyChoices(theme, stacked=false){
-  const body = frBody(2, "This phone's key", `<p>Choose how to add it to workstation, signed in as dev.</p>${stacked?frChoicesStacked():frChoices(true)}<p>Both ways add only this phone's public key, limited to herdr-core. Existing keys stay in place.</p>`);
-  return frPhone(theme, stacked ? body.replace('class="fr-body"', `class="fr-body" style="${frStackStyle}"`) : body, '');
+function frKeyChoices(theme, large=false){
+  const body = frBody(2, "This phone's key", `<p>Choose how to add it to workstation, signed in as dev.</p>${frChoices()}<p>Both ways add only this phone's public key, limited to herdr-core. Existing keys stay in place.</p>`);
+  return frPhone(theme, large ? body.replace('class="fr-body ', `style="${frStackStyle}" class="fr-body `) : body, '');
 }
 const frPwDialog = (theme) => frKeyChoices(theme).replace(/(<div class="phone [^"]+">)/, `$1<div class="scrim" style="z-index:1"></div><div class="dialog" style="z-index:2">
     <h3>Trust this machine?</h3>
@@ -1133,17 +1134,36 @@ const frPwOutcomes = {
   code: ['The setup on workstation ended with code 3.', 'Choose "Add it yourself" to run the command at the machine to see why.'],
   refused: ['kudde added the key, but workstation still refuses it.', "The SSH server may read keys from another file, or refuse the home directory's permissions (StrictModes). The setup guide's check script finds out which."],
 };
+// Checklist labels are approved: "Signing in as dev", "Adding the key", "Signing out".
+// state: [mark of each row, failed row, show the field, footer]
+const frPwRows = {
+  working: [['done','now','todo'], null],
+  wrong: [['fail','todo','todo'], 0],
+  again: [['fail','todo','todo'], 0],
+  none: [['fail','todo','todo'], 0],
+  more: [['fail','todo','todo'], 0],
+  dropped: [['done','fail','todo'], 1],
+  code: [['done','fail','todo'], 1],
+  refused: [['done','done','done'], null],
+};
 function frPassword(theme, state='field'){
   const out = frPwOutcomes[state];
   const showField = !['none','more','code','refused','working'].includes(state);
-  const field = showField ? `<div class="fr-field"><span>Password for dev on workstation</span><div class="field">••••••••</div></div>` : '';
-  const notice = out ? `<div class="fr-notice"${state==='working'?'':''}><b style="font-weight:500">${out[0]}</b>${out[1]?`<p>${out[1]}</p>`:''}</div>` : '';
+  const field = showField ? `<div class="fr-field"><span>Password for dev on workstation</span><div class="field">${state==='field'?'••••••••':'<span style="opacity:0">•</span>'}</div></div>` : '';
   const footer = state === 'working' ? frButton('Add it yourself', false) + frButton('Cancel', false)
     : state === 'refused' ? frButton('Try again') + frButton('Add it yourself', false)
     : showField ? frButton('Add the key') + frButton('Add it yourself', false) + frButton('Cancel', false)
-    : frButton('Add it yourself') ;
-  const sentence = state === 'field' ? `<p>kudde signs in once as dev with that account's password, adds the same key and signs out. The password is not stored.</p>` : '';
-  return frPhone(theme, frBody(2, "This phone's key", `${sentence}${notice}${field}${state==='field'?'':''}`), footer);
+    : frButton('Add it yourself');
+  let inner;
+  if (state === 'field') inner = `<p>kudde signs in once as dev with that account's password, adds the same key and signs out. The password is not stored.</p>${field}`;
+  else {
+    const [marks, failed] = frPwRows[state];
+    const labels = ['Signing in as dev','Adding the key','Signing out'];
+    const err = out ? `<p class="fd-err"><b>${out[0]}</b>${out[1]?`<br>${out[1]}`:''}</p>` : '';
+    const rows = labels.map((l,k)=>fdRow('b',marks[k],l,k===failed?err:'')).join('');
+    inner = `<div class="fd-list b" role="status">${rows}</div>${state==='refused'?`<div class="fr-notice"><b style="font-weight:500">${out[0]}</b>${out[1]?`<p>${out[1]}</p>`:''}</div>`:''}${field}`;
+  }
+  return frPhone(theme, frBody(2, "This phone's key", inner), footer);
 }
 function frMachinesKeyChoices(theme, variant='listed'){
   const sub = variant === 'imported' ? 'Host key not confirmed yet' : 'Phone key not accepted · retrying in 12 s';
@@ -1185,13 +1205,12 @@ function fdWorking(d, fail){
   </div>${fail ? `<div class="fr-field"><span>Password for dev on workstation</span><div class="field">\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022</div></div>` : ''}`), fail ? frButton('Add the key') + frButton('Add it yourself', false) + frButton('Cancel', false) : frButton('Add it yourself', false) + frButton('Cancel', false));
 }
 // Draft success line for B only: "Your first machine is set up."
-function fdSuccess(d){
+function fdSuccess(d, first=true){
   const mark = d === 'a'
     ? `<div class="fd-ok a"><span>${fdCheck}</span><b>workstation is connected.</b></div>`
-    : `<div class="fd-ok b"><span class="fd-halo"><span class="fd-disc">${fdCheck}</span></span><div class="fd-okt"><b>workstation is connected.</b><p>Your first machine is set up.</p></div></div>`;
-  return t => frPhone(t, fdBody(d, 3, 'Connected', `${mark}<p>herdr-core 0.1.16</p><p>3 agents are running there.</p>`), frButton('Continue'));
+    : `<div class="fd-ok b"><span class="fd-halo"><span class="fd-disc">${fdCheck}</span></span><div class="fd-okt"><b>workstation is connected.</b>${first?'<p>Your first machine is set up.</p>':''}</div></div>`;
+  return t => frPhone(t, (d==='b'?frBody:((n,h,b)=>fdBody(d,n,h,b)))(3, 'Connected', `${mark}<p>herdr-core 0.1.16</p><p>3 agents are running there.</p>`), frButton('Continue'));
 }
-const fdVariants = d => [['Key choices (stacked, one tappable card each)',fdKeyChoices(d,false)],['Key choices at large text',fdKeyChoices(d,true)],['Password field',fdPassword(d)],['Working: signing in done, adding the key now',fdWorking(d,false)],['Wrong password (R9) on the step that failed',fdWorking(d,true)],['Connected: the earned moment',fdSuccess(d)]];
 
 const SCREENS = [
   ['1-home-dark','1 Agent list (graphite)',()=>home('graphite')],
@@ -1227,16 +1246,14 @@ const SCREENS = [
   ['first-run-address','First run · Address',()=>frBoth([['Waiting',frAddress],['No answer (F1)',t=>frAddress(t,true)]])],
   ['first-run-manual','First run · Manual key setup',()=>frBoth([['Manual detail',frManual]])],
   ['first-run-key-refused','First run · Key refused',()=>frBoth([['Key refused',frRefused]])],
-  ['first-run-connected','First run · Connected',()=>frBoth([['Connected',frConnected]])],
+  ['first-run-connected','First run · Connected',()=>frBoth([['Connected, first machine',frConnected],['Connected, a later machine',t=>frConnected(t,false)]])],
   ['first-run-alerts','First run · Alerts',()=>frBoth([['Before (AL4)',t=>frAlerts(t,'before')],['Test received (AL6)',t=>frAlerts(t,'received')],['No test alert (AL7)',t=>frAlerts(t,'missed')]])],
   ['first-run-trust','First run · Compare the fingerprint',()=>frBoth([['Trust dialog',frTrust]])],
   ['first-run-home','First run · Home',()=>frBoth([['Finish setup',frHome],['Empty after completion',t=>frHome(t,true)]])],
-  ['first-run-dir-a','First run · Direction A, restrained',()=>frBoth(fdVariants('a'))],
-  ['first-run-dir-b','First run · Direction B, warmer',()=>frBoth(fdVariants('b'))],
   ['first-run-hint','First run · Title bar hint',()=>frBoth([['Terminal, tab of three',t=>frHint(t,'terminal')],['Chat, tab of three',t=>frHint(t,'chat')],['Terminal, one-pane tab (G2 explains the bounce)',t=>frHint(t,'terminal',false,true)],['With TalkBack (G6 in place of G2 to G4)',t=>frHint(t,'terminal',true)]])],
-  ['first-run-key-choices','First run · Key choices',()=>frBoth([['Side by side',t=>frKeyChoices(t)],['Stacked at large text',t=>frKeyChoices(t,true)]])],
+  ['first-run-key-choices','First run · Key choices',()=>frBoth([['Key choices',t=>frKeyChoices(t)],['At large text',t=>frKeyChoices(t,true)]])],
   ['first-run-password-trust','First run · Password way, trust dialog',()=>frBoth([['Trust dialog (R3 to R5)',frPwDialog]])],
-  ['first-run-password','First run · Password way',()=>frBoth([['Field (R2, R6, R7)',t=>frPassword(t,'field')],['Working (R8)',t=>frPassword(t,'working')],['Wrong password (R9)',t=>frPassword(t,'wrong')],['Refused again (R15)',t=>frPassword(t,'again')],['No password method (R10)',t=>frPassword(t,'none')],['More than a password (R11)',t=>frPassword(t,'more')],['Dropped (R12)',t=>frPassword(t,'dropped')],['Ended with a code (R14)',t=>frPassword(t,'code')],['Done but still refused (R16)',t=>frPassword(t,'refused')]])],
+  ['first-run-password','First run · Password way',()=>frBoth([['Field (R2, R6, R7)',t=>frPassword(t,'field')],['Working (checklist)',t=>frPassword(t,'working')],['Wrong password (R9)',t=>frPassword(t,'wrong')],['Refused again (R15)',t=>frPassword(t,'again')],['No password method (R10)',t=>frPassword(t,'none')],['More than a password (R11)',t=>frPassword(t,'more')],['Dropped (R12)',t=>frPassword(t,'dropped')],['Ended with a code (R14)',t=>frPassword(t,'code')],['Done but still refused (R16)',t=>frPassword(t,'refused')]])],
   ['machines-key-choices','Machines · Key choices on a rejected-key card',()=>frBoth([['Listed machine',t=>frMachinesKeyChoices(t)],['Imported, host key to confirm',t=>frMachinesKeyChoices(t,'imported')],['Previously connected',t=>frMachinesKeyChoices(t,'previous')]])],
 ];
 const params = new URLSearchParams(location.search);
