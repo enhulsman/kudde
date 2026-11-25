@@ -270,6 +270,75 @@ fn the_folded_line_says_answered_or_skipped() {
     assert_eq!(titles, ["Answered: Database", "Skipped: Database"]);
 }
 
+/// A result line with the log's structured answers (`toolUseResult`).
+fn result_with(id: &str, answers: Option<Value>) -> String {
+    let mut v = json!({
+        "type": "user", "isSidechain": false, "sessionId": SESSION,
+        "message": {"role": "user", "content": [
+            {"type": "tool_result", "tool_use_id": id, "content": "answered", "is_error": false}
+        ]}
+    });
+    if let Some(a) = answers {
+        v["toolUseResult"] = json!({"questions": [], "answers": a, "annotations": {}});
+    }
+    line(v)
+}
+
+fn folded(p: &Parser) -> String {
+    let Some(Item::Tools { calls }) = p.items().last() else {
+        panic!("a tools row")
+    };
+    calls[0].title.clone()
+}
+
+fn lunch_call() -> Value {
+    json!([
+        q(
+            "Where should we get lunch today?",
+            "Lunch",
+            &["Bakery", "Noodle bar"]
+        ),
+        q("What should we bring back?", "Extras", &["Coffee", "Cake"]),
+        q("When do we leave?", "When", &["Noon", "One"]),
+    ])
+}
+
+// Ezra's third try (2026-11-25): a skipped question is not named as answered.
+#[test]
+fn the_folded_line_leaves_out_a_question_left_unanswered() {
+    let p = parse(&format!(
+        "{}{}",
+        ask("toolu_01", lunch_call()),
+        result_with(
+            "toolu_01",
+            Some(
+                json!({"What should we bring back?": "Coffee, Cake, tea", "When do we leave?": "Noon"})
+            )
+        )
+    ));
+    assert_eq!(folded(&p), "Answered: Extras, When");
+}
+
+#[test]
+fn a_result_without_structured_answers_names_every_header() {
+    let p = parse(&format!(
+        "{}{}",
+        ask("toolu_01", lunch_call()),
+        result_with("toolu_01", None)
+    ));
+    assert_eq!(folded(&p), "Answered: Lunch, Extras, When");
+}
+
+#[test]
+fn a_result_with_no_answer_at_all_says_skipped() {
+    let p = parse(&format!(
+        "{}{}",
+        ask("toolu_01", lunch_call()),
+        result_with("toolu_01", Some(json!({})))
+    ));
+    assert_eq!(folded(&p), "Skipped: Lunch, Extras, When");
+}
+
 #[test]
 fn a_question_call_is_a_row_of_its_own() {
     let p = parse(&format!(

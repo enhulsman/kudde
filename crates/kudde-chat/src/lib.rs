@@ -670,7 +670,7 @@ impl Parser {
         if kind == "assistant" {
             self.claude_assistant(msg, v["thinkingDisplay"] == "updates");
         } else {
-            self.claude_user(content);
+            self.claude_user_with(content, &v["toolUseResult"]["answers"]);
             // A subagent's id, to name its report when it comes back.
             if let Some(agent) = v["toolUseResult"]["agentId"].as_str() {
                 for b in content.as_array().into_iter().flatten() {
@@ -822,6 +822,13 @@ impl Parser {
     }
 
     fn claude_user(&mut self, content: &Value) {
+        self.claude_user_with(content, &Value::Null);
+    }
+
+    /// [answers]: the line's structured answers (`toolUseResult.answers`,
+    /// keyed by question text), naming which questions a question call's
+    /// result answered; Null when the line has none.
+    fn claude_user_with(&mut self, content: &Value, answers: &Value) {
         if let Some(s) = content.as_str() {
             let t = s.trim_start();
             if t.starts_with("[Request interrupted by user") {
@@ -949,16 +956,15 @@ impl Parser {
                         } else {
                             question::State::Answered
                         };
-                        a.headers()
+                        a.folded(failed, answers.as_object())
                     });
                     if let Some(call) = self.call_mut(id) {
                         call.output = out;
                         call.failed = failed;
                         call.done = true;
                         call.images = shots;
-                        if let Some(h) = asked.filter(|h| !h.is_empty()) {
-                            let word = if failed { "Skipped" } else { "Answered" };
-                            call.title = format!("{word}: {h}");
+                        if let Some(t) = asked.flatten() {
+                            call.title = t;
                         }
                     }
                 }
