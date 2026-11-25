@@ -193,7 +193,25 @@ fun ChatScreen(
         }
         val rows = poll?.rows.orEmpty()
         sheetCalls(rows, state.sheet)?.let { calls -> ToolSheet(calls, state, images) }
-        state.card.preview?.let { o -> PreviewSheet(o) { state.card.preview = null } }
+        state.card.preview?.let { o ->
+            val q = poll?.question
+            val ask = q?.questions?.getOrNull(q.step.toInt())
+            val i = ask?.options?.indexOf(o) ?: -1
+            // The note and "Choose this" only where the dialog takes them: a single-choice question.
+            val choose = ask != null && !ask.multi && ask.answerable && i >= 0
+            PreviewSheet(
+                o,
+                note = if (choose) state.card.note else null,
+                onNote = { state.card.note = it },
+                enabled = !state.card.busy,
+                onChoose = {
+                    val choice = chooseThis(i, state.card.note)
+                    state.card.preview = null
+                    if (state.card.start(choice)) onAnswer(choice)
+                },
+                onClose = { state.card.preview = null },
+            )
+        }
         state.viewer?.let { v -> ImageViewer(v.image, viewerImages(rows, v), images, onShow = { state.viewer = v.copy(image = it) }) { state.viewer = null } }
     }
 }

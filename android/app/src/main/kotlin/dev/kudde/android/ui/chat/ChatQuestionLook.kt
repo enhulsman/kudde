@@ -5,6 +5,14 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -444,14 +452,28 @@ internal fun CountText(text: String) {
     BasicText(text, style = KuddeType.secondary.copy(color = KuddeTheme.colors.dim), modifier = Modifier.padding(start = 2.dp))
 }
 
-/** An option's preview in a sheet, in the chat's code box: wrapped, never sideways. */
+/**
+ * An option's preview in a sheet (look A, owner 2026-11-25): the sample full
+ * width in the code font, its lines never wrapped (a wide one scrolls
+ * sideways, a long one up and down); fixed below it the [note] field and
+ * "Choose this". With [note] null (multi-select) the sheet shows the sample
+ * only. As tall as its content, at most 90% of the screen.
+ */
 @Composable
-fun PreviewSheet(o: ChatOption, onClose: () -> Unit) {
+fun PreviewSheet(
+    o: ChatOption,
+    note: String?,
+    onNote: (String) -> Unit,
+    enabled: Boolean,
+    onChoose: () -> Unit,
+    onClose: () -> Unit,
+) {
     val c = KuddeTheme.colors
+    val maxH = LocalConfiguration.current.screenHeightDp.dp * 0.9f
     Box(Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxSize().background(KuddeScrim).clickable(remember { MutableInteractionSource() }, null, onClick = onClose))
         Column(
-            Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(0.62f)
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth().imePadding().heightIn(max = maxH)
                 .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)).background(sheetColor())
                 .clickable(remember { MutableInteractionSource() }, null) {},
         ) {
@@ -468,14 +490,51 @@ fun PreviewSheet(o: ChatOption, onClose: () -> Unit) {
                     modifier = Modifier.align(Alignment.Center).padding(horizontal = 52.dp),
                 )
             }
-            Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).navigationBarsPadding().padding(horizontal = 24.dp, vertical = 8.dp)) {
-                BasicText(
-                    o.preview.orEmpty(),
-                    style = KuddeType.cardMsg.copy(color = c.termFg),
-                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(KuddeRadius.row)).background(boxColor()).padding(14.dp),
-                )
-                Spacer(Modifier.height(24.dp))
+            Column(Modifier.fillMaxWidth().weight(1f, fill = false).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp)) {
+                Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(KuddeRadius.row)).background(boxColor()).horizontalScroll(rememberScrollState())) {
+                    BasicText(o.preview.orEmpty(), style = KuddeType.cardMsg.copy(color = c.termFg), softWrap = false, modifier = Modifier.padding(14.dp))
+                }
+                if (note == null) Spacer(Modifier.navigationBarsPadding().height(16.dp))
             }
+            if (note != null) NoteBar(note, onNote, enabled, onChoose)
         }
+    }
+}
+
+/** The preview sheet's bottom: the note field and "Choose this", on the card's footer language. */
+@Composable
+private fun NoteBar(note: String, onNote: (String) -> Unit, enabled: Boolean, onChoose: () -> Unit) {
+    val c = KuddeTheme.colors
+    val tooLong = note.length > OTHER_MAX
+    var focused by remember { mutableStateOf(false) }
+    Column(
+        Modifier.fillMaxWidth()
+            .drawBehind { drawLine(c.border, Offset(0f, 0.5.dp.toPx()), Offset(size.width, 0.5.dp.toPx()), KuddeBorder.thin.toPx()) }
+            .navigationBarsPadding()
+            .padding(start = 16.dp, end = 16.dp, top = KuddeSpacing.s8, bottom = KuddeSpacing.s12),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(KuddeSpacing.s8)) {
+            val shape = RoundedCornerShape(KuddeRadius.field)
+            val style = KuddeType.rowName.copy(lineHeight = 20.sp)
+            BasicTextField(
+                value = note,
+                onValueChange = onNote,
+                enabled = enabled,
+                textStyle = style.copy(color = c.fg),
+                cursorBrush = SolidColor(c.fg),
+                modifier = Modifier.weight(1f).heightIn(min = TOUCH).clip(shape).background(c.hover)
+                    .then(if (focused || note.isNotEmpty()) Modifier.border(KuddeBorder.thin, c.border, shape) else Modifier)
+                    .onFocusChanged { focused = it.isFocused }
+                    .semantics { contentDescription = NOTE_HINT },
+                decorationBox = { inner ->
+                    Box(Modifier.padding(horizontal = 12.dp, vertical = KuddeSpacing.s8), contentAlignment = Alignment.CenterStart) {
+                        if (note.isEmpty()) BasicText(NOTE_HINT, style = style.copy(color = c.dimText))
+                        inner()
+                    }
+                },
+            )
+            SolidButton(CHOOSE_THIS, enabled = enabled && !tooLong, onClick = onChoose)
+        }
+        if (tooLong) BasicText(TOO_LONG, style = KuddeType.secondary.copy(color = c.blocked), modifier = Modifier.padding(top = KuddeSpacing.s4))
     }
 }

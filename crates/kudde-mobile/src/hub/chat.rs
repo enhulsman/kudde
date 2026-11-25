@@ -123,6 +123,12 @@ pub enum ChatChoice {
         indices: Vec<u32>,
         text: Option<String>,
     },
+    /// "Choose this" in a preview sheet: the option, with a note when one
+    /// was typed (design D9).
+    Note {
+        index: u32,
+        text: String,
+    },
 }
 
 /// What became of an answer, for the card.
@@ -252,6 +258,9 @@ pub struct Chat {
     sent_to: Mutex<Option<send::Target>>,
     /// The question call and where its dialog was last seen.
     step: Mutex<Option<(String, Progress)>>,
+    /// The hook's call the card may answer: its record matched the session,
+    /// the log and the screen at the last poll (design D1).
+    held: Mutex<Option<question::Asked>>,
     /// Multi-select answers may be sent: shut until the phone check confirms
     /// their keys ([`question::MULTI_CONFIRMED`]).
     multi_ok: std::sync::atomic::AtomicBool,
@@ -269,6 +278,7 @@ impl Chat {
             events: tokio::sync::Mutex::new(None),
             sent_to: Mutex::new(None),
             step: Mutex::new(None),
+            held: Mutex::new(None),
             multi_ok: std::sync::atomic::AtomicBool::new(question::MULTI_CONFIRMED),
         }
     }
@@ -377,6 +387,27 @@ fn chat_row(r: &Row, session: &str) -> ChatRow {
                 .collect(),
             ..row("tools", "")
         },
+    }
+}
+
+/// A card that answers nothing: the question texts known, "Open the
+/// terminal" (design D1, D10).
+fn refused(id: &str, shape: &Shape) -> ChatQuestion {
+    let texts = match shape {
+        Shape::Readable(qs) => qs.iter().map(|q| q.text.clone()).collect(),
+        Shape::Unreadable { texts } => texts.clone(),
+    };
+    ChatQuestion {
+        id: if id.is_empty() {
+            "waiting".into()
+        } else {
+            id.to_owned()
+        },
+        readable: false,
+        questions: vec![],
+        texts,
+        step: 0,
+        review: false,
     }
 }
 
@@ -912,6 +943,8 @@ fn seen<'a>(t: &'a Term, proc_start: Option<u64>, l: &'a Lookup) -> Seen<'a> {
 enum Planned {
     Keys(Vec<String>),
     Multi(question::MultiPlan),
+    /// A note on a preview option: the digit first ([question::plan_note]).
+    Note(Vec<String>),
 }
 
 impl Chat {
@@ -939,38 +972,95 @@ impl Chat {
             .ok_or_else(|| "The screen could not be read".to_string())
     }
 
-    /// The card for this poll (design D1): the log's pending call, a blocked
-    /// status and the agent and session shown. A call with several questions
-    /// follows the screen (D5); a screen the card does not know keeps the
-    /// step seen last.
-    async fn question_for(&self, c: &Client, t: &Term) -> Option<ChatQuestion> {
-        let asked = {
-            let st = self.state.lock().unwrap();
-            if t.status.as_deref() != Some("blocked") || !st.shows(t) {
-                None
-            } else {
-                st.question()
-            }
-        };
-        let Some(asked) = asked else {
+    /// The hook's record of `session`, read on the desk; none when there is
+    /// none or it cannot be read.
+    async fn record(&self, c: &Client, session: &str) -> Option<question::Record> {
+        let got = c
+            .call_timeout(
+                "machine.exec",
+                json!({"argv": ["sh", "-c", question::HOOK_READ_SCRIPT, "sh", session], "timeout": 10}),
+                Duration::from_secs(15),
+            )
+            .await
+            .ok()?;
+        question::read_record(&exec_stdout(&got)?)
+    }
+
+    /// The card for this poll (design D1). Answerable only from the hook's
+    /// record of the session shown, for a call with no result in the log,
+    /// with the status blocked and the screen showing that dialog; the step
+    /// is the screen's. A screen the card does not know keeps the step seen
+    /// last for the call already held. Otherwise, while a question waits
+    /// (the status kind, or a call in the log with no result), the card
+    /// says "Open the terminal" with what it knows of the question.
+    async fn question_for(&self, c: &Client, t: &Term, kind: Option<&str>) -> Option<ChatQuestion> {
+        let forget = || {
             *self.step.lock().unwrap() = None;
-            return None;
+            *self.held.lock().unwrap() = None;
         };
-        let mut at = match self.step.lock().unwrap().as_ref() {
-            Some((id, p)) if *id == asked.id => *p,
-            _ => Progress::Question(0),
-        };
-        if let Shape::Readable(qs) = &asked.shape
-            && qs.len() > 1
-            && let Ok(screen) = self.screen(c).await
-        {
-            let p = question::progress(&screen, qs);
-            if p != Progress::Gone {
-                at = p;
+        let waiting =
+            t.status.as_deref() == Some("blocked") && matches!(kind, None | Some("question"));
+        let (session, logged) = {
+            let st = self.state.lock().unwrap();
+            match st.shown() {
+                Some((Agent::Claude, session)) if waiting && st.shows(t) => {
+                    (session, st.question())
+                }
+                _ => {
+                    drop(st);
+                    forget();
+                    return None;
+                }
             }
-        }
+        };
+        let fresh = self.record(c, &session).await.filter(|r| {
+            r.session == session
+                && self
+                    .state
+                    .lock()
+                    .unwrap()
+                    .asked(&r.id)
+                    .is_none_or(|a| a.state == State::Pending)
+        });
+        let Some(r) = fresh else {
+            forget();
+            if kind != Some("question") && logged.is_none() {
+                return None;
+            }
+            return Some(match &logged {
+                Some(a) => refused(&a.id, &a.shape),
+                None => refused("", &Shape::Unreadable { texts: vec![] }),
+            });
+        };
+        let asked = question::Asked {
+            id: r.id,
+            shape: r.shape,
+            state: State::Pending,
+        };
+        let Shape::Readable(qs) = &asked.shape else {
+            forget();
+            return Some(chat_question(&asked, Progress::Question(0)));
+        };
+        let seen = match self.screen(c).await {
+            Ok(screen) => question::progress(&screen, qs),
+            Err(_) => Progress::Gone,
+        };
+        let kept = match self.step.lock().unwrap().as_ref() {
+            Some((id, p)) if *id == asked.id => Some(*p),
+            _ => None,
+        };
+        let at = match (seen, kept) {
+            (Progress::Gone, Some(p)) => p,
+            (Progress::Gone, None) => {
+                forget();
+                return Some(refused(&asked.id, &asked.shape));
+            }
+            (p, _) => p,
+        };
         *self.step.lock().unwrap() = Some((asked.id.clone(), at));
-        Some(chat_question(&asked, at))
+        let card = chat_question(&asked, at);
+        *self.held.lock().unwrap() = Some(asked);
+        Some(card)
     }
 
     pub(crate) async fn answer_async(
@@ -983,6 +1073,8 @@ impl Chat {
         let step = step as usize;
         // The person's own words, typed into the dialog's free row.
         let mut typed: Option<String> = None;
+        // A note on a preview option: the typed text goes in its notes field.
+        let mut note = false;
         let answer = match &choice {
             ChatChoice::Pick { index } => Answer::Option(*index as usize),
             ChatChoice::Other { text } if text.trim().is_empty() => {
@@ -1002,6 +1094,17 @@ impl Chat {
             {
                 return failed("Open the terminal");
             }
+            ChatChoice::Note { index, text } if text.trim().is_empty() => {
+                Answer::Option(*index as usize)
+            }
+            ChatChoice::Note { text, .. } if text.chars().count() > TEXT_MAX => {
+                return failed("Too long: 2000 characters at most");
+            }
+            ChatChoice::Note { index, text } => {
+                typed = Some(text.clone());
+                note = true;
+                Answer::Option(*index as usize)
+            }
             ChatChoice::Multi { indices, text } => {
                 typed = text.clone().filter(|t| !t.trim().is_empty());
                 if typed.as_ref().is_some_and(|t| t.chars().count() > TEXT_MAX) {
@@ -1013,13 +1116,16 @@ impl Chat {
                 Answer::Multi(indices.iter().map(|i| *i as usize).collect())
             }
         };
-        // From what is held, no call: the call must still be the one pending.
+        // From what is held, no call: the call must still be the one the
+        // hook's record gave the card (design D1).
+        let held = self.held.lock().unwrap().clone();
         let (agent, session, qs) = {
             let st = self.state.lock().unwrap();
             let Some((agent, session)) = st.shown() else {
                 return ChatAnswer::Changed;
             };
-            match st.question() {
+            let open = held.filter(|a| st.asked(&a.id).is_none_or(|l| l.state == State::Pending));
+            match open {
                 Some(a) if a.id == id => match a.shape {
                     Shape::Readable(qs) => (agent, session, qs),
                     Shape::Unreadable { .. } => return failed("Open the terminal"),
@@ -1034,6 +1140,10 @@ impl Chat {
         };
         // A multi-select answer runs in checked steps ([Chat::answer_multi]).
         let planned = match &answer {
+            Answer::Option(i) if note => qs
+                .get(step)
+                .and_then(|q| question::plan_note(q, *i))
+                .map(Planned::Note),
             Answer::Multi(ticked) => qs
                 .get(step)
                 .and_then(|q| question::plan_multi(q, ticked, typed.is_some()))
@@ -1068,6 +1178,12 @@ impl Chat {
         // From here keys may have gone: nothing is sent again.
         let keys = match planned {
             Planned::Keys(keys) => keys,
+            Planned::Note(digit) => {
+                let (Answer::Option(i), Some(text)) = (&answer, typed.as_deref()) else {
+                    return ChatAnswer::Changed;
+                };
+                return self.answer_note(&c, &id, &qs, step, *i, text, &digit).await;
+            }
             Planned::Multi(m) => {
                 let Answer::Multi(ticked) = &answer else {
                     return ChatAnswer::Changed;
@@ -1130,6 +1246,47 @@ impl Chat {
             }
         }
         None
+    }
+
+    /// A note on a preview option (design D9): the digit moves the focus;
+    /// once the screen shows that option focused, `n`; once it shows the
+    /// notes field, the note with force, whose Enter saves it and answers.
+    #[allow(clippy::too_many_arguments)]
+    async fn answer_note(
+        &self,
+        c: &Client,
+        id: &str,
+        qs: &[question::Question],
+        step: usize,
+        i: usize,
+        text: &str,
+        digit: &[String],
+    ) -> ChatAnswer {
+        let here = |s: &str| question::progress(s, qs) == Progress::Question(step);
+        if !self.press(c, digit).await {
+            return ChatAnswer::Unconfirmed;
+        }
+        if self
+            .screen_until(c, |s| here(s) && question::focused(s, i + 1))
+            .await
+            .is_none()
+        {
+            return ChatAnswer::Unconfirmed;
+        }
+        if !self.press(c, &["n".to_string()]).await {
+            return ChatAnswer::Unconfirmed;
+        }
+        if self
+            .screen_until(c, |s| here(s) && question::notes_open(s))
+            .await
+            .is_none()
+        {
+            return ChatAnswer::Unconfirmed;
+        }
+        if !self.type_forced(c, text).await {
+            return ChatAnswer::Unconfirmed;
+        }
+        self.confirm(c, id, qs, step, &Answer::Option(i)).await
     }
 
     /// A multi-select answer (design section B, 5.1 desk round): the ticks;
@@ -1275,6 +1432,14 @@ impl Chat {
         end
     }
 
+    /// Holds the log's call with no result as if the hook's record had
+    /// given it (the answer tests start from a held call).
+    #[cfg(test)]
+    pub(crate) fn hold_for_test(&self) {
+        let a = self.state.lock().unwrap().question();
+        *self.held.lock().unwrap() = a;
+    }
+
     #[cfg(test)]
     pub(crate) fn allow_multi_for_test(&self) {
         self.multi_ok
@@ -1293,11 +1458,15 @@ impl Chat {
             return self.view("", false, Times("not connected".into()), None);
         };
         let c = conn.client;
+        let kind;
         let t = match c
             .call("terminal.get", json!({"terminal": self.address}))
             .await
         {
-            Ok(t) => term_of(&t),
+            Ok(t) => {
+                kind = t["status"]["kind"].as_str().map(str::to_owned);
+                term_of(&t)
+            }
             Err(_) => {
                 self.state
                     .lock()
@@ -1331,7 +1500,7 @@ impl Chat {
                 break;
             }
         }
-        let question = self.question_for(&c, &t).await;
+        let question = self.question_for(&c, &t, kind.as_deref()).await;
         times.mark("total", began);
         let status = t.status.clone().unwrap_or_default();
         self.view(&status, may_send(&t), times, question)
