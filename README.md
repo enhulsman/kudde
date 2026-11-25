@@ -78,7 +78,9 @@ author, tested on a few phones, built on herdr-core 0.1.x.
 
 ## What you need
 
-- An Android phone on Android 12 or newer (arm64).
+- An Android phone on Android 12 or newer (arm64), with a screen lock (PIN,
+  pattern or password): the SSH key lives in the phone's secure hardware, which
+  Android allows only then.
 - herdr-core 0.1.15 or newer
   ([herdrdev/herdr-core](https://github.com/herdrdev/herdr-core)) on a Linux
   or WSL machine. Install it as the user your agents run under:
@@ -102,19 +104,52 @@ author, tested on a few phones, built on herdr-core 0.1.x.
 1. **Install the app** through Obtainium, or with adb if Android blocks
    Obtainium; see [docs/install.md](docs/install.md). Check the first install
    and each update ([how](docs/install.md#checking-a-release)).
-2. **Add a machine:** in the app, tap "Add machine" and enter its address, port
-   and user. Compare the host key fingerprint the app shows with the
-   machine's own: on the machine,
-   `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` prints it. Then tap
-   "Add the phone key", tap Copy, and get the line to the machine (a note or
-   message to yourself works; the line is public). On the machine, run
-   `mkdir -m 700 -p ~/.ssh && cat >> ~/.ssh/authorized_keys`, paste the line,
-   press Enter, then Ctrl-D. The line lets the key run only herdr-core: no
-   shell session, no forwarding. herdr-core can still run commands as that
-   user, so treat the key like a shell login. The first connection starts
-   herdr-core, so the card may show "Unreachable" once before it connects.
-3. **Turn on alerts:** install `kudde-push` on the machine and turn alerts on in
-   the app; see [docs/kudde-push.md](docs/kudde-push.md).
+2. **Open it.** The first time, a welcome screen explains the four steps, and
+   setup stays in front until a real machine is connected: there is no skip.
+   If the phone has no screen lock, the app asks you to set one first. Adding
+   another machine later, or repairing one that stopped working, uses the same
+   steps (Machines, "Add machine", or the machine's card).
+3. **The four steps**, under the title "Set up a machine" with a bar that shows
+   where you are:
+   1. *Where is it?* The machine's address, user and port, and an optional
+      name. The app says in plain words when it cannot reach the machine.
+   2. *This phone's key.* Two ways to add the phone's public key to that
+      machine. "kudde adds it for you" signs in once with the account's
+      password, adds the key and signs out; the password is used for that one
+      run and never stored. If you confirm a wrong host key there, whoever
+      answered gets the password, and nothing in the app shows it, so compare
+      the fingerprint the app shows with the machine's own
+      (`ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` prints it) before you
+      trust it. "Add it yourself" gives you one command to run at the machine
+      (copy or share it; it holds nothing secret), and then you compare the
+      fingerprint it prints. Either way only the phone's public key is added,
+      limited to running herdr-core: no shell session, no forwarding.
+      herdr-core can still run commands as that user, so treat the key like a
+      shell login.
+   3. *Connected.* The app checks the machine, says which herdr-core it found
+      and how many agents run there.
+   4. *Alerts (optional).* Turn on alerts now or later; see
+      [docs/kudde-push.md](docs/kudde-push.md) for `kudde-push` on the machine.
+   The first connection starts herdr-core, so a card may show "Unreachable"
+   once before it connects.
+4. **A hint on the first terminal.** The first time a terminal or chat opens,
+   a short note under the title bar names its gestures; tap it once and it
+   does not come back.
+
+### When setup stops
+
+- The machine keeps its SSH host keys outside `/etc/ssh`, so the fingerprint
+  command above prints another key than the one the app shows: compare with
+  the key the server really offers (`sshd -T | grep -i hostkey`).
+- The account's shell is fish. The command is for sh, bash and zsh: run it in
+  one of those, or start `sh` first.
+- The account's default file mode is group-writable (a `umask` of 002). sshd
+  with `StrictModes` then refuses `~/.ssh` or `authorized_keys`; the command
+  sets the modes it needs, but a home directory others can write to is still
+  refused.
+- The machine says it still refuses the key after the key was added. Run
+  `scripts/check-restricted-key.sh` on the machine: it checks that the line is
+  there, limited as intended, and that sshd reads that file.
 
 "Finished" alerts are silent by default. To hear them, open Android settings,
 go to the app's notifications, open "Finished", and set it to alerting.
