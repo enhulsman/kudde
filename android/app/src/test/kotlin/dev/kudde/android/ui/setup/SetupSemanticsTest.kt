@@ -11,6 +11,7 @@ import dev.kudde.android.testing.click
 import dev.kudde.android.testing.clickable
 import dev.kudde.android.testing.descriptions
 import dev.kudde.android.testing.nodeSaying
+import dev.kudde.android.testing.role
 import dev.kudde.android.testing.semanticsNodes
 import dev.kudde.android.testing.texts
 import dev.kudde.android.testing.unmergedSemanticsNodes
@@ -53,17 +54,17 @@ class SetupSemanticsTest {
 
     @Test fun eachStepSaysItsNumberAndHeading() {
         show { AddressStep(AddressUi(typed, null, AddressStatus.Idle, null, false, null), noAddress) }
-        assertTrue(texts().contains("Where is it?"))
-        assertEquals("the bar is one element", 1, stepBars("Step 1 of 4"))
+        assertTrue(semanticsNodes().any { it.descriptions().any { d -> d.endsWith(", Where is it?") } })
+        assertEquals("the bar and heading are one element", 1, stepBars("Step 1 of 4, Where is it?"))
         show { KeyStep(KeyUi("workstation", "dev", KeyNotice.None, false, "cmd", false, true, true, false), noKey) }
-        assertTrue(texts().contains("This phone's key"))
-        assertEquals(1, stepBars("Step 2 of 4"))
+        assertTrue(semanticsNodes().any { it.descriptions().any { d -> d.endsWith(", This phone's key") } })
+        assertEquals(1, stepBars("Step 2 of 4, This phone's key"))
         show { ConnectedStep(ConnectedUi("workstation", null, 0), {}, {}) }
-        assertTrue(texts().contains("Connected"))
-        assertEquals(1, stepBars("Step 3 of 4"))
+        assertTrue(semanticsNodes().any { it.descriptions().any { d -> d.endsWith(", Connected") } })
+        assertEquals(1, stepBars("Step 3 of 4, Connected"))
         show { AlertsStep(AlertsUi("workstation", AlertsState.Before, 0), AlertsActions({}, {}, {}, {}, {}, {}, {}, {})) }
-        assertTrue(texts().contains("Alerts (optional)"))
-        assertEquals(1, stepBars("Step 4 of 4"))
+        assertTrue(semanticsNodes().any { it.descriptions().any { d -> d.endsWith(", Alerts (optional)") } })
+        assertEquals(1, stepBars("Step 4 of 4, Alerts (optional)"))
         show { AlertsStep(AlertsUi("workstation", AlertsState.On, 0), AlertsActions({}, {}, {}, {}, {}, {}, {}, {})) }
         assertTrue(texts().contains("Alerts are already on for this phone."))
         assertTrue(texts().none { it == "Alerts are on on this phone." })
@@ -78,6 +79,69 @@ class SetupSemanticsTest {
         assertTrue(texts().contains("workstation is not connected yet"))
         assertTrue(texts().contains("It no longer accepts this phone's key."))
         assertTrue(texts().none { it == "Its setup is not finished." })
+    }
+
+    private data class StepCase(val step: Int, val heading: String, val footer: String, val screen: @androidx.compose.runtime.Composable () -> Unit)
+
+    private val cases = listOf(
+        StepCase(1, "Where is it?", "Continue") { AddressStep(AddressUi(typed, null, AddressStatus.Idle, null, false, null), noAddress) },
+        StepCase(2, "This phone's key", "Try again") {
+            KeyStep(KeyUi("workstation", "dev", KeyNotice.Rejected, true, null, false, false, true, true), noKey)
+        },
+        StepCase(3, "Connected", "Continue") { ConnectedStep(ConnectedUi("workstation", "0.1.16", 3, first = true), {}, {}) },
+        StepCase(4, "Alerts (optional)", "Turn on alerts") {
+            AlertsStep(AlertsUi("workstation", AlertsState.Before, 0), AlertsActions({}, {}, {}, {}, {}, {}, {}, {}))
+        },
+    )
+
+    /** Task 6.2: the step bar and the heading are one heading stop, "Step n of 4, <heading>", with no image role. */
+    @Test fun eachStepBarAndHeadingIsOneHeadingStopWithNoImageRole() {
+        for (case in cases) {
+            show(case.screen)
+            val spoken = "Step ${case.step} of 4, ${case.heading}"
+            val nodes = semanticsNodes().filter { spoken in it.descriptions() }
+            assertEquals(spoken, 1, nodes.size)
+            val node = nodes.single()
+            assertTrue("$spoken is a heading", node.config.contains(SemanticsProperties.Heading))
+            assertNull("$spoken has no role", node.role())
+            assertEquals("no stop reads only the step", 0, stepBars("Step ${case.step} of 4"))
+            assertTrue("the heading text is not a second stop", texts().none { it == case.heading })
+        }
+    }
+
+    /** Arriving on a step is announced once as that pane's title: TalkBack speaks a pane title when the pane appears. */
+    @Test fun eachStepIsAPaneTitledWithItsNumberAndHeading() {
+        for (case in cases) {
+            show(case.screen)
+            val spoken = "Step ${case.step} of 4, ${case.heading}"
+            val panes = semanticsNodes().filter { it.config.getOrNull(SemanticsProperties.PaneTitle) == spoken }
+            assertEquals(spoken, 1, panes.size)
+        }
+    }
+
+    /** The traversal index of the screen part that holds [node] (the nearest ancestor that sets one). */
+    private fun order(node: androidx.compose.ui.semantics.SemanticsNode?): Float {
+        var n = node
+        while (n != null) {
+            n.config.getOrNull(SemanticsProperties.TraversalIndex)?.let { return it }
+            n = n.parent
+        }
+        return 0f
+    }
+
+    /** Task 6.2: swiping forward goes heading, body, footer, and only then Back (it was Back first, Continue last). */
+    @Test fun theFooterFollowsTheBodyAndBackComesLastOnEveryStep() {
+        for (case in cases) {
+            show(case.screen)
+            val heading = semanticsNodes().firstOrNull { "Step ${case.step} of 4, ${case.heading}" in it.descriptions() }
+            val footer = semanticsNodes().firstOrNull { it.clickable() && it.texts().firstOrNull() == case.footer }
+            val back = nodeSaying("Back")
+            assertNotNull("step ${case.step} heading", heading)
+            assertNotNull("step ${case.step} footer ${case.footer}", footer)
+            assertNotNull("step ${case.step} back", back)
+            assertTrue("step ${case.step}: heading before footer", order(heading) < order(footer))
+            assertTrue("step ${case.step}: footer before Back", order(footer) < order(back))
+        }
     }
 
     /** The step bar: one node whose spoken text is "Step n of 4", never four segments. */

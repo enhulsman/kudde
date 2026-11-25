@@ -94,16 +94,15 @@ private fun motionOn(): Boolean {
     return remember(context) { Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) != 0f }
 }
 
-/** Four segments, the current one 2.2 times as wide; one element for a screen reader, "Step n of 4". */
+/** Four segments, the current one 2.2 times as wide. Silent to a screen reader: the frame speaks "Step n of 4, <heading>" once. */
 @Composable
 internal fun StepBar(step: Int) {
     val c = KuddeTheme.colors
-    val spoken = stringResource(R.string.setup_step, step)
     val motion = motionOn()
     val sweep = remember(step) { Animatable(if (motion) 0f else 1f) }
     LaunchedEffect(step) { if (motion) sweep.animateTo(1f, tween(200)) }
     Row(
-        Modifier.fillMaxWidth().clearAndSetSemantics { contentDescription = spoken; role = Role.Image },
+        Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(5.dp),
     ) {
         for (i in 1..4) {

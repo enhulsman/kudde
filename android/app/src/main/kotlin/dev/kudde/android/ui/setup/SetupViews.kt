@@ -38,6 +38,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.error
+import androidx.compose.ui.semantics.traversalIndex
+import androidx.compose.ui.semantics.paneTitle
+import androidx.compose.ui.semantics.isTraversalGroup
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
@@ -84,25 +88,44 @@ private fun Frame(
     body: @Composable ColumnScope.() -> Unit,
 ) {
     val c = KuddeTheme.colors
-    Column(modifier.fillMaxSize().background(c.chrome).safeDrawingPadding()) {
-        if (onBack != null || step != null) SubScreenTopBar(title, stringResource(R.string.back), onBack)
+    val spoken = if (step != null && heading != null) stringResource(R.string.setup_step_spoken, stringResource(R.string.setup_step, step), heading) else null
+    // Reading order for a screen reader: the step and heading, the body, the footer, and only then Back.
+    // The step is a pane titled "Step n of 4, <heading>", which TalkBack speaks when the step appears.
+    Column(
+        modifier.fillMaxSize().background(c.chrome).safeDrawingPadding()
+            .semantics { isTraversalGroup = true; if (spoken != null) paneTitle = spoken },
+    ) {
+        if (onBack != null || step != null) {
+            Box(Modifier.semantics { isTraversalGroup = true; traversalIndex = 2f }) { SubScreenTopBar(title, stringResource(R.string.back), onBack) }
+        }
         Column(
-            Modifier.weight(1f).verticalScroll(rememberScrollState())
+            Modifier.weight(1f).semantics { isTraversalGroup = true; traversalIndex = 0f }.verticalScroll(rememberScrollState())
                 .padding(start = KuddeSpacing.s20, end = KuddeSpacing.s20, top = KuddeSpacing.s16, bottom = KuddeSpacing.s20),
             verticalArrangement = Arrangement.spacedBy(if (step != null) 20.dp else KuddeSpacing.s16),
         ) {
-            if (step != null) StepBar(step)
-            if (heading != null) {
-                BasicText(
-                    heading,
-                    Modifier.semantics { heading() },
-                    style = if (step != null) KuddeType.screenTitle.copy(color = c.fg, fontSize = 27.sp, lineHeight = 1.2.em, letterSpacing = (-0.015).em) else KuddeType.screenTitle.copy(color = c.fg),
-                )
+            if (step != null && heading != null) {
+                // One stop: the bar and the heading, read as "Step n of 4, <heading>" and marked as a heading.
+                Column(
+                    Modifier.clearAndSetSemantics { heading(); contentDescription = spoken.orEmpty() },
+                    verticalArrangement = Arrangement.spacedBy(20.dp),
+                ) {
+                    StepBar(step)
+                    BasicText(
+                        heading,
+                        style = KuddeType.screenTitle.copy(color = c.fg, fontSize = 27.sp, lineHeight = 1.2.em, letterSpacing = (-0.015).em),
+                    )
+                }
+            } else {
+                if (step != null) StepBar(step)
+                if (heading != null) {
+                    BasicText(heading, Modifier.semantics { heading() }, style = KuddeType.screenTitle.copy(color = c.fg))
+                }
             }
             body()
         }
         Column(
-            Modifier.padding(start = KuddeSpacing.s20, end = KuddeSpacing.s20, top = KuddeSpacing.s12, bottom = KuddeSpacing.s8),
+            Modifier.semantics { isTraversalGroup = true; traversalIndex = 1f }
+                .padding(start = KuddeSpacing.s20, end = KuddeSpacing.s20, top = KuddeSpacing.s12, bottom = KuddeSpacing.s8),
             verticalArrangement = Arrangement.spacedBy(KuddeSpacing.s8),
             content = footer,
         )
