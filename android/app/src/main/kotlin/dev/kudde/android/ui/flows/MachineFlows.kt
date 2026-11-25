@@ -611,6 +611,8 @@ class MachineFlows(
 
     /** Back inside setup: a key detail to its two choices, else one step back (design D6). */
     private fun backInSetup(): Boolean {
+        // While the key is being added, Cancel stops the core's session and waits for what it says.
+        if (keyDetail != null && password.cancelRun()) return true
         if (keyDetail != null) {
             keyDetail = null
             password.close()

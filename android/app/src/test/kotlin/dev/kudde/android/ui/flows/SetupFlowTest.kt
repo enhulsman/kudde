@@ -12,6 +12,7 @@ import dev.kudde.android.ui.setup.PasswordPanel
 import dev.kudde.android.ui.setup.PasswordPorts
 import dev.kudde.android.ui.setup.SecretField
 import dev.kudde.android.ui.setup.SetupCheckpoint
+import dev.kudde.android.ui.setup.SetupHandle
 import dev.kudde.android.ui.setup.SetupPhase
 import java.util.concurrent.Executor
 import org.junit.Assert.assertEquals
@@ -467,6 +468,52 @@ class SetupFlowTest {
         assertEquals(PasswordPanel.Working, flows.password.panel)
     }
 
+    // Review finding (7.1): Cancel has to stop the core's session, and say what a late cancel left behind.
+    private fun working() {
+        toField()
+        field.text = SENTINEL
+        flows.addKey()
+        assertEquals(PasswordPanel.Working, flows.password.panel)
+    }
+
+    @Test fun cancelWhileWorkingAsksTheCoreToStopAndWaitsForItsAnswer() {
+        working()
+        assertTrue(flows.back())
+        assertEquals(1, ports.cancels)
+        assertEquals("the panel waits for the core's answer", PasswordPanel.Working, flows.password.panel)
+        ports.answerSetup(SetupOutcome.Cancelled)
+        assertEquals(PasswordPanel.Cancelled, flows.password.panel)
+        assertEquals("", field.text)
+    }
+
+    @Test fun cancelledAfterSigningInSaysItSignedInAndChangedNothing() {
+        working()
+        flows.back()
+        ports.answerSetup(SetupOutcome.CancelledSignedIn)
+        assertEquals(PasswordPanel.CancelledSignedIn, flows.password.panel)
+    }
+
+    @Test fun cancelledAfterTheKeyWentInSaysSoAndConnects() {
+        working()
+        flows.back()
+        ports.answerSetup(SetupOutcome.CancelledKeyAdded)
+        assertEquals(PasswordPanel.CancelledKeyAdded, flows.password.panel)
+        assertEquals("the hub retries with the key now on the machine", "retry", hub.calls.last())
+    }
+
+    @Test fun leavingWhileItRunsStopsTheCoreToo() {
+        working()
+        flows.openAgents()
+        assertEquals(1, ports.cancels)
+    }
+
+    @Test fun aCancelWhenNothingIsRunningJustClosesThePanel() {
+        toField()
+        assertTrue(flows.back())
+        assertEquals(0, ports.cancels)
+        assertEquals(PasswordPanel.Hidden, flows.password.panel)
+    }
+
     @Test fun aSecondRefusalInOneVisitIsTheLockoutTextAndANewVisitStartsOver() {
         toField()
         field.text = "bad"; flows.addKey(); ports.answerSetup(SetupOutcome.WrongPassword)
@@ -582,10 +629,13 @@ class SetupFlowTest {
             probeDone = done
         }
 
-        override fun setup(host: String, port: Int, user: String, pinned: String, password: String, done: (SetupOutcome) -> Unit) {
+        var cancels = 0
+
+        override fun setup(host: String, port: Int, user: String, pinned: String, password: String, done: (SetupOutcome) -> Unit): SetupHandle {
             onSetup()
             setups += Setup(pinned, password)
             setupDone = done
+            return object : SetupHandle { override fun cancel() { cancels++ } }
         }
 
         fun answerProbe(outcome: ProbeOutcome) = probeDone!!(outcome)

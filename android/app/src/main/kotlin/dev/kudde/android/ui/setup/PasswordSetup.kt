@@ -28,15 +28,22 @@ class TextFieldStateSecret : SecretField {
     override fun clear() = state.clearText()
 }
 
+/** Cancel for a setup call in flight: the core checks it before the password goes and before the key line is written. */
+interface SetupHandle {
+    fun cancel()
+
+    object None : SetupHandle { override fun cancel() = Unit }
+}
+
 /** The two Rust calls of the password way; each answers once, off the caller's thread. */
 interface PasswordPorts {
     fun probe(host: String, port: Int, user: String, pinned: String, done: (ProbeOutcome) -> Unit)
-    fun setup(host: String, port: Int, user: String, pinned: String, password: String, done: (SetupOutcome) -> Unit)
+    fun setup(host: String, port: Int, user: String, pinned: String, password: String, done: (SetupOutcome) -> Unit): SetupHandle
 
     /** For flows that never use the password way. */
     object None : PasswordPorts {
         override fun probe(host: String, port: Int, user: String, pinned: String, done: (ProbeOutcome) -> Unit) = Unit
-        override fun setup(host: String, port: Int, user: String, pinned: String, password: String, done: (SetupOutcome) -> Unit) = Unit
+        override fun setup(host: String, port: Int, user: String, pinned: String, password: String, done: (SetupOutcome) -> Unit): SetupHandle = SetupHandle.None
     }
 }
 
@@ -70,6 +77,15 @@ sealed interface PasswordPanel {
 
     /** R16: done, yet the phone key is still refused. */
     data object StillRefused : PasswordPanel
+
+    /** Cancelled before the password was sent: nothing was sent, nothing changed. */
+    data object Cancelled : PasswordPanel
+
+    /** Cancelled after signing in, before the key line: signed out again, nothing changed. */
+    data object CancelledSignedIn : PasswordPanel
+
+    /** Cancelled after the key went in: the key is on the machine. */
+    data object CancelledKeyAdded : PasswordPanel
 }
 
 /**
@@ -87,6 +103,14 @@ class PasswordSetup(private val ports: PasswordPorts, val field: SecretField) {
         private set
     private var refusals = 0
     private var run = 0
+    private var handle: SetupHandle? = null
+
+    /** "Cancel" while the key is being added: the core is asked to stop, and the panel waits for what it says. */
+    fun cancelRun(): Boolean {
+        if (panel != PasswordPanel.Working) return false
+        handle?.cancel()
+        return true
+    }
 
     /** A new visit to step 2: R9 again, the password available again. */
     fun newVisit() {
@@ -96,6 +120,8 @@ class PasswordSetup(private val ports: PasswordPorts, val field: SecretField) {
     }
 
     fun close() {
+        if (panel == PasswordPanel.Working) handle?.cancel()
+        handle = null
         run++
         field.clear()
         panel = PasswordPanel.Hidden
@@ -129,8 +155,9 @@ class PasswordSetup(private val ports: PasswordPorts, val field: SecretField) {
         field.clear()
         val mine = ++run
         panel = PasswordPanel.Working
-        ports.setup(host, port, user, pinned, password) { outcome ->
+        handle = ports.setup(host, port, user, pinned, password) { outcome ->
             if (mine != run) return@setup
+            handle = null
             panel = when (outcome) {
                 SetupOutcome.Done -> PasswordPanel.Done.also { onDone() }
                 SetupOutcome.WrongPassword -> PasswordPanel.WrongPassword(again = ++refusals >= 2)
@@ -141,6 +168,9 @@ class PasswordSetup(private val ports: PasswordPorts, val field: SecretField) {
                 is SetupOutcome.HostKeyChanged -> PasswordPanel.ChangedKey(outcome.presented).also { onChangedKey() }
                 SetupOutcome.NetworkOff -> PasswordPanel.NetworkOff
                 is SetupOutcome.Unreachable -> PasswordPanel.Reach(outcome.kind)
+                SetupOutcome.Cancelled -> PasswordPanel.Cancelled
+                SetupOutcome.CancelledSignedIn -> PasswordPanel.CancelledSignedIn
+                SetupOutcome.CancelledKeyAdded -> PasswordPanel.CancelledKeyAdded.also { onDone() }
             }
         }
     }
