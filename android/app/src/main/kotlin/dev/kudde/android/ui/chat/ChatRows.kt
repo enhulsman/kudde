@@ -20,6 +20,12 @@ fun toolLine(calls: List<ChatCall>): String {
     return base + (if (failed > 0) " · $failed failed" else "") + (if (running) " · running" else "")
 }
 
+/** The key of the row holding the latest question call, once that call is done; else null. */
+fun landingRow(rows: List<ChatRow>): String? {
+    val row = rows.lastOrNull { r -> r.calls.any { it.name == QUESTION_TOOL } } ?: return null
+    return row.key.takeIf { row.calls.last { it.name == QUESTION_TOOL }.done }
+}
+
 /** The rows the chat draws: while [card] shows, its waiting call is the card, not a line. */
 fun shownRows(rows: List<ChatRow>, card: ChatQuestion?): List<ChatRow> {
     if (card == null) return rows

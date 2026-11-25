@@ -8,6 +8,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
@@ -50,6 +51,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
@@ -298,6 +301,8 @@ private fun Messages(poll: ChatPoll, state: ChatState, images: ChatImageSource, 
     val start = remember { state.startAt(rows) }
     val list = remember { start?.let { LazyListState(it.first, it.second) } ?: LazyListState() }
     val shownRows by rememberUpdatedState(rows)
+    // After the card's send: the row of its call, once the card is gone and the line is done.
+    val landKey = if (state.card.landOnLine && poll.question == null) landingRow(rows) else null
     DisposableEffect(list) {
         onDispose { state.keep(shownRows, list.firstVisibleItemIndex, list.firstVisibleItemScrollOffset) }
     }
@@ -350,7 +355,7 @@ private fun Messages(poll: ChatPoll, state: ChatState, images: ChatImageSource, 
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             items(rows, key = { it.key }) { row ->
-                Arrives(state.live.since(row.key), animate) { RowContent(row, state, images, working, animate, ::front) }
+                Arrives(state.live.since(row.key), animate) { RowContent(row, state, images, working, animate, row.key == landKey, ::front) }
             }
             items(pending, key = { "pending ${it.id}" }) { p ->
                 PendingBubble(p, now, onTerminal, onDismiss = { state.drop(p.id) }, onDismissWait = { state.update(p.id) { it.dismissWait() } })
@@ -365,7 +370,7 @@ private fun Messages(poll: ChatPoll, state: ChatState, images: ChatImageSource, 
 
 /** One row of the conversation; [front] closes the keyboard before a sheet or the viewer opens. */
 @Composable
-private fun RowContent(row: ChatRow, state: ChatState, images: ChatImageSource, working: Boolean, animate: Boolean, front: (() -> Unit) -> Unit) {
+private fun RowContent(row: ChatRow, state: ChatState, images: ChatImageSource, working: Boolean, animate: Boolean, land: Boolean = false, front: (() -> Unit) -> Unit) {
     when (row.kind) {
         "user" -> UserBubble(row, images) { key -> front { state.viewer = Viewer(row.key, key) } }
         "said" -> Copyable(row.text) { Said(row.text) }
@@ -373,7 +378,10 @@ private fun RowContent(row: ChatRow, state: ChatState, images: ChatImageSource, 
         "update" -> Copyable(row.text) { MdText(inline(row.text), KuddeType.body.copy(color = KuddeTheme.colors.dimText)) }
         "agent" -> AgentCard(row)
         "tools" -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            ToolLine(row.calls, live = shimmers(row.calls, working), animate) { front { state.openTools(row) } }
+            ToolLine(
+                row.calls, live = shimmers(row.calls, working), animate,
+                land = land, onLanded = { state.card.landOnLine = false },
+            ) { front { state.openTools(row) } }
             val shots = row.calls.flatMap { it.images }
             if (shots.isNotEmpty()) Thumbs(shots, images, end = false) { key -> front { state.viewer = Viewer(row.key, key) } }
         }
@@ -580,9 +588,19 @@ private fun MdText(text: AnnotatedString, style: TextStyle, modifier: Modifier =
 }
 
 @Composable
-private fun ToolLine(calls: List<ChatCall>, live: Boolean, animate: Boolean, onOpen: () -> Unit) {
+private fun ToolLine(calls: List<ChatCall>, live: Boolean, animate: Boolean, land: Boolean = false, onLanded: () -> Unit = {}, onOpen: () -> Unit) {
     val c = KuddeTheme.colors
-    Row(Modifier.clip(RoundedCornerShape(KuddeRadius.row)).clickable(onClick = onOpen).padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+    // A question's quiet line can take the focus after the card's send.
+    val question = calls.singleOrNull()?.name == QUESTION_TOOL
+    val target = remember { FocusRequester() }
+    LaunchedEffect(land) {
+        if (land) {
+            runCatching { target.requestFocus() }
+            onLanded()
+        }
+    }
+    val focus = if (question) Modifier.focusRequester(target).focusable() else Modifier
+    Row(Modifier.then(focus).clip(RoundedCornerShape(KuddeRadius.row)).clickable(onClick = onOpen).padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         // While it runs, a light sweeps over it, as the desk's agent shows a running command.
         BasicText(
             toolLine(calls),
