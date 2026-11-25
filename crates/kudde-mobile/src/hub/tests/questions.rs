@@ -444,11 +444,13 @@ async fn several_questions_step_by_step_then_send_answers() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn multi_select_is_not_sent_until_confirmed() {
+async fn multi_select_is_not_sent_with_the_switch_off() {
     let mut r = rig("q-multi");
     let mut v = database();
     v["multiSelect"] = json!(true);
     let (mut core, chat, _) = with_log(&mut r, &[ask_line("toolu_01", json!([v]))]).await;
+    // The switch stays as a way back should a later Claude Code change the dialog.
+    chat.set_multi_for_test(false);
     let got = spawn_answer(
         &chat,
         "toolu_01",
@@ -581,9 +583,34 @@ async fn no_record_says_open_the_terminal_and_answers_nothing() {
     assert!(!q.readable);
     assert!(q.questions.is_empty());
     assert!(q.texts.is_empty());
+    assert!(
+        q.hook_missing,
+        "no record at all: the card says to add the hook"
+    );
     let got = spawn_answer(&chat, &q.id, 0, ChatChoice::Pick { index: 0 });
     assert_eq!(got.await.unwrap(), ChatAnswer::Changed);
     core.nothing_more().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_record_that_cannot_be_read_is_not_a_missing_hook() {
+    let mut r = rig("q-unread");
+    let (mut core, chat, end) = open_chat(&mut r, &[]).await;
+    let p = poll_with(
+        &mut core,
+        &chat,
+        terminal_kind("blocked", "question"),
+        end,
+        Some(Some("{not json")),
+        None,
+    )
+    .await;
+    let q = p.question.unwrap();
+    assert!(!q.readable);
+    assert!(
+        !q.hook_missing,
+        "only the reader's \"missing\" means no hook"
+    );
 }
 
 #[tokio::test(start_paused = true)]
@@ -613,6 +640,7 @@ async fn a_stale_record_says_open_the_terminal() {
         q.texts.is_empty(),
         "an answered call's text is not the new question"
     );
+    assert!(!q.hook_missing, "a record exists: the hook is there");
 }
 
 #[tokio::test(start_paused = true)]
@@ -633,7 +661,9 @@ async fn a_record_of_another_session_says_open_the_terminal() {
         None,
     )
     .await;
-    assert!(!p.question.unwrap().readable);
+    let q = p.question.unwrap();
+    assert!(!q.readable);
+    assert!(!q.hook_missing);
 }
 
 #[tokio::test(start_paused = true)]
@@ -656,6 +686,7 @@ async fn a_screen_that_disagrees_says_open_the_terminal() {
         q.texts,
         vec!["Which database should the todo app use?".to_string()]
     );
+    assert!(!q.hook_missing);
     let got = spawn_answer(&chat, "toolu_01", 0, ChatChoice::Pick { index: 0 });
     assert_eq!(got.await.unwrap(), ChatAnswer::Changed);
     core.nothing_more().await;
@@ -699,6 +730,7 @@ async fn a_call_in_the_log_without_a_record_says_open_the_terminal() {
     let q = p.question.unwrap();
     assert_eq!(q.id, "toolu_01");
     assert!(!q.readable);
+    assert!(q.hook_missing);
     assert_eq!(
         q.texts,
         vec!["Which database should the todo app use?".to_string()]
@@ -730,7 +762,7 @@ async fn several_questions_follow_the_screen() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn an_unreadable_record_shows_its_text_only_and_multi_select_is_not_answerable() {
+async fn an_unreadable_record_shows_its_text_only_and_multi_select_is_answerable() {
     let mut r = rig("q-unreadable");
     let (mut core, chat, end) = open_chat(&mut r, &[]).await;
     let bad = json!([{"question": "Which database?", "header": "Database", "multiSelect": false,
@@ -765,7 +797,10 @@ async fn an_unreadable_record_shows_its_text_only_and_multi_select_is_not_answer
     .unwrap();
     assert!(q.readable);
     assert!(q.questions[0].multi);
-    assert!(!q.questions[0].answerable);
+    assert!(
+        q.questions[0].answerable,
+        "multi-select passed on the desk and the phone (owner, 2026-11-25)"
+    );
 }
 
 #[tokio::test(start_paused = true)]
@@ -1055,7 +1090,6 @@ async fn only_reads_until(
 async fn ticks_are_digits_then_tab_then_the_review_is_sent() {
     let mut r = rig("q-multi-ticks");
     let (mut core, chat, end) = with_log(&mut r, &[ask_line("toolu_01", json!([fruit()]))]).await;
-    chat.allow_multi_for_test();
     let got = spawn_answer(
         &chat,
         "toolu_01",
@@ -1089,7 +1123,6 @@ async fn ticks_are_digits_then_tab_then_the_review_is_sent() {
 async fn a_typed_answer_is_pasted_ticked_then_sent_with_the_ticks() {
     let mut r = rig("q-multi-text");
     let (mut core, chat, end) = with_log(&mut r, &[ask_line("toolu_01", json!([fruit()]))]).await;
-    chat.allow_multi_for_test();
     let got = spawn_answer(
         &chat,
         "toolu_01",
@@ -1135,7 +1168,6 @@ async fn a_free_row_already_ticked_gets_no_extra_enter() {
     let mut r = rig("q-multi-text-on");
     let (mut core, chat, _) =
         with_log(&mut r, &[ask_line("toolu_01", json!([fruit(), bowl()]))]).await;
-    chat.allow_multi_for_test();
     let got = spawn_answer(
         &chat,
         "toolu_01",
@@ -1170,7 +1202,6 @@ async fn a_free_row_already_ticked_gets_no_extra_enter() {
 async fn ticks_the_screen_does_not_show_stop_before_leaving_the_question() {
     let mut r = rig("q-multi-mismatch");
     let (mut core, chat, _) = with_log(&mut r, &[ask_line("toolu_01", json!([fruit()]))]).await;
-    chat.allow_multi_for_test();
     let got = spawn_answer(
         &chat,
         "toolu_01",
@@ -1198,7 +1229,6 @@ async fn ticks_the_screen_does_not_show_stop_before_leaving_the_question() {
 async fn a_typed_answer_over_the_limit_or_nothing_at_all_sends_nothing() {
     let mut r = rig("q-multi-empty");
     let (mut core, chat, _) = with_log(&mut r, &[ask_line("toolu_01", json!([fruit()]))]).await;
-    chat.allow_multi_for_test();
     for choice in [
         ChatChoice::Multi {
             indices: vec![],
@@ -1223,7 +1253,6 @@ async fn a_typed_answer_over_the_limit_or_nothing_at_all_sends_nothing() {
 async fn the_screen_leaving_the_question_before_the_text_stops_it() {
     let mut r = rig("q-multi-moved");
     let (mut core, chat, _) = with_log(&mut r, &[ask_line("toolu_01", json!([fruit()]))]).await;
-    chat.allow_multi_for_test();
     let got = spawn_answer(
         &chat,
         "toolu_01",

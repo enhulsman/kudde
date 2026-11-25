@@ -196,4 +196,14 @@ class ChatQuestionScreenshotTest {
             card.note = "Bigger titles please"
         }
     }
+
+    // The two body texts (owner, 2026-11-25): the review step and a desk without the question hook.
+    @Test
+    fun reviewStep() = capture("review", one(database, login, step = 2u).copy(review = true))
+
+    @Test
+    fun noHook() = capture(
+        "no-hook",
+        ChatQuestion("waiting", readable = false, questions = emptyList(), texts = emptyList(), step = 0u, review = false, hookMissing = true),
+    )
 }

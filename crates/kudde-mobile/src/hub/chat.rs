@@ -101,6 +101,10 @@ pub struct ChatQuestion {
     pub step: u32,
     /// The dialog shows its review step ("Submit answers").
     pub review: bool,
+    /// No hook record exists for the session: the card says how to answer
+    /// from the phone (the question hook on the desk).
+    #[uniffi(default = false)]
+    pub hook_missing: bool,
 }
 
 /// What a tap on the card answers.
@@ -408,7 +412,16 @@ fn refused(id: &str, shape: &Shape) -> ChatQuestion {
         texts,
         step: 0,
         review: false,
+        hook_missing: false,
     }
+}
+
+/// What the desk holds for the session: the hook's record, the reader's
+/// "missing" (no hook wrote one), or nothing readable.
+enum Hooked {
+    Record(question::Record),
+    Missing,
+    Unknown,
 }
 
 /// The card's record of `asked`, the dialog at `at`.
@@ -449,6 +462,7 @@ fn chat_question(asked: &question::Asked, at: Progress) -> ChatQuestion {
         texts,
         step,
         review,
+        hook_missing: false,
     }
 }
 
@@ -974,16 +988,22 @@ impl Chat {
 
     /// The hook's record of `session`, read on the desk; none when there is
     /// none or it cannot be read.
-    async fn record(&self, c: &Client, session: &str) -> Option<question::Record> {
-        let got = c
+    async fn record(&self, c: &Client, session: &str) -> Hooked {
+        let Ok(got) = c
             .call_timeout(
                 "machine.exec",
                 json!({"argv": ["sh", "-c", question::HOOK_READ_SCRIPT, "sh", session], "timeout": 10}),
                 Duration::from_secs(15),
             )
             .await
-            .ok()?;
-        question::read_record(&exec_stdout(&got)?)
+        else {
+            return Hooked::Unknown;
+        };
+        match exec_stdout(&got) {
+            Some(out) if out.trim() == "missing" => Hooked::Missing,
+            Some(out) => question::read_record(&out).map_or(Hooked::Unknown, Hooked::Record),
+            None => Hooked::Unknown,
+        }
     }
 
     /// The card for this poll (design D1). Answerable only from the hook's
@@ -1013,7 +1033,13 @@ impl Chat {
                 }
             }
         };
-        let fresh = self.record(c, &session).await.filter(|r| {
+        let hooked = self.record(c, &session).await;
+        let missing = matches!(hooked, Hooked::Missing);
+        let fresh = match hooked {
+            Hooked::Record(r) => Some(r),
+            _ => None,
+        }
+        .filter(|r| {
             r.session == session
                 && self
                     .state
@@ -1027,10 +1053,12 @@ impl Chat {
             if kind != Some("question") && logged.is_none() {
                 return None;
             }
-            return Some(match &logged {
+            let mut card = match &logged {
                 Some(a) => refused(&a.id, &a.shape),
                 None => refused("", &Shape::Unreadable { texts: vec![] }),
-            });
+            };
+            card.hook_missing = missing;
+            return Some(card);
         };
         let asked = question::Asked {
             id: r.id,
@@ -1441,9 +1469,9 @@ impl Chat {
     }
 
     #[cfg(test)]
-    pub(crate) fn allow_multi_for_test(&self) {
+    pub(crate) fn set_multi_for_test(&self, on: bool) {
         self.multi_ok
-            .store(true, std::sync::atomic::Ordering::Relaxed);
+            .store(on, std::sync::atomic::Ordering::Relaxed);
     }
 
     #[cfg(test)]

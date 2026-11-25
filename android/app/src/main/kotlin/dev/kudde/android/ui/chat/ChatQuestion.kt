@@ -55,6 +55,8 @@ const val OPEN_TERMINAL = "Open the terminal"
 const val NOT_CONNECTED = "Not connected. Nothing was sent."
 const val NOTE_HINT = "Note (optional)"
 const val CHOOSE_THIS = "Choose this"
+const val ALL_ANSWERED = "All questions answered. Send your answers, or skip them all."
+const val NO_HOOK = "The agent asked a question in the terminal. To answer it here, add the question hook on the desk."
 
 /** The longest own answer, in characters. */
 const val OTHER_MAX = 2000
@@ -221,7 +223,8 @@ class CardHeard {
     }
 
     private fun shownText(q: ChatQuestion): String =
-        q.questions.getOrNull(q.step.toInt())?.text ?: q.questions.firstOrNull()?.text ?: q.texts.firstOrNull().orEmpty()
+        q.questions.getOrNull(q.step.toInt())?.text ?: q.questions.firstOrNull()?.text ?: q.texts.firstOrNull()
+            ?: NO_HOOK.takeIf { q.hookMissing }.orEmpty()
 }
 
 /**
@@ -257,6 +260,8 @@ fun QuestionCard(
         modifier,
         body = {
             if (!q.readable) for (t in q.texts) QuestionTitle(t)
+            if (!q.readable && q.hookMissing) CardText(NO_HOOK)
+            if (q.readable && q.review) CardText(ALL_ANSWERED)
             if (ask != null) {
                 if (q.questions.size > 1) StepLine(stepLine(q.step.toInt() + 1, q.questions.size))
                 QuestionTitle(ask.text)

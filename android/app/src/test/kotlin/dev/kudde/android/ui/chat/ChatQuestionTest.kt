@@ -468,6 +468,19 @@ class ChatQuestionTest {
         assertNull(node(SKIP))
         assertNull(node(SOMETHING_ELSE))
         assertFalse(semanticsNodes().any { n -> n.descriptions().any { it.startsWith("Option ") } })
+        assertFalse("a record exists: no hook advice", shows(NO_HOOK))
+    }
+
+    // Owner, 2026-11-25: with no hook record the card says how to answer from the phone.
+    @Test
+    fun withoutTheHookTheCardSaysHowToAnswerHere() {
+        val q = ChatQuestion("waiting", readable = false, questions = emptyList(), texts = emptyList(), step = 0u, review = false, hookMissing = true)
+        show(poll(q, rows))
+        assertTrue(shows(NO_HOOK))
+        assertNotNull(node(OPEN_TERMINAL))
+        assertNull(node(SKIP))
+        val order = reading(QUESTION_FROM_AGENT.takeIf { shows(it) } ?: NO_HOOK)
+        assertTrue("the advice comes before the button: $order", order.indexOfFirst { NO_HOOK in it } < order.indexOfFirst { OPEN_TERMINAL in it })
     }
 
     @Test
@@ -495,6 +508,8 @@ class ChatQuestionTest {
         assertNotNull(node(SKIP))
         assertNull(node(SOMETHING_ELSE))
         assertFalse(shows("Question "))
+        // Owner, 2026-11-25: the review step says what is left to do.
+        assertTrue(shows(ALL_ANSWERED))
     }
 
     @Test
@@ -668,6 +683,12 @@ class ChatQuestionTest {
     }
 
     @Test
+    fun aCardWithoutTheHookIsHeardWithItsAdvice() {
+        val q = ChatQuestion("waiting", readable = false, questions = emptyList(), texts = emptyList(), step = 0u, review = false, hookMissing = true)
+        assertEquals(listOf("Question from the agent. $NO_HOOK"), CardHeard().next(q, null))
+    }
+
+    @Test
     fun theQuietLineReadsLikeItsText() {
         val row = ChatRow(
             "20:0", "tools", "", "", emptyList(),
@@ -695,5 +716,7 @@ class ChatQuestionTest {
         assertEquals("Question from the agent", QUESTION_FROM_AGENT)
         assertEquals("Note (optional)", NOTE_HINT)
         assertEquals("Choose this", CHOOSE_THIS)
+        assertEquals("All questions answered. Send your answers, or skip them all.", ALL_ANSWERED)
+        assertEquals("The agent asked a question in the terminal. To answer it here, add the question hook on the desk.", NO_HOOK)
     }
 }
