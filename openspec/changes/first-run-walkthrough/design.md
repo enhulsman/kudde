@@ -111,8 +111,8 @@ step 1. Neither a lock failure nor a connection failure offers a bypass.
 
 Order: where the machine is, then the phone's key, then connected. Each
 step is its own full screen. Step 2 shows two choices together: "kudde adds
-it for you" first, "Add it yourself" second. Equal-width adjacent choices
-on a normal phone; stack in that order when large text cannot fit. Both
+it for you" first, "Add it yourself" second, each one tappable card, stacked
+in that order at every size (the first filled, the second plain). Both
 remain available from either choice, clearing any password on switching.
 The manual choice opens the command detail within step 2; the password
 choice opens host confirmation then the password detail within step 2. Reaching the
@@ -590,9 +590,33 @@ moderate that each is what he wants):
 6. **No store link for ntfy.** D10 keeps one link out (the setup guide);
    AL3 and AL8 name ntfy and the guide covers installing it and kudde-push.
 
-The step counter reads "Step n of 4" on every step. The hub needs nothing
+The step counter is a four-segment bar, read as "Step n of 4" on every step.
+The hub needs nothing
 new: registration and the test request already go through the `kudde-push`
 document.
+
+### D14. The look of setup: a step bar, choice cards, a checklist, one earned moment
+
+Decided by the owner on 2026-11-25 from two drawn directions (reports 049):
+everything from the warmer one except its bar weight.
+
+- **Step bar** (replaces "Step n of 4"): four segments, 3 dp high, the current
+  one 2.2 times as wide, done and current in fg, the rest in border. One
+  element for TalkBack, "Step n of 4".
+- **Heading** 27 sp on setup steps; **choice cards** radius 20, stacked at every
+  size, the first filled with the primary button's colours, the second plain;
+  no second colour anywhere.
+- **Checklist** replaces R8: S1 to S3, a tick in the connected colour when done,
+  a turning ring while working, a cross in the blocked colour on the step that
+  failed with the outcome text under it; a polite live region.
+- **Earned moment** on step 3: a tick disc in a soft ring of the connected
+  colour, once, with S4 under C2 for the first machine only.
+- **Motion** is small and never loops except the working ring: the current bar
+  segment sweeps in (200 ms), a tick draws (180 ms), the success disc pops once
+  (250 ms). With animations off nothing moves.
+- **Token**: `successHalo` (connected at 18%) in `design-tokens.json`, both
+  themes; every other value is an existing token. The connected colour now also
+  fills ticks and the success disc, in first setup only.
 
 ## New and changed screens (each needs the owner's sign-off)
 
@@ -607,7 +631,7 @@ use the stable ids below when drawing, leaving existing renders untouched.
 | Changed plan 13 | first-run-welcome | Full screen, existing mark, headline, one line, four numbered steps, one main WL7 button; WL9 help link, no skip action |
 | Changed plan 14 | first-run-lock | Full-screen lock notice after welcome, without a bypass; home notice variant after completion |
 | Changed plan 15 | first-run-address | Full-screen step 1, ordered fields, waiting and reach failures |
-| New (replaces old 20) | first-run-key-choices | Full-screen step 2 with heading, machine/user, two adjacent choices R1/R17, R2/R18 descriptions, R19 restriction note; stacked large-text variant |
+| New (replaces old 20) | first-run-key-choices | Full-screen step 2 with heading, machine/user, two stacked choice cards R1/R17, R2/R18 descriptions, R19 restriction note; large-text variant |
 | Changed plan 16 | first-run-manual | Manual detail within full-screen step 2, command, Copy/Share, restriction notes, compare button, both choices |
 | Changed plan 17 | first-run-key-refused | Shared step 2 after rejection, both choices password-once first, retry; R16 variant after installation |
 | Changed plan 18 | first-run-connected | Full-screen step 3, machine/version, count, Continue |
@@ -616,7 +640,7 @@ use the stable ids below when drawing, leaving existing renders untouched.
 | Changed existing 1 | first-run-home | Home with unfinished setup notice; empty-home after first connection WL11/WL12 variant |
 | Changed plan 19 | first-run-hint | Terminal and chat, one-cell and multi-cell maps, G2 explaining one-pane bounce; TalkBack G6, cursor and input uncovered |
 | Changed plan 21 | first-run-password-trust | Trust dialog with R3/R4 and fingerprint command, R5 before any password field |
-| Changed plan 22 | first-run-password | Full-screen step 2 password detail, R6/R7/Cancel, R8 and R9 to R16 outcomes, manual choice available |
+| Changed plan 22 | first-run-password | Full-screen step 2 password detail, R6/R7/Cancel, the checklist (S1 to S3) and R9 to R16 outcomes on the step that failed, manual choice available |
 | New | machines-key-choices | Listed rejected-key card with both choices in order, Add machine entry; previously connected and imported variants |
 | Gone | old welcome-on-home / old 20 | No welcome block repeated on empty home; no command-first screen with password action beneath it; no Getting around setup screen |
 
@@ -760,13 +784,17 @@ answered (a))
 | R17 | Add it yourself | new, second choice on step 2 and rejected-key cards |
 | R18 | Run one command at the machine. kudde never sees a password. | new manual-choice description |
 | R19 | Both ways add only this phone's public key, limited to herdr-core. Existing keys stay in place. | new shared choice note |
+| S1 | Signing in as %1$s | new, checklist step 1 (approved by Ezra 2026-11-25) |
+| S2 | Adding the key | new, checklist step 2 (approved) |
+| S3 | Signing out | new, checklist step 3 (approved) |
+| S4 | Your first machine is set up. | new, under C2 on step 3 only for the first machine that connects (approved) |
 | R2 | kudde signs in once as %2$s with that account's password, adds the same key and signs out. The password is not stored. | new |
 | R3 | First connection to %1$s. If this key is not your machine's, whoever answered gets the password, and setup can still look as if it worked. Trust it only if you are sure. | new (dialog's first paragraph) |
 | R4 | To compare, run this at %1$s: (then the line, e.g. `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`) | new |
 | R5 | Trust and continue | new |
 | R6 | Password for %2$s on %1$s | new (field label; with keyboard-interactive, followed by the machine's first prompt as it sent it) |
 | R7 | Add the key | new |
-| R8 | Adding the key on %1$s… | new |
+| R8 | (replaced by the checklist S1 to S3) | the working line is gone |
 | R9 | %1$s did not accept the password for %2$s. / Check it and try again. Nothing was changed there. | new |
 | R10 | %1$s does not take a password over SSH. / Choose "Add it yourself" to run the command at the machine: it needs none. | new |
 | R11 | %1$s asks for more than a password, such as a code. / Choose "Add it yourself" to run the command at the machine. | new |
