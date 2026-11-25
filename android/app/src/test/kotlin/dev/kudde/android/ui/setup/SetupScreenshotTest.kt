@@ -79,7 +79,51 @@ class SetupScreenshotTest {
 
     @Test fun connectedGraphite() = capture("first-run-connected-graphite", true) { ConnectedStep(connected, {}, {}) }
     @Test fun connectedPaper() = capture("first-run-connected-paper", false) { ConnectedStep(connected, {}, {}) }
+    @Test fun connectedLaterGraphite() = capture("first-run-connected-later-graphite", true) { ConnectedStep(connected.copy(first = false), {}, {}) }
     @Test fun connected2x() = font2x { capture("first-run-connected-2x-graphite", true) { ConnectedStep(connected, {}, {}) } }
+
+    // The password way's panel (renders first-run-password, first-run-password-trust): the hidden field,
+    // the checklist and each outcome on the step that failed.
+    private fun password(panel: PasswordPanel, typed: String = "") = KeyUi(
+        "workstation", "dev", KeyNotice.None, false, null, false, false, true, false,
+        password = PasswordUi(
+            passwordView(panel, "workstation", "dev", "workstation", 22, RuntimeEnvironment.getApplication().resources),
+            androidx.compose.foundation.text.input.TextFieldState(typed),
+        ),
+    )
+
+    private fun pw(name: String, panel: PasswordPanel, typed: String = "", dark: Boolean = true) =
+        capture("first-run-password-$name-${if (dark) "graphite" else "paper"}", dark) { KeyStep(password(panel, typed), keyActions) }
+
+    @Test fun passwordFieldGraphite() = pw("field", PasswordPanel.Field(null), "hunter2x")
+    @Test fun passwordFieldPaper() = pw("field", PasswordPanel.Field(null), "hunter2x", dark = false)
+    @Test fun passwordField2x() = font2x { pw("field-2x", PasswordPanel.Field(null), "hunter2x") }
+    @Test fun passwordWorkingGraphite() = pw("working", PasswordPanel.Working)
+    @Test fun passwordWorkingPaper() = pw("working", PasswordPanel.Working, dark = false)
+    @Test fun passwordWorking2x() = font2x { pw("working-2x", PasswordPanel.Working) }
+    @Test fun passwordWrongGraphite() = pw("wrong", PasswordPanel.WrongPassword(false))
+    @Test fun passwordWrongPaper() = pw("wrong", PasswordPanel.WrongPassword(false), dark = false)
+    @Test fun passwordWrong2x() = font2x { pw("wrong-2x", PasswordPanel.WrongPassword(false)) }
+    @Test fun passwordOutcomesGraphite() {
+        pw("again", PasswordPanel.WrongPassword(true))
+        pw("none", PasswordPanel.NoPassword)
+        pw("more", PasswordPanel.MoreThanPassword)
+        pw("dropped", PasswordPanel.Dropped)
+        pw("code", PasswordPanel.ScriptFailed(3))
+        pw("refused", PasswordPanel.StillRefused)
+    }
+
+    @Test fun passwordRefusedPaper() = pw("refused", PasswordPanel.StillRefused, dark = false)
+
+    @Test fun passwordTrustGraphite() = capture("first-run-password-trust-graphite", true) { passwordTrust() }
+    @Test fun passwordTrustPaper() = capture("first-run-password-trust-paper", false) { passwordTrust() }
+
+    @Composable
+    private fun passwordTrust() = Box {
+        KeyStep(refusedCards, keyActions)
+        TrustDialog(HostKeyPrompt("workstation", "workstation:22", "ED25519", PRESENTED), null, {}, {}, compareCommand = "ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub")
+    }
+    private val refusedCards = KeyUi("workstation", "dev", KeyNotice.None, true, null, false, false, true, false)
 
     private val alertsActions = AlertsActions({}, {}, {}, {}, {}, {}, {}, {})
     private fun alerts(state: AlertsState, agents: Int = 3) = AlertsUi("workstation", state, agents)
@@ -108,7 +152,10 @@ class SetupScreenshotTest {
     }
 
     private fun capture(name: String, dark: Boolean, content: @Composable () -> Unit) {
-        captureRoboImage("src/test/snapshots/$name.png") { KuddeTheme(dark = dark) { content() } }
+        // Small motion is off in goldens (a turning ring would never settle).
+        captureRoboImage("src/test/snapshots/$name.png") {
+            KuddeTheme(dark = dark) { androidx.compose.runtime.CompositionLocalProvider(LocalSetupMotion provides false) { content() } }
+        }
     }
 
     private companion object {

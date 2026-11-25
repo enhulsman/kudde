@@ -31,6 +31,10 @@ enum class CardButton { Unlock, TryAgain, OpenSettings }
 /** A row under the head that leads to a flow (5d builds the flows). */
 enum class CardLink { CheckHostKey, CompareHostKeys, AddPhoneKey, ChangeAddress, ContinueSetup }
 
+/** A rejected-key card's two choices as texts (R1, R2, R17 to R19): password-once first. */
+@Immutable
+data class KeyChoicesUi(val title: String, val detail: String, val passwordText: String, val manualText: String, val note: String)
+
 data class CardLinkUi(val kind: CardLink, val label: String, val detail: String?)
 
 /** The button on a card's Alerts row. */
@@ -65,6 +69,8 @@ data class MachineCardUi(
     val detail: String?,
     val button: CardButton?,
     val link: CardLinkUi?,
+    /** A rejected key: the two ways to add it, as cards; null otherwise. */
+    val keyChoices: KeyChoicesUi? = null,
     /** Proposed first-run failure block; section 4 replaces the legacy status/detail presentation. */
     val reach: ReachText? = null,
     /** Null: no alert rows (alerts unknown, as in screens before M3). */
@@ -148,6 +154,7 @@ private fun machineCard(m: MachineView, nowMs: Long, res: Resources): MachineCar
     var detail: String? = null
     var button: CardButton? = null
     var link: CardLinkUi? = null
+    var keyChoices: KeyChoicesUi? = null
     fun link(kind: CardLink, label: Int, detail: Int) {
         link = CardLinkUi(kind, res.getString(label), res.getString(detail))
     }
@@ -181,7 +188,13 @@ private fun machineCard(m: MachineView, nowMs: Long, res: Resources): MachineCar
             listOf(s(R.string.status_host_key_changed), s(R.string.status_not_connecting))
         }
         MachineState.KeyRejected -> {
-            link(CardLink.AddPhoneKey, R.string.link_add_phone_key, R.string.link_add_phone_key_detail)
+            keyChoices = KeyChoicesUi(
+                res.getString(R.string.k_rejected_title, m.name),
+                res.getString(R.string.k_card_choose, m.user),
+                res.getString(R.string.r_choice_password_text, m.user),
+                res.getString(R.string.r_choice_manual_text),
+                res.getString(R.string.r_choices_note),
+            )
             listOf(s(R.string.status_key_rejected), retrying)
         }
         MachineState.NotInstalled -> {
@@ -214,6 +227,7 @@ private fun machineCard(m: MachineView, nowMs: Long, res: Resources): MachineCar
         detail = detail,
         button = button,
         link = link,
+        keyChoices = keyChoices,
     )
 }
 

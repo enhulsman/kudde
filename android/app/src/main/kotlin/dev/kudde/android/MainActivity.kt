@@ -33,7 +33,7 @@ import dev.kudde.android.ui.phonekey.PhoneKeyRoute
 import dev.kudde.android.ui.setup.LockNoticeRoute
 import dev.kudde.android.ui.setup.PrefsSetupProgress
 import dev.kudde.android.ui.setup.SetupRoute
-import dev.kudde.android.ui.setup.StringSecretField
+import dev.kudde.android.ui.setup.TextFieldStateSecret
 import dev.kudde.android.ui.setup.UniffiPasswordPorts
 import dev.kudde.android.ui.setup.WelcomeRoute
 import dev.kudde.android.ui.theme.KuddeTheme
@@ -67,7 +67,7 @@ private fun Root(app: KuddeApp) {
     val context = LocalContext.current
     val progress = remember { PrefsSetupProgress(context.getSharedPreferences(PrefsSetupProgress.FILE, Context.MODE_PRIVATE)) }
     val ports = remember { UniffiPasswordPorts(app.keyManager, ContextCompat.getMainExecutor(context)) }
-    val field = remember { StringSecretField() }
+    val field = remember { TextFieldStateSecret() }
     val secure = { context.getSystemService(KeyguardManager::class.java).isDeviceSecure }
     val flows = rememberSaveable(saver = MachineFlows.saver(app.hubHost, progress, ports, field, secure)) {
         MachineFlows(app.hubHost, progress, ports, field, secure)
@@ -127,7 +127,8 @@ private fun Root(app: KuddeApp) {
             Screen.KeyCommand -> PhoneKeyRoute(app.keyManager, flows.machine, onBack = { flows.back() })
         }
         flows.trustPrompt(snapshot)?.let { prompt ->
-            TrustDialog(prompt, flows.error, onTrust = flows::trust, onCancel = flows::cancelTrust)
+            val compare = if (flows.keyDetail == dev.kudde.android.ui.setup.KeyChoice.PASSWORD) uniffi.kudde_mobile.hostKeyFingerprintCommand(prompt.algorithm) else null
+            TrustDialog(prompt, flows.error, onTrust = flows::trust, onCancel = flows::cancelTrust, compareCommand = compare)
         }
     }
 }

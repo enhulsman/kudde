@@ -89,16 +89,14 @@ private fun Frame(
         Column(
             Modifier.weight(1f).verticalScroll(rememberScrollState())
                 .padding(start = KuddeSpacing.s20, end = KuddeSpacing.s20, top = KuddeSpacing.s16, bottom = KuddeSpacing.s20),
-            verticalArrangement = Arrangement.spacedBy(KuddeSpacing.s16),
+            verticalArrangement = Arrangement.spacedBy(if (step != null) 20.dp else KuddeSpacing.s16),
         ) {
-            if (step != null) {
-                BasicText(stringResource(R.string.setup_step, step), style = small.copy(color = c.muted))
-            }
+            if (step != null) StepBar(step)
             if (heading != null) {
                 BasicText(
                     heading,
                     Modifier.semantics { heading() },
-                    style = KuddeType.screenTitle.copy(color = c.fg),
+                    style = if (step != null) KuddeType.screenTitle.copy(color = c.fg, fontSize = 27.sp, lineHeight = 1.2.em, letterSpacing = (-0.015).em) else KuddeType.screenTitle.copy(color = c.fg),
                 )
             }
             body()
@@ -382,6 +380,8 @@ data class KeyUi(
     val canTryAgain: Boolean,
     /** Not reached yet (a return from the background): "Connecting to workstation…" where the button was. */
     val connecting: Boolean = false,
+    /** The password way's panel, when that choice is open (task 4.10); null shows the two cards or the manual detail. */
+    val password: PasswordUi? = null,
 )
 
 data class KeyActions(
@@ -392,6 +392,12 @@ data class KeyActions(
     val onCompare: () -> Unit,
     val onTryAgain: () -> Unit,
     val onChangeAddress: () -> Unit,
+    /** The password panel's "Add the key". */
+    val onAddKey: () -> Unit = {},
+    /** The password panel's "Cancel": back to the two cards. */
+    val onClosePassword: () -> Unit = {},
+    /** The password panel's "Try again" (after R16 or a reach failure). */
+    val onPasswordTryAgain: () -> Unit = {},
 )
 
 @Composable
@@ -399,20 +405,26 @@ fun KeyStep(ui: KeyUi, actions: KeyActions, modifier: Modifier = Modifier) {
     Frame(
         onBack = actions.onBack, step = 2, heading = stringResource(R.string.m_heading), modifier = modifier,
         footer = {
-            if (ui.command != null && ui.canCompare) Solid(stringResource(R.string.m_compare), actions.onCompare)
-            if (ui.command != null && !ui.canCompare && ui.connecting) {
+            ui.password?.let { PasswordFooter(it, actions) }
+            if (ui.password == null && ui.command != null && ui.canCompare) Solid(stringResource(R.string.m_compare), actions.onCompare)
+            if (ui.password == null && ui.command != null && !ui.canCompare && ui.connecting) {
                 BasicText(
                     stringResource(R.string.a_connecting, ui.machine),
                     Modifier.semantics { liveRegion = LiveRegionMode.Polite }.padding(vertical = 11.dp),
                     style = bodyText.copy(color = KuddeTheme.colors.muted),
                 )
             }
-            if (ui.canTryAgain) {
+            if (ui.password == null && ui.canTryAgain) {
                 Solid(stringResource(R.string.f_try_again), actions.onTryAgain)
                 Outline(stringResource(R.string.setup_change_address), actions.onChangeAddress)
             }
         },
     ) {
+        val password = ui.password
+        if (password != null) {
+            PasswordPanelBody(ui, password, actions)
+            return@Frame
+        }
         when (val notice = ui.notice) {
             KeyNotice.None -> Unit
             KeyNotice.Rejected -> TitledNotice(stringResource(R.string.k_rejected_title, ui.machine), stringResource(R.string.k_rejected_detail, ui.machine, ui.user))
@@ -468,64 +480,60 @@ private fun TitledNotice(title: String, detail: String) {
     }
 }
 
-/**
- * The two choices, password-once first, side by side, stacked in that order
- * when large text cannot fit them.
- */
+/** The two choices as stacked cards at every size, password-once first and filled (components.firstRunChoiceCard). */
 @Composable
 private fun Choices(ui: KeyUi, actions: KeyActions) {
-    val stacked = LocalDensity.current.fontScale >= 1.6f
-    val password: @Composable (Modifier) -> Unit = { m ->
-        Choice(
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        ChoiceCard(
             stringResource(R.string.r_choice_password),
-            if (ui.describe) stringResource(R.string.r_choice_password_text, ui.user) else null,
-            ui.passwordOffered,
-            { actions.onChoose(KeyChoice.PASSWORD) }, m,
-        )
-    }
-    val manual: @Composable (Modifier) -> Unit = { m ->
-        Choice(
+            stringResource(R.string.r_choice_password_text, ui.user),
+            filled = true, enabled = ui.passwordOffered,
+        ) { actions.onChoose(KeyChoice.PASSWORD) }
+        ChoiceCard(
             stringResource(R.string.r_choice_manual),
-            if (ui.describe) stringResource(R.string.r_choice_manual_text) else null,
-            true,
-            { actions.onChoose(KeyChoice.MANUAL) }, m,
-        )
-    }
-    if (stacked) {
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            password(Modifier.fillMaxWidth())
-            manual(Modifier.fillMaxWidth())
-        }
-    } else {
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            password(Modifier.weight(1f))
-            manual(Modifier.weight(1f))
-        }
+            stringResource(R.string.r_choice_manual_text),
+            filled = false, enabled = true,
+        ) { actions.onChoose(KeyChoice.MANUAL) }
     }
 }
 
+/** The password way's detail: the checklist or the sentence and the hidden field, and the protections while it shows. */
 @Composable
-private fun Choice(label: String, description: String?, enabled: Boolean, onClick: () -> Unit, modifier: Modifier) {
-    val c = KuddeTheme.colors
-    val shape = RoundedCornerShape(KuddeRadius.button)
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Box(
-            Modifier.fillMaxWidth().heightIn(min = 52.dp).clip(shape).alpha(if (enabled) 1f else 0.38f)
-                .border(KuddeBorder.thin, c.input, shape)
-                .clickable(enabled = enabled, onClick = onClick, role = androidx.compose.ui.semantics.Role.Button)
-                .padding(horizontal = 10.dp, vertical = 8.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            BasicText(label, style = bodyText.copy(color = c.fg, textAlign = TextAlign.Center))
+private fun ColumnScope.PasswordPanelBody(ui: KeyUi, password: PasswordUi, actions: KeyActions) {
+    val view = password.view
+    PasswordProtection()
+    if (view.sentence) Paragraph(stringResource(R.string.r_choice_password_text, ui.user))
+    Checklist(view, ui.machine, ui.user, bodyText, small)
+    view.waiting?.let {
+        BasicText(it, Modifier.semantics { liveRegion = LiveRegionMode.Polite }, style = bodyText.copy(color = KuddeTheme.colors.muted))
+    }
+    view.field?.let { PasswordField(it, password.field, actions.onAddKey, bodyText) }
+}
+
+@Composable
+private fun PasswordFooter(password: PasswordUi, actions: KeyActions) {
+    password.view.buttons.forEachIndexed { index, button ->
+        val label = when (button) {
+            PanelButton.AddKey -> stringResource(R.string.r_add_key)
+            PanelButton.Manual -> stringResource(R.string.r_choice_manual)
+            PanelButton.Cancel -> stringResource(R.string.cancel)
+            PanelButton.TryAgain -> stringResource(R.string.f_try_again)
         }
-        description?.let { BasicText(it, style = small.copy(color = c.muted)) }
+        val click = when (button) {
+            PanelButton.AddKey -> actions.onAddKey
+            PanelButton.Manual -> ({ actions.onChoose(KeyChoice.MANUAL) })
+            PanelButton.Cancel -> actions.onClosePassword
+            PanelButton.TryAgain -> actions.onPasswordTryAgain
+        }
+        if (index == 0) Solid(label, click) else Outline(label, click)
     }
 }
 
 // Step 3 (first-run-connected).
 
 @Immutable
-data class ConnectedUi(val machine: String, val version: String?, val agents: Int)
+/** [first]: no other machine had connected before, so the success moment says so. */
+data class ConnectedUi(val machine: String, val version: String?, val agents: Int, val first: Boolean = true)
 
 @Composable
 fun ConnectedStep(ui: ConnectedUi, onBack: () -> Unit, onContinue: () -> Unit, modifier: Modifier = Modifier) {
@@ -533,13 +541,8 @@ fun ConnectedStep(ui: ConnectedUi, onBack: () -> Unit, onContinue: () -> Unit, m
         onBack = onBack, step = 3, heading = stringResource(R.string.c_heading), modifier = modifier,
         footer = { Solid(stringResource(R.string.c_continue), onContinue) },
     ) {
-        Notice {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Dot()
-                BasicText(stringResource(R.string.c_connected, ui.machine), style = bodyText.copy(color = KuddeTheme.colors.fg))
-            }
-            ui.version?.let { Paragraph("herdr-core $it") }
-        }
+        SuccessMoment(ui.machine, ui.first, bodyText, small)
+        ui.version?.let { Paragraph("herdr-core $it") }
         Paragraph(
             if (ui.agents > 0) pluralStringResource(R.plurals.c_agents, ui.agents, ui.agents)
             else stringResource(R.string.c_none),

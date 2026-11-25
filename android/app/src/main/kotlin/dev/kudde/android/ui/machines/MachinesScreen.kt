@@ -25,6 +25,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
+import dev.kudde.android.ui.setup.ChoiceCard
+import dev.kudde.android.ui.setup.KeyChoice
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.disabled
@@ -92,6 +94,8 @@ data class MachinesActions(
     val onCancelRemove: () -> Unit = {},
     /** "Network permission is off": this app's page in Android settings (MachinesRoute). */
     val onOpenSettings: () -> Unit = {},
+    /** One of a rejected-key card's two choices, by machine name. */
+    val onKeyChoice: (String, KeyChoice) -> Unit = { _, _ -> },
     val onChangeAddress: (String) -> Unit = {},
     val onContinueSetup: (String) -> Unit = {},
     /** The Alerts row's button: turn alerts on, try again, or allow notifications (MachinesRoute). */
@@ -268,6 +272,24 @@ private fun MachineCard(machine: MachineCardUi, actions: MachinesActions) {
                 CardButton.TryAgain -> OutlineButton(stringResource(R.string.action_try_again), actions.onTryAgain, compact = true)
                 CardButton.OpenSettings -> OutlineButton(stringResource(R.string.action_open_settings), actions.onOpenSettings, compact = true)
                 null -> Unit
+            }
+        }
+        machine.keyChoices?.let { choices ->
+            Column(
+                Modifier.fillMaxWidth().padding(start = KuddeSpacing.s16, end = KuddeSpacing.s16, top = KuddeSpacing.s12, bottom = KuddeSpacing.s12),
+                verticalArrangement = Arrangement.spacedBy(KuddeSpacing.s12),
+            ) {
+                Column(Modifier.semantics { liveRegion = LiveRegionMode.Polite }, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    BasicText(choices.title, style = KuddeType.rowName.copy(color = c.fg))
+                    BasicText(choices.detail, style = KuddeType.secondary.copy(color = c.dimText))
+                }
+                ChoiceCard(stringResource(R.string.r_choice_password), choices.passwordText, filled = true, enabled = true) {
+                    actions.onKeyChoice(machine.name, KeyChoice.PASSWORD)
+                }
+                ChoiceCard(stringResource(R.string.r_choice_manual), choices.manualText, filled = false, enabled = true) {
+                    actions.onKeyChoice(machine.name, KeyChoice.MANUAL)
+                }
+                BasicText(choices.note, style = KuddeType.secondary.copy(color = c.dimText))
             }
         }
         machine.link?.let { link ->

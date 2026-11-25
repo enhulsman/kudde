@@ -356,6 +356,17 @@ class MachineFlowsTest {
     }
 
     @Test
+    fun aRejectedKeyCardsChoiceOpensStepTwoWithThatDetail() {
+        val actions = flows.actions(MachinesActions.Preview)
+        publish(machine("website", MachineState.KeyRejected))
+        actions.onKeyChoice("website", dev.kudde.android.ui.setup.KeyChoice.MANUAL)
+        assertEquals(Screen.Setup, flows.screen)
+        assertEquals(2, flows.setupStep)
+        assertEquals(dev.kudde.android.ui.setup.KeyChoice.MANUAL, flows.keyDetail)
+        assertEquals("website", flows.machine)
+    }
+
+    @Test
     fun backClosesDialogsFirstThenReturnsToMachines() {
         publish(machine("server", changed))
         flows.actions(MachinesActions.Preview).onHostKey("server")

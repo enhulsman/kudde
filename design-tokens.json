@@ -577,7 +577,7 @@
       "render": "first-run-final",
       "parts": "three rows (Signing in as dev, Adding the key, Signing out), 18 dp apart; a 26 dp mark: done = connected fill with solidFg tick, now = 2 dp border ring with a fg arc turning, to do = border ring, failed = blocked ring with a cross; labels 16 in fg, to-do labels dim; an error's title (500) and help (14, muted) sit under the failed row",
       "spoken": "a polite live region; each step change announced once; the error announced once",
-      "motion": "the tick draws over 180 ms; the arc turns while working; static with animations off"
+      "motion": "the tick fades in over 180 ms; the arc turns while working; static with animations off"
     },
     "firstRunSuccess": {
       "render": "first-run-final",

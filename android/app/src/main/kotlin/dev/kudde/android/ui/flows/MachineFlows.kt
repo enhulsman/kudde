@@ -136,6 +136,7 @@ class MachineFlows(
     fun actions(base: MachinesActions): MachinesActions = base.copy(
         onHostKey = ::openHostKey,
         onAddPhoneKey = { name -> openSetup(name, atLeast = 2) },
+        onKeyChoice = ::openKeyChoice,
         onContinueSetup = { name -> openSetup(name) },
         onChangeAddress = { name ->
             openSetup(name)
