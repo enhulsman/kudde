@@ -378,14 +378,14 @@ The card SHALL use these texts and no others of its own:
 | Option row | `N.` + the log's label, the log's description beneath |
 | Free-text row | Something else |
 | Free-text field hint | Type your answer |
-| Free-text button | Send (one single-choice question); Next (draft) in the other calls |
+| Free-text button | Send (one single-choice question); Next in the other calls |
 | Free-text too long | Too long: 2000 characters at most |
 | Skip button | Skip |
 | Step | Question N of M |
 | Last step button | Send answers |
 | Multi-select hint | Choose any number |
 | Multi-select count | `N` selected ("0 selected", "2 selected") |
-| Multi-select button | Next (draft) |
+| Multi-select button | Next |
 | Preview button | Preview |
 | Preview sheet title | Preview: `<label>` |
 | Preview sheet note hint | Note (optional) |
@@ -396,10 +396,10 @@ The card SHALL use these texts and no others of its own:
 | Not confirmed | Could not confirm the answer arrived. Check the terminal. |
 | Unreadable or unsupported | Open the terminal |
 | Review step | All questions answered. Send your answers, or skip them all. |
-| Review step, each answer | `<question>` above `<answer>`; a note beneath as "Note: `<note>`" (draft) |
-| Review step, change control | Change (draft); read as "Change the answer to: `<question>`" (draft) |
-| Previous / next question | Previous question, Next question (drafts, read by TalkBack; icons on screen) |
-| Sending stopped halfway | Typed N of M answers, then stopped. Check the terminal. (draft) |
+| Review step, each answer | `<question>` above `<answer>`; a note beneath as "Note: `<note>`" |
+| Review step, change control | Change; read as "Change the answer to: `<question>`" |
+| Previous / next question | Previous question, Next question (read by TalkBack; icons on screen) |
+| Sending stopped halfway | Typed N of M answers, then stopped. Check the terminal. |
 | No hook record | The agent asked a question in the terminal. To answer it here, add the question hook on the desk. |
 | Collapsed, answered | Answered: `<header>` (several: the headers joined with ", ") |
 | Collapsed, declined | Skipped: `<header>` |

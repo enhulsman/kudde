@@ -255,7 +255,7 @@ sent twice.
 Stopping halfway: when a step's check fails or cannot be confirmed after k
 answers were typed, the core returns `Stopped { sent: k }` and sends nothing
 more. The card keeps the answers and says "Typed k of n answers, then
-stopped. Check the terminal." (draft) with the terminal button. Send answers
+stopped. Check the terminal." with the terminal button. Send answers
 again calls `send_answers` with `from = k`; the core goes on only if the
 screen shows question k+1 (or the review step when k = n), else "The
 question changed. Nothing was sent." So a retry never retypes an answer the
