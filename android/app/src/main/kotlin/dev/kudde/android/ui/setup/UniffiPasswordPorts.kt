@@ -24,7 +24,11 @@ class UniffiPasswordPorts(private val keys: KeyManager, private val main: Execut
     override fun setup(host: String, port: Int, user: String, pinned: String, password: String, done: (SetupOutcome) -> Unit) {
         Thread {
             val outcome = try {
-                setupWithPassword(host, port.toUShort(), user, pinned, SetupPassword(password), keys.publicKey(), KeyManager.COMMENT)
+                // The public key is read first, and the native secret handle is closed as soon as the call returns.
+                val publicKey = keys.publicKey()
+                SetupPassword(password).use { secret ->
+                    setupWithPassword(host, port.toUShort(), user, pinned, secret, publicKey, KeyManager.COMMENT)
+                }
             } catch (e: Exception) {
                 SetupOutcome.Unreachable(ReachKind.OTHER, "the phone key could not be read")
             }

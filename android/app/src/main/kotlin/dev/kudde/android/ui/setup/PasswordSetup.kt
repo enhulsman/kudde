@@ -122,7 +122,7 @@ class PasswordSetup(private val ports: PasswordPorts, val field: SecretField) {
     /** "Add the key": the typed text goes out once, and the field is empty before the call starts. */
     fun addKey(host: String, port: Int, user: String, pinned: String, onDone: () -> Unit, onChangedKey: () -> Unit) {
         val typeable = panel is PasswordPanel.Field || panel is PasswordPanel.WrongPassword ||
-            panel is PasswordPanel.MoreThanPassword
+            panel is PasswordPanel.MoreThanPassword || panel is PasswordPanel.Dropped
         if (!typeable) return
         val password = field.text()
         if (password.isEmpty()) return

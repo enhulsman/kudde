@@ -16,6 +16,15 @@ class PasswordViewTest {
     private val res = RuntimeEnvironment.getApplication().resources
     private fun view(panel: PasswordPanel) = passwordView(panel, "workstation", "dev", "workstation", 22, res)
 
+    // Review finding (7.1): formatting the UI model must never print what was typed.
+    @Test fun theUiModelsToStringNeverHoldsThePassword() {
+        val state = androidx.compose.foundation.text.input.TextFieldState("hunter2-secret")
+        val ui = PasswordUi(view(PasswordPanel.Field(null)), state)
+        assertTrue(ui.toString(), !ui.toString().contains("hunter2"))
+        val key = KeyUi("workstation", "dev", KeyNotice.None, false, null, false, true, true, false, password = ui)
+        assertTrue(!key.toString().contains("hunter2"))
+    }
+
     @Test fun theFieldShowsTheSentenceAndTheLabelWithNoChecklist() {
         val v = view(PasswordPanel.Field(null))
         assertNull(v.marks)

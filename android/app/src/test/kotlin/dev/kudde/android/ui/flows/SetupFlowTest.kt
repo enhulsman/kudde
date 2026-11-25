@@ -11,6 +11,7 @@ import dev.kudde.android.ui.setup.MemorySetupProgress
 import dev.kudde.android.ui.setup.PasswordPanel
 import dev.kudde.android.ui.setup.PasswordPorts
 import dev.kudde.android.ui.setup.SecretField
+import dev.kudde.android.ui.setup.SetupCheckpoint
 import dev.kudde.android.ui.setup.SetupPhase
 import java.util.concurrent.Executor
 import org.junit.Assert.assertEquals
@@ -120,6 +121,81 @@ class SetupFlowTest {
         assertEquals(2, again.setupStep)
         assertEquals("workstation", again.machine)
         assertEquals(KeyChoice.MANUAL, again.keyDetail)
+    }
+
+    // Review finding (7.1): a cold start restores before the hub's first snapshot; the machine must survive that.
+
+    private fun coldStart(): Triple<MachineFlows, () -> HubListener, HubHost> {
+        progress = MemorySetupProgress(SetupPhase.IN_PROGRESS).also {
+            it.checkpoint = SetupCheckpoint(
+                machine = "website", step = 2, choice = KeyChoice.PASSWORD, origin = "Agents",
+                name = "", host = "website.example.org", port = "22", user = "dev", added = true, reached = true,
+            )
+        }
+        var listener2: HubListener? = null
+        val host = HubHost(createHub = { listener2 = it; FakeHub() }, mainExecutor = Executor { it.run() })
+        host.start()
+        return Triple(MachineFlows(host, progress, ports, field, isDeviceSecure = { true }), { listener2!! }, host)
+    }
+
+    @Test fun aColdStartKeepsTheSavedMachineAndReopensItsChoiceAtTheFirstSnapshot() {
+        val (cold, listener2, _) = coldStart()
+        assertEquals("the saved machine is not dropped while the snapshot is empty", "website", cold.machine)
+        val s = HubSnapshot(listOf(machine("website", MachineState.KeyRejected).copy(hostKey = TRUSTED)), emptyList(), emptyList(), null)
+        listener2().onSnapshot(s)
+        cold.onSnapshot(s)
+        assertEquals("website", cold.machine)
+        assertEquals(2, cold.setupStep)
+        assertEquals(KeyChoice.PASSWORD, cold.keyDetail)
+        assertEquals(TRUSTED, ports.probes.single().pinned)
+    }
+
+    @Test fun aSavedMachineThatIsGoneIsDroppedAtTheFirstRealSnapshot() {
+        val (cold, listener2, _) = coldStart()
+        val s = HubSnapshot(listOf(machine("other", MachineState.Paused)), emptyList(), emptyList(), null)
+        listener2().onSnapshot(s)
+        cold.onSnapshot(s)
+        assertNull(cold.machine)
+        assertNull(cold.keyDetail)
+    }
+
+    // Review finding (7.1): a changed host key before the first connection must not let go of first setup.
+    private val mismatch = MachineState.HostKeyMismatch(confirmed = TRUSTED, presented = PRESENTED, algorithm = "ED25519")
+
+    @Test fun backFromTheChangedKeyScreenReturnsToSetupNotToMachines() {
+        toStepTwo()
+        publish(machine("workstation", mismatch))
+        assertEquals(Screen.HostKeyChanged, flows.screen)
+        assertTrue(flows.back())
+        assertEquals(Screen.Setup, flows.screen)
+        assertEquals(2, flows.setupStep)
+        assertEquals("workstation", flows.machine)
+    }
+
+    @Test fun forgettingTheChangedKeyReturnsToSetup() {
+        toStepTwo()
+        publish(machine("workstation", mismatch))
+        flows.askForget()
+        flows.forget()
+        assertEquals(Screen.Setup, flows.screen)
+        assertEquals("workstation", flows.machine)
+    }
+
+    @Test fun aMismatchThatGoesAwayReturnsToSetup() {
+        toStepTwo()
+        publish(machine("workstation", mismatch))
+        publish(machine("workstation", unconfirmed))
+        assertEquals(Screen.Setup, flows.screen)
+        assertEquals("workstation", flows.machine)
+    }
+
+    @Test fun afterCompletionTheChangedKeyStillLeadsToMachines() {
+        completed()
+        publish(machine("workstation", mismatch).copy(lastConnectedMs = 1uL))
+        flows.openHostKey("workstation")
+        assertEquals(Screen.HostKeyChanged, flows.screen)
+        assertTrue(flows.back())
+        assertEquals(Screen.Machines, flows.screen)
     }
 
     @Test fun backFromStepOneGoesToTheWelcomeAndKeepsTheFields() {
@@ -378,6 +454,17 @@ class SetupFlowTest {
             ports.answerSetup(outcome)
             assertEquals(expected, flows.password.panel)
         }
+    }
+
+    // Review finding (7.1): after a dropped connection the field and "Add the key" are shown, so they must work.
+    @Test fun aDroppedConnectionCanBeRetriedWithTheTypedPassword() {
+        toField()
+        field.text = "pw1"; flows.addKey(); ports.answerSetup(SetupOutcome.Dropped)
+        assertEquals(PasswordPanel.Dropped, flows.password.panel)
+        field.text = "pw2"; flows.addKey()
+        assertEquals("the retry went out", 2, ports.setups.size)
+        assertEquals("pw2", ports.setups.last().password)
+        assertEquals(PasswordPanel.Working, flows.password.panel)
     }
 
     @Test fun aSecondRefusalInOneVisitIsTheLockoutTextAndANewVisitStartsOver() {
