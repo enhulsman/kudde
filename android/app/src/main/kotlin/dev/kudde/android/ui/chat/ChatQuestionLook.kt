@@ -131,6 +131,12 @@ internal fun Hint(text: String) {
     BasicText(text, style = KuddeType.secondary.copy(color = KuddeTheme.colors.muted), modifier = Modifier.padding(start = TEXT_START, end = TEXT_START, bottom = KuddeSpacing.s4))
 }
 
+/** A plain sentence in the card's body: what is left to do (the review step, no hook). */
+@Composable
+internal fun CardText(text: String) {
+    BasicText(text, style = KuddeType.body.copy(color = KuddeTheme.colors.fg), modifier = Modifier.padding(start = TEXT_START, end = TEXT_START, bottom = KuddeSpacing.s8))
+}
+
 /** Why nothing was sent: a quiet strip with a hollow ring, and the way to the terminal where it helps. */
 @Composable
 internal fun Notice(text: String, onTerminal: (() -> Unit)?) {

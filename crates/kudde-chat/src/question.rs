@@ -302,9 +302,10 @@ pub fn ticks_shown(screen: &str, q: &Question, ticked: &[usize], typed: bool) ->
         && row_ticked(screen, n + 1) == Some(typed)
 }
 
-/// Whether the multi-select keys are confirmed on a real terminal; until
-/// then a multi-select question shows "Open the terminal" (spec).
-pub const MULTI_CONFIRMED: bool = false;
+/// Whether the multi-select keys are confirmed on a real terminal (desk and
+/// phone, 2026-11-25; owner's go). Off, a multi-select question shows "Open
+/// the terminal": the way back should a later Claude Code change the dialog.
+pub const MULTI_CONFIRMED: bool = true;
 
 /// `s` with box-drawing characters left out and every run of white space
 /// (line breaks included) one space.
