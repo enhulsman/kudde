@@ -3,9 +3,9 @@
 //! it, the keys that answer one step of it, and what the terminal's screen
 //! says about it. No I/O: the hub makes the calls.
 //!
-//! The keys are the dialog's defaults read from the program (design section
-//! B); the phone check confirms them. The plan presses digits, never counts
-//! arrows: focus may start on an earlier choice.
+//! The keys are the dialog's as the 5.1 desk round found them (design
+//! section B). The plan presses digits, never counts arrows: focus may start
+//! on an earlier choice.
 
 use crate::Agent;
 use crate::locate::Lookup;
@@ -139,55 +139,50 @@ fn digit(n: usize) -> Option<String> {
     (1..=9).contains(&n).then(|| n.to_string())
 }
 
-/// The `terminal.keys` names that give `answer` to `q` (design D3); none
-/// when the answer does not fit the question.
+/// Whether `q` shows option previews: the dialog then lays the options out
+/// beside the preview, and a digit only moves the focus.
+fn has_previews(q: &Question) -> bool {
+    q.options.iter().any(|o| o.preview.is_some())
+}
+
+/// The `terminal.keys` names that give `answer` to `q` (design D3, section
+/// B as the 5.1 desk round found it); none when the answer does not fit the
+/// question, and none for a multi-select question ([plan_multi]).
 pub fn plan(q: &Question, answer: &Answer) -> Option<Vec<String>> {
     let n = q.options.len();
     match answer {
+        // Without previews a digit alone answers and moves on; an Enter
+        // after it would answer the next question's focused option.
+        Answer::Option(i) if !q.multi && *i < n && !has_previews(q) => Some(vec![digit(i + 1)?]),
         Answer::Option(i) if !q.multi && *i < n => Some(vec![digit(i + 1)?, "enter".into()]),
         Answer::Option(_) => None,
-        // The free-text row follows the options. On a multi-select question
-        // own words go with the ticks ([plan_multi]).
+        // The free-text row follows the options; its digit opens it for
+        // typing. On a multi-select question own words go with the ticks.
         Answer::Other if !q.multi => Some(vec![digit(n + 1)?]),
         Answer::Other => None,
         Answer::Skip => Some(vec!["esc".into()]),
         Answer::Submit => Some(vec!["enter".into()]),
-        // Low confidence (design section B): each ticked option is focused
-        // and toggled, then the submit row after the free-text row. The card
-        // offers it only once the phone check confirms it.
-        Answer::Multi(ticked) if q.multi && !ticked.is_empty() => {
-            let mut ticked = ticked.clone();
-            ticked.sort_unstable();
-            ticked.dedup();
-            let mut keys = Vec::new();
-            for i in ticked {
-                if i >= n {
-                    return None;
-                }
-                keys.push(digit(i + 1)?);
-                keys.push("enter".into());
-            }
-            keys.push(digit(n + 2)?);
-            keys.push("enter".into());
-            Some(keys)
-        }
         Answer::Multi(_) => None,
     }
 }
 
-/// A multi-select answer in two key runs around the typed text: the ticks
-/// and the free row's digit [before] it, the submit row [after] it. The
-/// text goes between them through `terminal.send` (paste and Enter, which
-/// takes it as one more answer). Owner, 2026-11-25: a typed answer joins
-/// the ticks and goes out with the one send. Low confidence (design section
-/// B): confirmed by the phone check.
+/// A multi-select answer in steps the hub checks the screen between: the
+/// [ticks]; with a typed answer, the text through `terminal.send` (paste
+/// and Enter put it in the free row unticked) and an Enter when the screen
+/// shows that row unticked; once [ticks_shown] holds, [next] leaves the
+/// question (to the next one, or to the review step of a one-question
+/// call, where Enter sends). Owner, 2026-11-25: a typed answer joins the
+/// ticks and goes out with the one send.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MultiPlan {
-    pub before: Vec<String>,
-    pub after: Vec<String>,
+    /// One digit per ticked option: a digit toggles its row in place.
+    pub ticks: Vec<String>,
+    /// Off the question: Tab; from the free row's editor, Tab moves to
+    /// Submit and Enter takes it.
+    pub next: Vec<String>,
 }
 
-/// The keys for ticking `ticked` on a multi-select question, with a typed
+/// The plan for ticking `ticked` on a multi-select question, with a typed
 /// answer when `text`; none for a single-choice question, an option out of
 /// range, or nothing at all to send.
 pub fn plan_multi(q: &Question, ticked: &[usize], text: bool) -> Option<MultiPlan> {
@@ -198,18 +193,55 @@ pub fn plan_multi(q: &Question, ticked: &[usize], text: bool) -> Option<MultiPla
     let mut ticked = ticked.to_vec();
     ticked.sort_unstable();
     ticked.dedup();
-    let mut before = Vec::new();
-    for i in ticked {
-        before.push(digit(i + 1)?);
-        before.push("enter".into());
+    let ticks = ticked
+        .into_iter()
+        .map(|i| digit(i + 1))
+        .collect::<Option<Vec<_>>>()?;
+    let next = if text {
+        vec!["tab".into(), "enter".into()]
+    } else {
+        vec!["tab".into()]
+    };
+    Some(MultiPlan { ticks, next })
+}
+
+/// Whether the multi-select row `row` (1-based) shows ticked, as the last
+/// such row on the screen draws it ("1. [✔] Apple", "2. [ ] Banana"); none
+/// when the screen has no such row.
+pub fn row_ticked(screen: &str, row: usize) -> Option<bool> {
+    let screen = fold(screen);
+    let on = screen.rfind(&format!("{row}. [\u{2714}]"));
+    let off = screen.rfind(&format!("{row}. [ ]"));
+    match (on, off) {
+        (None, None) => None,
+        (Some(_), None) => Some(true),
+        (None, Some(_)) => Some(false),
+        (Some(a), Some(b)) => Some(a > b),
     }
-    if text {
-        before.push(digit(n + 1)?);
+}
+
+/// Whether the free row after `q`'s options shows ticked, once the screen
+/// shows `text` in it (matched on its first 20 characters); none before.
+pub fn typed_row(screen: &str, q: &Question, text: &str) -> Option<bool> {
+    let row = q.options.len() + 1;
+    let folded = fold(screen);
+    let start: String = fold(text).chars().take(20).collect();
+    let on = format!("{row}. [\u{2714}] {start}");
+    let off = format!("{row}. [ ] {start}");
+    match (folded.rfind(&on), folded.rfind(&off)) {
+        (None, None) => None,
+        (Some(_), None) => Some(true),
+        (None, Some(_)) => Some(false),
+        (Some(a), Some(b)) => Some(a > b),
     }
-    Some(MultiPlan {
-        before,
-        after: vec![digit(n + 2)?, "enter".into()],
-    })
+}
+
+/// The screen shows `q`'s rows ticked exactly as planned: the options in
+/// `ticked`, and the free row after them when `typed`.
+pub fn ticks_shown(screen: &str, q: &Question, ticked: &[usize], typed: bool) -> bool {
+    let n = q.options.len();
+    (0..n).all(|i| row_ticked(screen, i + 1) == Some(ticked.contains(&i)))
+        && row_ticked(screen, n + 1) == Some(typed)
 }
 
 /// Whether the multi-select keys are confirmed on a real terminal; until
@@ -252,9 +284,10 @@ pub enum Progress {
 
 pub fn progress(screen: &str, qs: &[Question]) -> Progress {
     let screen = fold(screen);
-    // Only a call with several questions has a review step; it lists the
-    // questions with one answer each, so it may hold their texts too.
-    if qs.len() > 1 && screen.contains(REVIEW) {
+    // A call with several questions has a review step, and so does one
+    // with a multi-select question (5.1); it lists the questions with their
+    // answers, so it may hold their texts too.
+    if (qs.len() > 1 || qs.iter().any(|q| q.multi)) && screen.contains(REVIEW) {
         return Progress::Review;
     }
     // Of two questions found (one text inside the other), the longer one.

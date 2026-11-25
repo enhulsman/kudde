@@ -907,6 +907,13 @@ fn seen<'a>(t: &'a Term, proc_start: Option<u64>, l: &'a Lookup) -> Seen<'a> {
     }
 }
 
+/// The keys of one answer: one `terminal.keys` call, or a multi-select
+/// plan run in checked steps.
+enum Planned {
+    Keys(Vec<String>),
+    Multi(question::MultiPlan),
+}
+
 impl Chat {
     /// One check of the send target: the terminal and a fresh lookup.
     async fn check(&self, c: &Client) -> Result<(Term, Option<u64>, Lookup), String> {
@@ -1025,20 +1032,20 @@ impl Chat {
                 }
             }
         };
-        // The keys before the typed text, and those after it (multi-select's submit).
+        // A multi-select answer runs in checked steps ([Chat::answer_multi]).
         let planned = match &answer {
-            Answer::Submit if qs.len() < 2 => None,
-            Answer::Submit | Answer::Skip => question::plan(&qs[0], &answer).map(|k| (k, vec![])),
-            Answer::Multi(ticked) if typed.is_some() => qs
+            Answer::Multi(ticked) => qs
                 .get(step)
-                .and_then(|q| question::plan_multi(q, ticked, true))
-                .map(|m| (m.before, m.after)),
+                .and_then(|q| question::plan_multi(q, ticked, typed.is_some()))
+                .map(Planned::Multi),
+            Answer::Submit if qs.len() < 2 => None,
+            Answer::Submit | Answer::Skip => question::plan(&qs[0], &answer).map(Planned::Keys),
             _ => qs
                 .get(step)
                 .and_then(|q| question::plan(q, &answer))
-                .map(|k| (k, vec![])),
+                .map(Planned::Keys),
         };
-        let Some((keys, after)) = planned else {
+        let Some(planned) = planned else {
             return ChatAnswer::Changed;
         };
         let Some(conn) = self.core.live_conn(&self.machine) else {
@@ -1059,14 +1066,18 @@ impl Chat {
             Err(e) => return failed(&e),
         }
         // From here keys may have gone: nothing is sent again.
-        let pressed = c
-            .call_timeout(
-                "terminal.keys",
-                json!({"terminal": self.address, "keys": keys}),
-                KEYS_WAIT,
-            )
-            .await;
-        if pressed.is_err() {
+        let keys = match planned {
+            Planned::Keys(keys) => keys,
+            Planned::Multi(m) => {
+                let Answer::Multi(ticked) = &answer else {
+                    return ChatAnswer::Changed;
+                };
+                return self
+                    .answer_multi(&c, &id, &qs, step, ticked, typed.as_deref(), m)
+                    .await;
+            }
+        };
+        if !self.press(&c, &keys).await {
             return ChatAnswer::Unconfirmed;
         }
         if let Some(text) = &typed {
@@ -1076,55 +1087,160 @@ impl Chat {
                 Ok(s) if question::progress(&s, &qs) == Progress::Question(step) => {}
                 _ => return ChatAnswer::Unconfirmed,
             }
-            let sent = c
-                .call_timeout(
-                    "terminal.send",
-                    json!({"terminal": self.address, "text": text, "force": true}),
-                    KEYS_WAIT,
-                )
-                .await;
-            if sent.is_err() {
+            if !self.type_forced(&c, text).await {
                 return ChatAnswer::Unconfirmed;
             }
         }
-        if !after.is_empty() {
-            // Multi-select with own words: still on the question, then submit.
-            match self.screen(&c).await {
-                Ok(s) if question::progress(&s, &qs) == Progress::Question(step) => {}
-                _ => return ChatAnswer::Unconfirmed,
-            }
-            let pressed = c
-                .call_timeout(
-                    "terminal.keys",
-                    json!({"terminal": self.address, "keys": after}),
-                    KEYS_WAIT,
-                )
-                .await;
-            if pressed.is_err() {
-                return ChatAnswer::Unconfirmed;
-            }
-        }
+        self.confirm(&c, &id, &qs, step, &answer).await
+    }
+
+    /// One `terminal.keys` call; false when it may not have arrived.
+    async fn press(&self, c: &Client, keys: &[String]) -> bool {
+        c.call_timeout(
+            "terminal.keys",
+            json!({"terminal": self.address, "keys": keys}),
+            KEYS_WAIT,
+        )
+        .await
+        .is_ok()
+    }
+
+    /// The text pasted with its Enter, even though the agent is blocked.
+    async fn type_forced(&self, c: &Client, text: &str) -> bool {
+        c.call_timeout(
+            "terminal.send",
+            json!({"terminal": self.address, "text": text, "force": true}),
+            KEYS_WAIT,
+        )
+        .await
+        .is_ok()
+    }
+
+    /// The screen once `ok` holds for it, read up to [CONFIRM_TRIES] times
+    /// [CONFIRM_GAP] apart (a redraw may lag the keys); none if it never does.
+    async fn screen_until(&self, c: &Client, ok: impl Fn(&str) -> bool) -> Option<String> {
         for i in 0..CONFIRM_TRIES {
             if i > 0 {
                 tokio::time::sleep(CONFIRM_GAP).await;
             }
-            let Ok(s) = self.screen(&c).await else {
+            if let Ok(s) = self.screen(c).await
+                && ok(&s)
+            {
+                return Some(s);
+            }
+        }
+        None
+    }
+
+    /// A multi-select answer (design section B, 5.1 desk round): the ticks;
+    /// with own words, the text and, while its row shows unticked, an Enter;
+    /// once the screen shows exactly the planned ticks, off the question; a
+    /// call of one question then sends from its review step. Each step
+    /// waits for the screen it depends on; a screen that never comes stops
+    /// the answer, and nothing is sent again.
+    #[allow(clippy::too_many_arguments)]
+    async fn answer_multi(
+        &self,
+        c: &Client,
+        id: &str,
+        qs: &[question::Question],
+        step: usize,
+        ticked: &[usize],
+        typed: Option<&str>,
+        m: question::MultiPlan,
+    ) -> ChatAnswer {
+        let q = &qs[step];
+        let here = |s: &str| question::progress(s, qs) == Progress::Question(step);
+        if !m.ticks.is_empty() && !self.press(c, &m.ticks).await {
+            return ChatAnswer::Unconfirmed;
+        }
+        if self
+            .screen_until(c, |s| here(s) && question::ticks_shown(s, q, ticked, false))
+            .await
+            .is_none()
+        {
+            return ChatAnswer::Unconfirmed;
+        }
+        if let Some(text) = typed {
+            if !self.type_forced(c, text).await {
+                return ChatAnswer::Unconfirmed;
+            }
+            let Some(s) = self
+                .screen_until(c, |s| here(s) && question::typed_row(s, q, text).is_some())
+                .await
+            else {
+                return ChatAnswer::Unconfirmed;
+            };
+            if question::typed_row(&s, q, text) == Some(false)
+                && !self.press(c, &["enter".to_string()]).await
+            {
+                return ChatAnswer::Unconfirmed;
+            }
+            if self
+                .screen_until(c, |s| {
+                    here(s)
+                        && question::typed_row(s, q, text) == Some(true)
+                        && question::ticks_shown(s, q, ticked, true)
+                })
+                .await
+                .is_none()
+            {
+                return ChatAnswer::Unconfirmed;
+            }
+        }
+        if !self.press(c, &m.next).await {
+            return ChatAnswer::Unconfirmed;
+        }
+        if qs.len() > 1 {
+            return self
+                .confirm(c, id, qs, step, &Answer::Multi(ticked.to_vec()))
+                .await;
+        }
+        // One question: its review step, "Submit answers" in focus.
+        if self
+            .screen_until(c, |s| question::progress(s, qs) == Progress::Review)
+            .await
+            .is_none()
+        {
+            return ChatAnswer::Unconfirmed;
+        }
+        if !self.press(c, &["enter".to_string()]).await {
+            return ChatAnswer::Unconfirmed;
+        }
+        self.confirm(c, id, qs, step, &Answer::Submit).await
+    }
+
+    /// Whether the step arrived: the screen moved on, or the dialog is gone
+    /// and the log holds the call's result.
+    async fn confirm(
+        &self,
+        c: &Client,
+        id: &str,
+        qs: &[question::Question],
+        step: usize,
+        answer: &Answer,
+    ) -> ChatAnswer {
+        for i in 0..CONFIRM_TRIES {
+            if i > 0 {
+                tokio::time::sleep(CONFIRM_GAP).await;
+            }
+            let Ok(s) = self.screen(c).await else {
                 continue;
             };
-            match question::moved_on(&answer, step, question::progress(&s, &qs)) {
+            match question::moved_on(answer, step, question::progress(&s, qs)) {
                 Moved::Yes => return ChatAnswer::Done,
                 Moved::No => {}
                 Moved::AskLog => {
                     let r = self.state.lock().unwrap().plan_read();
                     if let Some(r) = r {
-                        let got = read_chunk(&c, &r).await;
+                        let got = read_chunk(c, &r).await;
                         self.state.lock().unwrap().take_read(got, Instant::now());
                     }
                     let closed = self
                         .state
                         .lock()
                         .unwrap()
-                        .asked(&id)
+                        .asked(id)
                         .is_some_and(|a| a.state != State::Pending);
                     if closed {
                         return ChatAnswer::Done;
