@@ -275,6 +275,43 @@ button{font-family:inherit;color:inherit}
 .fr-chat{flex:1;padding:14px 16px;display:flex;flex-direction:column;justify-content:flex-end;gap:12px;background:var(--bg);font-size:15px;line-height:1.5;overflow:hidden}
 .fr-chat p{margin:0;color:var(--fg)}
 .fr-chat .fr-you{color:var(--muted)}
+
+.fd-bar{display:flex;gap:6px;align-self:stretch}
+.fd-bar i{flex:1;height:3px;border-radius:2px;background:var(--border)}
+.fd-bar i.on{background:var(--fg)}
+.fd-bar.b{gap:5px}
+.fd-bar.b i{height:6px;border-radius:3px}
+.fd-bar.b i.cur{flex:2.2}
+.fd-b h2{font-size:27px;letter-spacing:-.015em}
+.fd-b{gap:20px}
+.fd-choices{display:flex;flex-direction:column;gap:12px}
+.fd-card{position:relative;display:flex;flex-direction:column;gap:6px;padding:16px;border-radius:14px;border:1px solid var(--input)}
+.fd-card b{font-weight:500;font-size:16px;line-height:1.3}
+.fd-card span{font-size:14px;line-height:1.45;color:var(--muted)}
+.fd-card.fill{background:var(--solid);border-color:var(--solid);color:var(--solid-fg)}
+.fd-card.fill span{color:var(--solid-fg);opacity:.74}
+.fd-card.b{padding:18px 44px 18px 18px;border-radius:20px}
+.fd-card em{position:absolute;right:14px;top:50%;transform:translateY(-50%);display:flex;opacity:.7}
+.fd-card.fill em{color:var(--solid-fg)}
+.fd-list{display:flex;flex-direction:column;gap:18px}
+.fd-row{display:flex;gap:12px;align-items:flex-start;font-size:16px;line-height:24px;color:var(--dim)}
+.fd-row.done,.fd-row.now,.fd-row.fail{color:var(--fg)}
+.fd-row p{margin:6px 0 0;font-size:14px;line-height:1.5;color:var(--muted)}
+.fd-row .fd-err b{font-weight:500;color:var(--fg)}
+.fd-mark{flex:none;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid var(--border);box-sizing:border-box}
+.fd-row.done .fd-mark{border-color:var(--fg);color:var(--fg)}
+.fd-row.now .fd-mark{border-color:var(--border);border-top-color:var(--fg)}
+.fd-row.fail .fd-mark{border-color:var(--blocked);color:var(--blocked)}
+.fd-mark.b{width:26px;height:26px}
+.fd-row.done .fd-mark.b{background:var(--a2);border-color:var(--a2);color:var(--solid-fg)}
+.fd-ok{display:flex;align-items:center;gap:12px;padding:14px;border:1px solid var(--border);background:var(--canvas);border-radius:12px;font-size:15px}
+.fd-ok.a>span{display:flex;width:22px;height:22px;border-radius:50%;border:2px solid var(--a2);color:var(--a2);align-items:center;justify-content:center;box-sizing:border-box}
+.fd-ok.b{flex-direction:column;align-items:center;text-align:center;gap:18px;padding:28px 14px;border-radius:20px}
+.fd-halo{display:flex;width:104px;height:104px;border-radius:50%;background:color-mix(in srgb,var(--a2) 18%,transparent);align-items:center;justify-content:center}
+.fd-disc{display:flex;width:68px;height:68px;border-radius:50%;background:var(--a2);color:var(--solid-fg);align-items:center;justify-content:center}
+.fd-disc svg{width:30px;height:30px}
+.fd-okt b{font-weight:500;font-size:17px}
+.fd-okt p{margin:4px 0 0}
 .fr-set{display:flex;align-items:flex-start;gap:24px;flex-wrap:wrap}
 .fr-variant{display:flex;flex-direction:column;gap:10px}
 .fr-label{font-size:13px;font-weight:500;color:#98999b}
@@ -1121,6 +1158,41 @@ function frMachinesKeyChoices(theme, variant='listed'){
     <div style="flex:1"></div>`, '', `<div class="top" style="padding-left:4px"><button class="iconbtn" style="color:var(--fg)" aria-label="Back">${ico.back}</button><h1 style="font-size:20px">Machines</h1></div>`);
 }
 
+
+// ---------- first-run design directions (task 049): A restrained, B warmer. Existing tokens only. ----------
+const fdCheck = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 7.5l3 3 6-7"/></svg>';
+const fdCross = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 3l8 8M11 3l-8 8"/></svg>';
+const fdBar = (d, n) => `<div class="fd-bar ${d}" role="img" aria-label="Step ${n} of 4">${[1,2,3,4].map(i=>`<i class="${i<=n?'on':''}${d==='b'&&i===n?' cur':''}"></i>`).join('')}</div>`;
+const fdBody = (d, n, title, body) => `<div class="fr-body fd-${d}">${fdBar(d,n)}<h2>${title}</h2>${body}</div>`;
+const fdCard = (d, title, text, fill) => `<div class="fd-card ${d}${fill?' fill':''}"><b>${title}</b><span>${text}</span>${d==='b'?`<em>${ico.right}</em>`:''}</div>`;
+const fdChoices = d => `<div class="fd-choices">${fdCard(d,'kudde adds it for you',"kudde signs in once as dev with that account's password, adds the same key and signs out. The password is not stored.",true)}${fdCard(d,'Add it yourself','Run one command at the machine. kudde never sees a password.',false)}</div>`;
+function fdKeyChoices(d, big){
+  const body = fdBody(d, 2, "This phone's key", `<p>Choose how to add it to workstation, signed in as dev.</p>${fdChoices(d)}<p>Both ways add only this phone's public key, limited to herdr-core. Existing keys stay in place.</p>`);
+  return t => frPhone(t, big ? body.replace('class="fr-body ', `style="zoom:1.45" class="fr-body `) : body, '');
+}
+function fdPassword(d){
+  return t => frPhone(t, fdBody(d, 2, "This phone's key", `<p>kudde signs in once as dev with that account's password, adds the same key and signs out. The password is not stored.</p>
+    <div class="fr-field"><span>Password for dev on workstation</span><div class="field">••••••••</div></div>`), frButton('Add the key') + frButton('Add it yourself', false) + frButton('Cancel', false));
+}
+// Draft step labels (for Ezra): "Signing in as dev", "Adding the key", "Signing out".
+const fdRow = (d, state, label, extra='') => `<div class="fd-row ${state}"><span class="fd-mark ${d}">${state==='done'?fdCheck:state==='fail'?fdCross:''}</span><div><span class="fd-lab">${label}</span>${extra}</div></div>`;
+function fdWorking(d, fail){
+  return t => frPhone(t, fdBody(d, 2, "This phone's key", `<div class="fd-list ${d}" role="status">
+    ${fail ? fdRow(d,'fail','Signing in as dev',`<p class="fd-err"><b>workstation did not accept the password for dev.</b><br>Check it and try again. Nothing was changed there.</p>`)
+           : fdRow(d,'done','Signing in as dev')}
+    ${fdRow(d, fail?'todo':'now','Adding the key')}
+    ${fdRow(d,'todo','Signing out')}
+  </div>`), fail ? frButton('Add the key') + frButton('Add it yourself', false) + frButton('Cancel', false) : frButton('Add it yourself', false) + frButton('Cancel', false));
+}
+// Draft success line for B only: "Your first machine is set up."
+function fdSuccess(d){
+  const mark = d === 'a'
+    ? `<div class="fd-ok a"><span>${fdCheck}</span><b>workstation is connected.</b></div>`
+    : `<div class="fd-ok b"><span class="fd-halo"><span class="fd-disc">${fdCheck}</span></span><div class="fd-okt"><b>workstation is connected.</b><p>Your first machine is set up.</p></div></div>`;
+  return t => frPhone(t, fdBody(d, 3, 'Connected', `${mark}<p>herdr-core 0.1.16</p><p>3 agents are running there.</p>`), frButton('Continue'));
+}
+const fdVariants = d => [['Key choices (stacked, one tappable card each)',fdKeyChoices(d,false)],['Key choices at large text',fdKeyChoices(d,true)],['Password field',fdPassword(d)],['Working: signing in done, adding the key now',fdWorking(d,false)],['Wrong password (R9) on the step that failed',fdWorking(d,true)],['Connected: the earned moment',fdSuccess(d)]];
+
 const SCREENS = [
   ['1-home-dark','1 Agent list (graphite)',()=>home('graphite')],
   ['2-home-light','2 Agent list (paper)',()=>home('paper')],
@@ -1159,6 +1231,8 @@ const SCREENS = [
   ['first-run-alerts','First run · Alerts',()=>frBoth([['Before (AL4)',t=>frAlerts(t,'before')],['Test received (AL6)',t=>frAlerts(t,'received')],['No test alert (AL7)',t=>frAlerts(t,'missed')]])],
   ['first-run-trust','First run · Compare the fingerprint',()=>frBoth([['Trust dialog',frTrust]])],
   ['first-run-home','First run · Home',()=>frBoth([['Finish setup',frHome],['Empty after completion',t=>frHome(t,true)]])],
+  ['first-run-dir-a','First run · Direction A, restrained',()=>frBoth(fdVariants('a'))],
+  ['first-run-dir-b','First run · Direction B, warmer',()=>frBoth(fdVariants('b'))],
   ['first-run-hint','First run · Title bar hint',()=>frBoth([['Terminal, tab of three',t=>frHint(t,'terminal')],['Chat, tab of three',t=>frHint(t,'chat')],['Terminal, one-pane tab (G2 explains the bounce)',t=>frHint(t,'terminal',false,true)],['With TalkBack (G6 in place of G2 to G4)',t=>frHint(t,'terminal',true)]])],
   ['first-run-key-choices','First run · Key choices',()=>frBoth([['Side by side',t=>frKeyChoices(t)],['Stacked at large text',t=>frKeyChoices(t,true)]])],
   ['first-run-password-trust','First run · Password way, trust dialog',()=>frBoth([['Trust dialog (R3 to R5)',frPwDialog]])],
