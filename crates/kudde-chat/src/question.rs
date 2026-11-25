@@ -66,6 +66,38 @@ pub struct Asked {
 }
 
 impl Asked {
+    /// The folded line: "Answered: <headers>" naming only the questions the
+    /// result's structured `answers` holds (Ezra's third try: a skipped one is
+    /// left out), every header when the line has none, and "Skipped: <every
+    /// header>" for a declined call or one answered with no answer at all.
+    /// None when the call has no headers to name.
+    pub fn folded(
+        &self,
+        failed: bool,
+        answers: Option<&serde_json::Map<String, serde_json::Value>>,
+    ) -> Option<String> {
+        let Shape::Readable(qs) = &self.shape else {
+            return None;
+        };
+        let all = self.headers();
+        if failed || answers.is_some_and(|a| a.is_empty()) {
+            return (!all.is_empty()).then(|| format!("Skipped: {all}"));
+        }
+        let named: Vec<&str> = qs
+            .iter()
+            .filter(|q| answers.is_none_or(|a| a.contains_key(&q.text)))
+            .map(|q| q.header.trim())
+            .filter(|h| !h.is_empty())
+            .collect();
+        // Answers keyed by texts the call does not hold: name every header.
+        let h = if named.is_empty() {
+            all
+        } else {
+            named.join(", ")
+        };
+        (!h.is_empty()).then(|| format!("Answered: {h}"))
+    }
+
     /// The headers, for the folded line ("Answered: Database").
     pub fn headers(&self) -> String {
         match &self.shape {
