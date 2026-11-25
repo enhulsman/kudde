@@ -157,8 +157,16 @@ impl Core {
     }
 }
 
-/// A chat on a connected desk that holds `lines` of the log.
+/// A chat on a connected desk that holds `lines` of the log, with the log's
+/// call with no result held as if the hook's record had given it.
 async fn with_log(r: &mut Rig, lines: &[String]) -> (Core, Arc<Chat>, u64) {
+    let (core, chat, end) = open_chat(r, lines).await;
+    chat.hold_for_test();
+    (core, chat, end)
+}
+
+/// A chat on a connected desk that holds `lines` of the log; nothing held.
+async fn open_chat(r: &mut Rig, lines: &[String]) -> (Core, Arc<Chat>, u64) {
     r.add_trusted(WS, WS_KEY);
     r.hub.resume();
     let mut core = r.core().await;
@@ -452,20 +460,53 @@ async fn multi_select_is_not_sent_until_confirmed() {
     core.nothing_more().await;
 }
 
-// ---- the card in the poll (design D1)
+// ---- the card in the poll (design D1: the hook's record, the log, the screen)
 
-async fn poll(
+/// The hook's record for `id` asking `questions`, as the reader prints it.
+fn record(id: &str, session: &str, questions: Value) -> String {
+    json!({"session_id": session, "hook_event_name": "PreToolUse", "tool_name": "AskUserQuestion",
+           "tool_input": {"questions": questions}, "tool_use_id": id})
+    .to_string()
+}
+
+fn terminal_kind(status: &str, kind: &str) -> Value {
+    let mut t = terminal(status);
+    t["status"]["kind"] = json!(kind);
+    t
+}
+
+impl Core {
+    /// The reader of the hook's record for the session: `None` prints "missing".
+    async fn serves_record(&mut self, rec: Option<&str>) {
+        let req = self.expect("machine.exec").await;
+        assert_eq!(
+            req["params"]["argv"][2],
+            kudde_chat::question::HOOK_READ_SCRIPT,
+            "a record read: {req}"
+        );
+        assert_eq!(req["params"]["argv"][4], SESSION);
+        self.reply(&req, exec_out(rec.unwrap_or("missing\n"))).await;
+    }
+}
+
+/// One poll: `terminal.get` with `t`, the log, then (when a question may
+/// wait) the record and (when it is fresh and readable) the screen.
+async fn poll_with(
     core: &mut Core,
     chat: &Arc<Chat>,
-    status: &str,
+    t: Value,
     end: u64,
+    rec: Option<Option<&str>>,
     screen: Option<&str>,
 ) -> crate::hub::chat::ChatPoll {
     let c = chat.clone();
     let got = tokio::spawn(async move { c.poll_for_test().await });
     let req = core.expect("terminal.get").await;
-    core.reply(&req, terminal(status)).await;
+    core.reply(&req, t).await;
     core.serves_log(end, &[]).await;
+    if let Some(r) = rec {
+        core.serves_record(r).await;
+    }
     if let Some(s) = screen {
         core.serves_screen(s).await;
     }
@@ -473,17 +514,23 @@ async fn poll(
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_blocked_agent_with_a_pending_call_shows_the_card() {
+async fn the_record_a_block_and_the_screen_give_the_card() {
     let mut r = rig("q-card");
-    let (mut core, chat, end) =
-        with_log(&mut r, &[ask_line("toolu_01", json!([database()]))]).await;
-    let p = poll(&mut core, &chat, "blocked", end, None).await;
+    let (mut core, chat, end) = open_chat(&mut r, &[]).await;
+    let rec = record("toolu_01", SESSION, json!([database()]));
+    let p = poll_with(
+        &mut core,
+        &chat,
+        terminal_kind("blocked", "question"),
+        end,
+        Some(Some(&rec)),
+        Some(DIALOG),
+    )
+    .await;
     let q = p.question.expect("a card");
     assert_eq!(q.id, "toolu_01");
     assert!(q.readable);
-    assert_eq!(q.step, 0);
-    assert!(!q.review);
-    assert_eq!(q.questions.len(), 1);
+    assert_eq!((q.step, q.review), (0, false));
     let a = &q.questions[0];
     assert_eq!(a.text, "Which database should the todo app use?");
     assert_eq!(a.header, "Database");
@@ -495,62 +542,360 @@ async fn a_blocked_agent_with_a_pending_call_shows_the_card() {
         Some("services:\n  db: postgres")
     );
     assert_eq!(a.options[0].preview, None);
+    // The card then answers from the held record.
+    let got = spawn_answer(&chat, "toolu_01", 0, ChatChoice::Pick { index: 0 });
+    core.serves_check("blocked").await;
+    core.serves_screen(DIALOG).await;
+    let k = core.takes_keys(&["1", "enter"]).await;
+    core.reply(&k, json!({"turn": 3})).await;
+    core.serves_screen(PROMPT).await;
+    // Claude Code 2.1.331 writes the call and its result together.
+    core.serves_log(
+        end,
+        &[
+            ask_line("toolu_01", json!([database()])),
+            result_line("toolu_01", false),
+        ],
+    )
+    .await;
+    assert_eq!(got.await.unwrap(), ChatAnswer::Done);
+    core.nothing_more().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn no_record_says_open_the_terminal_and_answers_nothing() {
+    let mut r = rig("q-nohook");
+    let (mut core, chat, end) = open_chat(&mut r, &[]).await;
+    let p = poll_with(
+        &mut core,
+        &chat,
+        terminal_kind("blocked", "question"),
+        end,
+        Some(None),
+        None,
+    )
+    .await;
+    let q = p.question.expect("a card that says so");
+    assert!(!q.readable);
+    assert!(q.questions.is_empty());
+    assert!(q.texts.is_empty());
+    let got = spawn_answer(&chat, &q.id, 0, ChatChoice::Pick { index: 0 });
+    assert_eq!(got.await.unwrap(), ChatAnswer::Changed);
+    core.nothing_more().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_stale_record_says_open_the_terminal() {
+    let mut r = rig("q-stale");
+    let (mut core, chat, end) = open_chat(
+        &mut r,
+        &[
+            ask_line("toolu_01", json!([database()])),
+            result_line("toolu_01", false),
+        ],
+    )
+    .await;
+    let rec = record("toolu_01", SESSION, json!([database()]));
+    let p = poll_with(
+        &mut core,
+        &chat,
+        terminal_kind("blocked", "question"),
+        end,
+        Some(Some(&rec)),
+        None,
+    )
+    .await;
+    let q = p.question.unwrap();
+    assert!(!q.readable);
+    assert!(
+        q.texts.is_empty(),
+        "an answered call's text is not the new question"
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_record_of_another_session_says_open_the_terminal() {
+    let mut r = rig("q-other-session");
+    let (mut core, chat, end) = open_chat(&mut r, &[]).await;
+    let rec = record(
+        "toolu_01",
+        "bbbbbbbb-1111-4111-8111-111111111111",
+        json!([database()]),
+    );
+    let p = poll_with(
+        &mut core,
+        &chat,
+        terminal_kind("blocked", "question"),
+        end,
+        Some(Some(&rec)),
+        None,
+    )
+    .await;
+    assert!(!p.question.unwrap().readable);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_screen_that_disagrees_says_open_the_terminal() {
+    let mut r = rig("q-disagree");
+    let (mut core, chat, end) = open_chat(&mut r, &[]).await;
+    let rec = record("toolu_01", SESSION, json!([database()]));
+    let p = poll_with(
+        &mut core,
+        &chat,
+        terminal_kind("blocked", "question"),
+        end,
+        Some(Some(&rec)),
+        Some(OTHER),
+    )
+    .await;
+    let q = p.question.unwrap();
+    assert!(!q.readable);
+    assert_eq!(
+        q.texts,
+        vec!["Which database should the todo app use?".to_string()]
+    );
+    let got = spawn_answer(&chat, "toolu_01", 0, ChatChoice::Pick { index: 0 });
+    assert_eq!(got.await.unwrap(), ChatAnswer::Changed);
+    core.nothing_more().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_permission_prompt_shows_no_card_and_reads_no_record() {
+    let mut r = rig("q-permission");
+    let (mut core, chat, end) = open_chat(&mut r, &[]).await;
+    let p = poll_with(
+        &mut core,
+        &chat,
+        terminal_kind("blocked", "permission"),
+        end,
+        None,
+        None,
+    )
+    .await;
+    assert!(p.question.is_none());
+    core.nothing_more().await;
 }
 
 #[tokio::test(start_paused = true)]
 async fn no_card_unless_blocked() {
     let mut r = rig("q-nocard");
     let (mut core, chat, end) =
-        with_log(&mut r, &[ask_line("toolu_01", json!([database()]))]).await;
+        open_chat(&mut r, &[ask_line("toolu_01", json!([database()]))]).await;
     for status in ["idle", "working", "done"] {
-        let p = poll(&mut core, &chat, status, end, None).await;
+        let p = poll_with(&mut core, &chat, terminal(status), end, None, None).await;
         assert!(p.question.is_none(), "{status}");
     }
 }
 
 #[tokio::test(start_paused = true)]
-async fn several_questions_follow_the_screen() {
-    let mut r = rig("q-follow");
-    let (mut core, chat, end) = with_log(
-        &mut r,
-        &[ask_line("toolu_01", json!([database(), login()]))],
-    )
-    .await;
-    let p = poll(&mut core, &chat, "blocked", end, Some(LOGIN)).await;
+async fn a_call_in_the_log_without_a_record_says_open_the_terminal() {
+    // A Claude Code that writes the waiting call early, with no hook and no status kind.
+    let mut r = rig("q-log-only");
+    let (mut core, chat, end) =
+        open_chat(&mut r, &[ask_line("toolu_01", json!([database()]))]).await;
+    let p = poll_with(&mut core, &chat, terminal("blocked"), end, Some(None), None).await;
     let q = p.question.unwrap();
-    assert_eq!((q.step, q.review), (1, false));
-    let p = poll(&mut core, &chat, "blocked", end, Some(REVIEW)).await;
-    let q = p.question.unwrap();
-    assert_eq!((q.step, q.review), (2, true));
-    // A screen the card does not know keeps the step it had.
-    let p = poll(&mut core, &chat, "blocked", end, Some(OTHER)).await;
-    let q = p.question.unwrap();
-    assert_eq!((q.step, q.review), (2, true));
+    assert_eq!(q.id, "toolu_01");
+    assert!(!q.readable);
+    assert_eq!(
+        q.texts,
+        vec!["Which database should the todo app use?".to_string()]
+    );
 }
 
 #[tokio::test(start_paused = true)]
-async fn an_unreadable_call_shows_its_text_only_and_multi_select_is_not_answerable() {
+async fn several_questions_follow_the_screen() {
+    let mut r = rig("q-follow");
+    let (mut core, chat, end) = open_chat(&mut r, &[]).await;
+    let rec = record("toolu_01", SESSION, json!([database(), login()]));
+    let t = || terminal_kind("blocked", "question");
+    let q = poll_with(&mut core, &chat, t(), end, Some(Some(&rec)), Some(LOGIN))
+        .await
+        .question
+        .unwrap();
+    assert_eq!((q.readable, q.step, q.review), (true, 1, false));
+    let q = poll_with(&mut core, &chat, t(), end, Some(Some(&rec)), Some(REVIEW))
+        .await
+        .question
+        .unwrap();
+    assert_eq!((q.step, q.review), (2, true));
+    // A screen the card does not know keeps the step it had for the call held.
+    let q = poll_with(&mut core, &chat, t(), end, Some(Some(&rec)), Some(OTHER))
+        .await
+        .question
+        .unwrap();
+    assert_eq!((q.readable, q.step, q.review), (true, 2, true));
+}
+
+#[tokio::test(start_paused = true)]
+async fn an_unreadable_record_shows_its_text_only_and_multi_select_is_not_answerable() {
     let mut r = rig("q-unreadable");
+    let (mut core, chat, end) = open_chat(&mut r, &[]).await;
     let bad = json!([{"question": "Which database?", "header": "Database", "multiSelect": false,
                       "options": [{"description": "no label"}, {"label": "Postgres"}]}]);
-    let (mut core, chat, end) = with_log(&mut r, &[ask_line("toolu_01", bad)]).await;
-    let q = poll(&mut core, &chat, "blocked", end, None)
-        .await
-        .question
-        .unwrap();
+    let rec = record("toolu_01", SESSION, bad);
+    let q = poll_with(
+        &mut core,
+        &chat,
+        terminal("blocked"),
+        end,
+        Some(Some(&rec)),
+        None,
+    )
+    .await
+    .question
+    .unwrap();
     assert!(!q.readable);
     assert_eq!(q.texts, vec!["Which database?".to_string()]);
-    let mut r = rig("q-multi-card");
     let mut v = database();
     v["multiSelect"] = json!(true);
-    let (mut core, chat, end) = with_log(&mut r, &[ask_line("toolu_02", json!([v]))]).await;
-    let q = poll(&mut core, &chat, "blocked", end, None)
-        .await
-        .question
-        .unwrap();
+    let rec = record("toolu_02", SESSION, json!([v]));
+    let q = poll_with(
+        &mut core,
+        &chat,
+        terminal("blocked"),
+        end,
+        Some(Some(&rec)),
+        Some(DIALOG),
+    )
+    .await
+    .question
+    .unwrap();
     assert!(q.readable);
     assert!(q.questions[0].multi);
     assert!(!q.questions[0].answerable);
+}
+
+#[tokio::test(start_paused = true)]
+async fn nothing_is_answered_without_a_held_record() {
+    let mut r = rig("q-unheld");
+    let (mut core, chat, _) = open_chat(&mut r, &[ask_line("toolu_01", json!([database()]))]).await;
+    let got = spawn_answer(&chat, "toolu_01", 0, ChatChoice::Pick { index: 0 });
+    assert_eq!(got.await.unwrap(), ChatAnswer::Changed);
+    core.nothing_more().await;
+}
+
+// ---- a note on a preview option (design D9)
+
+const FOCUSED: &str = "\
+ ☐ Database
+Which database should the todo app use?
+  1. SQLite (Recommended)        ┌──────────────┐
+❯ 2. Postgres                    │ services:    │
+                                 └──────────────┘
+                                 Notes: press n to add notes
+  Chat about this
+";
+
+#[tokio::test(start_paused = true)]
+async fn a_note_is_the_digit_then_n_then_the_note_each_after_its_screen() {
+    let mut r = rig("q-note");
+    let (mut core, chat, end) =
+        with_log(&mut r, &[ask_line("toolu_01", json!([database()]))]).await;
+    let got = spawn_answer(
+        &chat,
+        "toolu_01",
+        0,
+        ChatChoice::Note {
+            index: 1,
+            text: "Through Docker, please".into(),
+        },
+    );
+    core.serves_check("blocked").await;
+    core.serves_screen(DIALOG).await;
+    let k = core.takes_keys(&["2"]).await;
+    core.reply(&k, json!({"turn": 3})).await;
+    core.serves_screen(FOCUSED).await;
+    let k = core.takes_keys(&["n"]).await;
+    core.reply(&k, json!({"turn": 3})).await;
+    core.serves_screen(&FOCUSED.replace("press n to add notes", "Add notes on this design…"))
+        .await;
+    let send = core.expect("terminal.send").await;
+    assert_eq!(send["params"]["text"], "Through Docker, please");
+    assert_eq!(send["params"]["force"], true);
+    core.reply(&send, json!({"turn": 3, "status": "blocked"}))
+        .await;
+    core.serves_screen(PROMPT).await;
+    core.serves_log(end, &[result_line("toolu_01", false)])
+        .await;
+    assert_eq!(got.await.unwrap(), ChatAnswer::Done);
+    core.nothing_more().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_focus_that_never_shows_stops_before_n() {
+    let mut r = rig("q-note-stuck");
+    let (mut core, chat, _) = with_log(&mut r, &[ask_line("toolu_01", json!([database()]))]).await;
+    let got = spawn_answer(
+        &chat,
+        "toolu_01",
+        0,
+        ChatChoice::Note {
+            index: 1,
+            text: "Docker".into(),
+        },
+    );
+    core.serves_check("blocked").await;
+    core.serves_screen(DIALOG).await;
+    let k = core.takes_keys(&["2"]).await;
+    core.reply(&k, json!({"turn": 3})).await;
+    assert_eq!(
+        only_reads_until(&mut core, got, DIALOG).await,
+        ChatAnswer::Unconfirmed
+    );
+    core.nothing_more().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn an_empty_note_is_a_plain_pick_and_a_long_one_sends_nothing() {
+    let mut r = rig("q-note-empty");
+    let (mut core, chat, end) =
+        with_log(&mut r, &[ask_line("toolu_01", json!([database()]))]).await;
+    let got = spawn_answer(
+        &chat,
+        "toolu_01",
+        0,
+        ChatChoice::Note {
+            index: 1,
+            text: "  ".into(),
+        },
+    );
+    core.serves_check("blocked").await;
+    core.serves_screen(DIALOG).await;
+    let k = core.takes_keys(&["2", "enter"]).await;
+    core.reply(&k, json!({"turn": 3})).await;
+    core.serves_screen(PROMPT).await;
+    core.serves_log(end, &[result_line("toolu_01", false)])
+        .await;
+    assert_eq!(got.await.unwrap(), ChatAnswer::Done);
+    let long = spawn_answer(
+        &chat,
+        "toolu_01",
+        0,
+        ChatChoice::Note {
+            index: 1,
+            text: "x".repeat(2001),
+        },
+    );
+    assert!(matches!(long.await.unwrap(), ChatAnswer::Failed { .. }));
+    core.nothing_more().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_note_where_the_dialog_takes_none_sends_nothing() {
+    let mut r = rig("q-note-none");
+    let (mut core, chat, _) = with_log(&mut r, &[ask_line("toolu_01", json!([login()]))]).await;
+    let got = spawn_answer(
+        &chat,
+        "toolu_01",
+        0,
+        ChatChoice::Note {
+            index: 0,
+            text: "Hi".into(),
+        },
+    );
+    assert_eq!(got.await.unwrap(), ChatAnswer::Changed);
+    core.nothing_more().await;
 }
 
 #[tokio::test(start_paused = true)]
@@ -563,6 +908,7 @@ async fn no_connection_sends_nothing_and_says_so() {
         PID,
         &tail(0, &[ask_line("toolu_01", json!([database()]))]),
     );
+    chat.hold_for_test();
     let got = spawn_answer(&chat, "toolu_01", 0, ChatChoice::Pick { index: 0 });
     assert_eq!(got.await.unwrap(), ChatAnswer::NotConnected);
 }

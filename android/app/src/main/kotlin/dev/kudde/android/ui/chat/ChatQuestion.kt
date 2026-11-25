@@ -53,6 +53,8 @@ const val QUESTION_CHANGED = "The question changed. Nothing was sent."
 const val NOT_CONFIRMED = "Could not confirm the answer arrived. Check the terminal."
 const val OPEN_TERMINAL = "Open the terminal"
 const val NOT_CONNECTED = "Not connected. Nothing was sent."
+const val NOTE_HINT = "Note (optional)"
+const val CHOOSE_THIS = "Choose this"
 
 /** The longest own answer, in characters. */
 const val OTHER_MAX = 2000
@@ -65,6 +67,13 @@ fun stepLine(n: Int, of: Int) = "Question $n of $of"
 fun previewTitle(label: String) = "Preview: $label"
 
 fun canSendOther(text: String) = text.isNotBlank() && text.length <= OTHER_MAX
+
+/** Options with previews: the dialog has no free-text row then, so no "Something else" (owner, 2026-11-25). */
+fun hasPreviews(a: ChatAsk) = a.options.any { it.preview != null }
+
+/** "Choose this" in the preview sheet: the option, with the note when one was typed. */
+fun chooseThis(i: Int, note: String): ChatChoice =
+    if (note.isBlank()) ChatChoice.Pick(i.toUInt()) else ChatChoice.Note(i.toUInt(), note)
 
 fun otherProblem(text: String): String? = if (text.length > OTHER_MAX) TOO_LONG else null
 
@@ -113,6 +122,9 @@ class QuestionCard {
     var otherText by mutableStateOf("")
     var preview by mutableStateOf<ChatOption?>(null)
 
+    /** The note typed in the open preview sheet. */
+    var note by mutableStateOf("")
+
     /** A multi-select question's ticked options. */
     var ticked by mutableStateOf<Set<Int>>(emptySet())
         private set
@@ -145,13 +157,24 @@ class QuestionCard {
         otherOpen = false
         otherText = ""
         preview = null
+        note = ""
         ticked = emptySet()
+    }
+
+    /** Opens the preview sheet of option [o] with an empty note. */
+    fun openPreview(o: ChatOption) {
+        preview = o
+        note = ""
     }
 
     /** A tap: false while an answer is on its way. */
     fun start(choice: ChatChoice): Boolean {
         if (busy) return false
-        chosen = (choice as? ChatChoice.Pick)?.index?.toInt()
+        chosen = when (choice) {
+            is ChatChoice.Pick -> choice.index.toInt()
+            is ChatChoice.Note -> choice.index.toInt()
+            else -> null
+        }
         sending = true
         problem = null
         return true
@@ -256,6 +279,8 @@ fun QuestionCard(
                     },
                     below = otherProblem(card.otherText),
                 )
+                // A question with previews has no free-text row in the dialog: no Something else there.
+                hasPreviews(ask) -> Footer(left = {}, right = { OutlineButton(SKIP, enabled = !card.busy) { answer(ChatChoice.Skip) } })
                 else -> Footer(
                     left = { if (card.otherOpen) Other(card, focusOther, ::answer) else SomethingElse(enabled = !card.busy) { card.otherOpen = true } },
                     right = { OutlineButton(SKIP, enabled = !card.busy) { answer(ChatChoice.Skip) } },
@@ -298,7 +323,7 @@ private fun Options(ask: ChatAsk, card: QuestionCard, focusOther: Boolean, answe
                     if (!enabled) disabled()
                     onClick { act(); true }
                 },
-            trailing = if (o.preview != null && ask.answerable) ({ PreviewPill { card.preview = o } }) else null,
+            trailing = if (o.preview != null && ask.answerable) ({ PreviewPill { card.openPreview(o) } }) else null,
         )
     }
     if (ask.multi && ask.answerable) {

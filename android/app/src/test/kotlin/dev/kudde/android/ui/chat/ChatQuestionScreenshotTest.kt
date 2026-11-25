@@ -110,8 +110,9 @@ class ChatQuestionScreenshotTest {
         capture("multi", one(ask)) { ChatState().apply { card.toggle(1); card.toggle(2) } }
     }
 
+    // Something else is offered on a question without previews (owner, 2026-11-25).
     @Test
-    fun somethingElseOpen() = capture("other", one(database)) {
+    fun somethingElseOpen() = capture("other", one(database.copy(options = database.options.map { it.copy(preview = null) }))) {
         ChatState().apply {
             card.otherOpen = true
             card.otherText = "Use Postgres, but through Docker"
@@ -143,5 +144,56 @@ class ChatQuestionScreenshotTest {
             ),
         )
         capture("multi-typed", one(ask)) { ChatState().apply { card.toggle(0); card.toggle(2); card.otherText = "Berries" } }
+    }
+
+    // The preview sheet, look A (owner, 2026-11-25): the sample unwrapped, a note, "Choose this".
+    private val cards = ChatOption(
+        "Cards", "Roomier blocks per item, easier to scan.",
+        "+----------+ +----------+ +----------+\n| Buy milk | | Call Ann | | Fix bike |\n| today    | | Mon      | | Fri      |\n| ( )      | | (x)      | | ( )      |\n+----------+ +----------+ +----------+",
+    )
+    private val compact = ChatOption(
+        "Compact", "Dense single-line rows, more items at once.",
+        "+------------------------+\n| ( ) Buy milk     today |\n| (x) Call Ann       Mon |\n+------------------------+",
+    )
+    private val layout = ChatAsk(
+        text = "Which list layout should the todo app use?", header = "Layout", multi = false, answerable = true,
+        options = listOf(compact, cards),
+    )
+    private val postgres = ChatOption(
+        "Postgres", "Needs a running server; ready for several users.",
+        buildString {
+            append("services:\n  db:\n    image: postgres:16\n    restart: unless-stopped\n    environment:\n")
+            append("      POSTGRES_USER: todo\n      POSTGRES_PASSWORD: change-me\n      POSTGRES_DB: todo\n")
+            append("    ports:\n      - \"5432:5432\"\n    volumes:\n      - db-data:/var/lib/postgresql/data\n\n")
+            append("-- schema.sql\ncreate table lists (\n  id serial primary key,\n  name text not null,\n  created_at timestamptz default now()\n);\n\n")
+            append("create table items (\n  id serial primary key,\n  list_id int references lists(id) on delete cascade,\n")
+            append("  title text not null,\n  due date,\n  done boolean not null default false,\n  position int not null\n);\n\n")
+            append("create index items_list on items (list_id, position);\n\nvolumes:\n  db-data:\n")
+        },
+    )
+
+    @Test
+    fun previewShort() = capture("preview-short", one(layout)) { ChatState().apply { card.openPreview(cards) } }
+
+    @Test
+    fun previewLong() {
+        val ask = layout.copy(options = listOf(compact, postgres))
+        capture("preview-long", one(ask)) { ChatState().apply { card.openPreview(postgres) } }
+    }
+
+    @Test
+    fun previewNote() = capture("preview-note", one(layout)) {
+        ChatState().apply {
+            card.openPreview(cards)
+            card.note = "Bigger titles please, and the due date on the right"
+        }
+    }
+
+    @Test
+    fun previewLargeText() = capture("preview-large-text", one(layout), fontScale = 1.3f) {
+        ChatState().apply {
+            card.openPreview(cards)
+            card.note = "Bigger titles please"
+        }
     }
 }

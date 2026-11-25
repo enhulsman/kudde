@@ -119,6 +119,37 @@ pub fn read_input(input: &Value) -> Shape {
     Shape::Readable(out)
 }
 
+/// Prints the question hook's record of session `$1` (design D1), or
+/// "missing"; only a plain session id is ever read. The hook script is
+/// `contrib/claude-code/kudde-question-hook.sh`.
+pub const HOOK_READ_SCRIPT: &str = r#"case $1 in ''|*[!0-9a-f-]*) echo missing; exit 0;; esac
+f="${XDG_STATE_HOME:-$HOME/.local/state}/kudde/questions/$1.json"
+if [ -f "$f" ]; then head -c 1048576 "$f"; else echo missing; fi"#;
+
+/// The call the question hook saved: its id, its session and its shape.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Record {
+    pub id: String,
+    pub session: String,
+    pub shape: Shape,
+}
+
+/// The hook's record as [HOOK_READ_SCRIPT] prints it; none when there is
+/// none, it is not an AskUserQuestion call, or it lacks its id or session.
+pub fn read_record(out: &str) -> Option<Record> {
+    let v: Value = serde_json::from_str(out.trim()).ok()?;
+    if v["tool_name"] != TOOL {
+        return None;
+    }
+    let id = v["tool_use_id"].as_str().filter(|s| !s.is_empty())?;
+    let session = v["session_id"].as_str().filter(|s| !s.is_empty())?;
+    Some(Record {
+        id: id.to_owned(),
+        session: session.to_owned(),
+        shape: read_input(&v["tool_input"]),
+    })
+}
+
 /// What a tap on the card answers for one question.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Answer {
@@ -164,6 +195,33 @@ pub fn plan(q: &Question, answer: &Answer) -> Option<Vec<String>> {
         Answer::Submit => Some(vec!["enter".into()]),
         Answer::Multi(_) => None,
     }
+}
+
+/// The first key of a note on option `i` (D9): its digit, which only moves
+/// the focus on a question with previews; then `n` and the note, each after
+/// the screen shows the step before ([focused], [notes_open]). None where
+/// the dialog takes no notes (no previews, multi-select) or out of range.
+pub fn plan_note(q: &Question, i: usize) -> Option<Vec<String>> {
+    (!q.multi && has_previews(q) && i < q.options.len())
+        .then(|| digit(i + 1))
+        .flatten()
+        .map(|d| vec![d])
+}
+
+/// The dialog's focus is on row `row` (1-based): the last pointer on the
+/// screen ("❯ 2. Cards") is that row's.
+pub fn focused(screen: &str, row: usize) -> bool {
+    let screen = fold(screen);
+    screen
+        .rfind('\u{276F}')
+        .is_some_and(|at| screen[at..].starts_with(&format!("\u{276F} {row}. ")))
+}
+
+/// The notes field of a preview question is open: the screen shows its
+/// "Notes:" line, no longer with the hint to press n.
+pub fn notes_open(screen: &str) -> bool {
+    let screen = fold(screen);
+    screen.contains("Notes:") && !screen.contains("press n to add notes")
 }
 
 /// A multi-select answer in steps the hub checks the screen between: the

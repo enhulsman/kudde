@@ -64,6 +64,8 @@ class ChatQuestionTest {
             ChatOption("Postgres", "Needs a running server.", "services:\n  db:\n    image: postgres"),
         ),
     )
+    /** The same question without previews: the dialog then has its free-text row ("Something else"). */
+    private val plainDb = database.copy(options = database.options.map { it.copy(preview = null) })
     private val login = ChatAsk(
         text = "Which login should it have?", header = "Login", multi = false, answerable = true,
         options = listOf(ChatOption("Password", "A form.", null), ChatOption("Passkey", "The phone signs in.", null)),
@@ -242,7 +244,7 @@ class ChatQuestionTest {
 
     @Test
     fun somethingElseTakesTheFocusAndSendGivesItBack() {
-        val s = show(poll(question(database), rows))
+        val s = show(poll(question(plainDb), rows))
         s.card.follow(s.poll?.question)
         tap(SOMETHING_ELSE)
         val field = semanticsNodes().first { it.config.contains(SemanticsProperties.EditableText) }
@@ -256,7 +258,7 @@ class ChatQuestionTest {
 
     @Test
     fun backDismissesTheFieldAndKeepsTheCard() {
-        show(poll(question(database), rows))
+        show(poll(question(plainDb), rows))
         tap(SOMETHING_ELSE)
         assertTrue(focused())
         controller!!.get().onBackPressedDispatcher.onBackPressed()
@@ -360,7 +362,7 @@ class ChatQuestionTest {
 
     @Test
     fun aSingleQuestionShowsItsOptionsSomethingElseAndSkip() {
-        show(poll(question(database), rows))
+        show(poll(question(plainDb), rows))
         assertTrue(shows("Which database should the todo app use?"))
         // The numbers sit in keycaps, without a dot (direction A).
         assertTrue(unmergedSemanticsNodes().any { it.texts() == listOf("1") })
@@ -439,7 +441,7 @@ class ChatQuestionTest {
 
     @Test
     fun somethingElseOpensAFieldAndSendsTheText() {
-        val s = show(poll(question(database), rows))
+        val s = show(poll(question(plainDb), rows))
         tap(SOMETHING_ELSE)
         assertTrue(shows(TYPE_YOUR_ANSWER))
         val send = node(SEND)!!
@@ -452,12 +454,64 @@ class ChatQuestionTest {
 
     @Test
     fun tooLongOwnWordsSayWhyAndCannotBeSent() {
-        val s = show(poll(question(database), rows))
+        val s = show(poll(question(plainDb), rows))
         tap(SOMETHING_ELSE)
         s.card.otherText = "x".repeat(2001)
         idle()
         assertTrue(shows(TOO_LONG))
         assertTrue(node(SEND)!!.config.contains(SemanticsProperties.Disabled))
+    }
+
+    // Owner, 2026-11-25: a question with previews has no free-text row in the dialog.
+    @Test
+    fun aQuestionWithPreviewsHasNoSomethingElse() {
+        show(poll(question(database), rows))
+        assertNull(node(SOMETHING_ELSE))
+        assertNotNull(node(SKIP))
+        assertNotNull(node(PREVIEW))
+    }
+
+    // Look A (owner, 2026-11-25): the sheet holds the sample, a note and "Choose this".
+    @Test
+    fun chooseThisAnswersTheOptionAndClosesTheSheet() {
+        val s = show(poll(question(database), rows))
+        s.card.follow(s.poll?.question)
+        tap(PREVIEW)
+        assertNotNull(node(NOTE_HINT))
+        tap(CHOOSE_THIS)
+        assertEquals(listOf<ChatChoice>(ChatChoice.Pick(1u)), answers)
+        assertFalse(shows("Preview: Postgres"))
+    }
+
+    @Test
+    fun aNoteGoesWithChooseThis() {
+        val s = show(poll(question(database), rows))
+        s.card.follow(s.poll?.question)
+        tap(PREVIEW)
+        s.card.note = "Through Docker, please"
+        idle()
+        tap(CHOOSE_THIS)
+        assertEquals(listOf<ChatChoice>(ChatChoice.Note(1u, "Through Docker, please")), answers)
+    }
+
+    @Test
+    fun aTooLongNoteSaysWhyAndHoldsChooseThis() {
+        val s = show(poll(question(database), rows))
+        tap(PREVIEW)
+        s.card.note = "x".repeat(2001)
+        idle()
+        assertTrue(shows(TOO_LONG))
+        assertTrue(node(CHOOSE_THIS)!!.config.contains(SemanticsProperties.Disabled))
+    }
+
+    @Test
+    fun theSampleScrollsSidewaysInsteadOfWrapping() {
+        show(poll(question(database), rows))
+        tap(PREVIEW)
+        assertTrue(
+            "a wide sample scrolls sideways",
+            unmergedSemanticsNodes().any { it.config.contains(SemanticsProperties.HorizontalScrollAxisRange) },
+        )
     }
 
     @Test
@@ -581,5 +635,7 @@ class ChatQuestionTest {
         assertEquals("2 selected", RuntimeEnvironment.getApplication().getString(dev.kudde.android.R.string.chat_question_selected, 2))
         assertEquals("0 selected", RuntimeEnvironment.getApplication().getString(dev.kudde.android.R.string.chat_question_selected, 0))
         assertEquals("Question from the agent", QUESTION_FROM_AGENT)
+        assertEquals("Note (optional)", NOTE_HINT)
+        assertEquals("Choose this", CHOOSE_THIS)
     }
 }
