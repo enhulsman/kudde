@@ -221,13 +221,23 @@ pub fn focused(screen: &str, row: usize) -> bool {
         .is_some_and(|at| screen[at..].starts_with(&format!("\u{276F} {row}. ")))
 }
 
-/// The focus is on a multi-select question's unnumbered Submit row ("❯    Submit").
+/// The focus is on a multi-select question's unnumbered button row: "❯
+/// Submit" on the call's last question, "❯    Next" before another one
+/// (Ezra's try, 2026-11-25; desk 2.1.332).
 pub fn submit_focused(screen: &str) -> bool {
     let screen = fold(screen);
     screen.rfind('\u{276F}').is_some_and(|at| {
         let rest = &screen[at..];
-        rest == "\u{276F} Submit" || rest.starts_with("\u{276F} Submit ")
+        ["\u{276F} Submit", "\u{276F} Next"]
+            .iter()
+            .any(|b| rest == *b || rest.starts_with(&format!("{b} ")))
     })
+}
+
+/// The screen shows exactly `ticked` (0-based) among `q`'s option rows; the
+/// free row is not looked at.
+pub fn options_ticked(screen: &str, q: &Question, ticked: &[usize]) -> bool {
+    (0..q.options.len()).all(|i| row_ticked(screen, i + 1) == Some(ticked.contains(&i)))
 }
 
 /// The digits that make the screen's ticks on `q`'s option rows match
