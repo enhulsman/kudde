@@ -116,7 +116,7 @@ existing `?s=<id>` links still work. The look: a four-segment step bar (3 dp, th
 | `first-run-address` | Step 1: Address, User, Port, optional Name; waiting and F1 no-answer variants |
 | `first-run-manual` | Step 2 manual detail: exact D3 design command in a scrollable MonoBox, Copy/Share, restriction notes, both choices and Compare the fingerprint |
 | `first-run-key-refused` | Step 2 rejection: K1, both choice cards (password-once first), retry and Change the address |
-| `first-run-connected` | Step 3: the success disc, machine, core version, agent count and Continue; the first-machine line and the later-machine variant |
+| `first-run-connected` | Step 3: the success disc, machine, core version, agent count and Continue; the first-machine line and the later-machine variant, three stat tiles under the card (stacked at large text) |
 | `first-run-alerts` | Step 4 after Turn on alerts: AL6 test received, plus AL7 no-test variant; both retain Show my agents |
 | `first-run-trust` | Existing trust-dialog look with D1/D2 manual wording, fingerprint and unchanged trust actions |
 | `first-run-home` | Unfinished setup notice, Continue setup and New terminal; WL11/WL12 empty-home variant after completion |

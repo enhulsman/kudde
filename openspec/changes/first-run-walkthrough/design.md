@@ -634,7 +634,7 @@ use the stable ids below when drawing, leaving existing renders untouched.
 | New (replaces old 20) | first-run-key-choices | Full-screen step 2 with heading, machine/user, two stacked choice cards R1/R17, R2/R18 descriptions, R19 restriction note; large-text variant |
 | Changed plan 16 | first-run-manual | Manual detail within full-screen step 2, command, Copy/Share, restriction notes, compare button, both choices |
 | Changed plan 17 | first-run-key-refused | Shared step 2 after rejection, both choices password-once first, retry; R16 variant after installation |
-| Changed plan 18 | first-run-connected | Full-screen step 3, machine/version, count, Continue |
+| Changed plan 18 | first-run-connected | Full-screen step 3: the success card, then three stat tiles (herdr-core version, agents running, terminals open; stacked at large text), Continue |
 | New | first-run-alerts | Full-screen step 4: what alerts need, Turn on alerts, the test's waiting and result lines, each stop with its action; the routes on (agents/start/Done) always shown; the already-on variant with Send test alert |
 | Changed existing 8 | first-run-trust | Existing trust dialog with manual wording D1/D2 |
 | Changed existing 1 | first-run-home | Home with unfinished setup notice; empty-home after first connection WL11/WL12 variant |

@@ -735,16 +735,23 @@ retry.
 - **THEN** step 2 reads "Phone key locked" with "Unlock", and no prompt comes back by itself
 
 ### Requirement: Step 3 says the machine is connected
-Step 3 SHALL say that the machine is connected and name its herdr-core
-version. When the machine lists agents, it SHALL say how many; when it
-lists none, it SHALL say so and say that an agent started at the desk in
-herdr shows up by itself. Its one action SHALL be "Continue", which opens
+Step 3 SHALL say that the machine is connected and show, as three tiles
+under the success card, its herdr-core version ("herdr-core"), the number
+of agents ("agents running", "agent running" for one) and the number of
+terminals open on it ("terminals open", "terminal open" for one), counted
+from the snapshot the app already holds. When the machine lists no agent, it
+SHALL also say so and say that an agent started at the desk in herdr shows
+up by itself. Each tile SHALL be one item for a screen reader, reading its
+value then its label ("3 agents running", "herdr-core 0.1.16"), and the two
+counts SHALL update politely while the version does not. The three tiles
+SHALL share one row, and at large text stack one above the other so that
+"herdr-core" never breaks across lines. Its one action SHALL be "Continue", which opens
 step 4. Step 3 SHALL NOT ask for the notification permission.
 
 #### Scenario: Agents are running
 - **GIVEN** workstation runs two agents
 - **WHEN** step 3 shows
-- **THEN** it reads "workstation is connected.", the herdr-core version and "2 agents are running there.", with "Continue"
+- **THEN** it reads "workstation is connected." and shows tiles "herdr-core 0.1.16", "2 agents running" and the terminals open, with "Continue"
 
 #### Scenario: The first machine connects
 - **GIVEN** no machine had connected before
