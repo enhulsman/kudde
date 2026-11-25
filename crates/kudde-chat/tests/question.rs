@@ -746,6 +746,67 @@ Which fruits?
     assert!(question::shows(screen, &qs[0]));
 }
 
+// ---- Send with gaps (Ezra, 2026-11-25: "Skip question")
+
+/// The desk's review step with question A unanswered (t8x, 2.1.332).
+const GAP_REVIEW: &str = "\
+←  ☐ A  ☒ B  ☒ C  ✔ Submit  →
+Review your answers
+⚠ Some questions are unanswered
+ ● Second?
+   → Yes
+ ● Third?
+   → No
+❯ 1. Submit answers
+  2. Cancel
+";
+
+fn abc() -> Vec<Question> {
+    readable(json!([
+        q("First?", "A", &["Yes", "No"]),
+        q("Second?", "B", &["Yes", "No"]),
+        q("Third?", "C", &["Yes", "No"]),
+    ]))
+}
+
+fn want(v: &[Option<&str>]) -> Vec<Option<Vec<String>>> {
+    v.iter().map(|o| o.map(|s| vec![s.to_string()])).collect()
+}
+
+#[test]
+fn a_review_with_a_gap_lists_only_the_answered_questions() {
+    assert_eq!(question::progress(GAP_REVIEW, &abc()), Progress::Review);
+    assert!(question::review_matches(
+        GAP_REVIEW,
+        &abc(),
+        &want(&[None, Some("Yes"), Some("No")])
+    ));
+    // The phone holds an answer the dialog does not list: not this review.
+    assert!(!question::review_matches(
+        GAP_REVIEW,
+        &abc(),
+        &want(&[Some("Yes"), Some("Yes"), Some("No")])
+    ));
+    // Another answer, or a gap the dialog does not warn about: neither.
+    assert!(!question::review_matches(
+        GAP_REVIEW,
+        &abc(),
+        &want(&[None, Some("No"), Some("No")])
+    ));
+    let unwarned = GAP_REVIEW.replace("⚠ Some questions are unanswered\n", "");
+    assert!(!question::review_matches(
+        &unwarned,
+        &abc(),
+        &want(&[None, Some("Yes"), Some("No")])
+    ));
+}
+
+#[test]
+fn a_review_listing_a_question_of_another_call_is_not_this_ones() {
+    let other = GAP_REVIEW.replace("Second?", "Fourth?");
+    assert_ne!(question::progress(&other, &abc()), Progress::Review);
+}
+
 // ---- the check before an answer (design D2, decision 8)
 
 mod check {

@@ -18,6 +18,7 @@ pub const TOOL: &str = "AskUserQuestion";
 /// The text the dialog's review step shows (design section B).
 const REVIEW: &str = "Submit answers";
 const REVIEW_TITLE: &str = "Review your answers";
+const REVIEW_GAP: &str = "\u{26A0} Some questions are unanswered";
 
 /// Questions and options per call the card takes (the tool allows 1 to 4).
 const MAX_QUESTIONS: usize = 4;
@@ -163,6 +164,9 @@ pub enum Answer {
     /// goes through `terminal.send`.
     Other,
     Skip,
+    /// "Skip question" (Ezra, 2026-11-25): the question left unanswered, Tab
+    /// past it when the kept answers are sent.
+    Pass,
     /// The review step's "Submit answers".
     Submit,
     /// A multi-select question's ticked options (0-based).
@@ -196,6 +200,7 @@ pub fn plan(q: &Question, answer: &Answer) -> Option<Vec<String>> {
         Answer::Other if !q.multi => Some(vec![digit(n + 1)?]),
         Answer::Other => None,
         Answer::Skip => Some(vec!["esc".into()]),
+        Answer::Pass => Some(vec!["tab".into()]),
         Answer::Submit => Some(vec!["enter".into()]),
         Answer::Multi(_) => None,
     }
@@ -426,44 +431,79 @@ pub fn expected_answer(q: &Question, answer: &Answer, typed: Option<&str>) -> Ve
                 .chain(typed.map(start))
                 .collect()
         }
-        Answer::Skip | Answer::Submit => vec![],
+        Answer::Skip | Answer::Pass | Answer::Submit => vec![],
     }
 }
 
-/// The review step of this call shows, ready to send, with each question's
-/// part listing `expected` (from [expected_answer]) after its arrow.
-pub fn review_matches(screen: &str, qs: &[Question], expected: &[Vec<String>]) -> bool {
+/// The review step of this call shows, ready to send, listing exactly the
+/// questions with an answer, each with `expected` (from [expected_answer])
+/// after its arrow; a question without one (None) is not listed, and then
+/// the review warns of the gap.
+pub fn review_matches(screen: &str, qs: &[Question], expected: &[Option<Vec<String>>]) -> bool {
     let d = dialog(screen);
     if !review_shown(d, qs) || expected.len() != qs.len() {
         return false;
     }
     let body = fold(d.split_once('\n').map_or("", |(_, b)| b));
-    let end = body
-        .rfind(&format!("\u{276F} 1. {REVIEW}"))
-        .unwrap_or(body.len());
-    qs.iter().zip(expected).all(|(q, want)| {
-        let head = format!("\u{25CF} {}", fold(&q.text));
-        let Some(at) = body[..end].find(&head) else {
-            return false;
-        };
-        let rest = &body[at + head.len()..end];
-        let part = rest.find("\u{25CF} ").map_or(rest, |n| &rest[..n]);
-        part.trim_start().starts_with('\u{2192}') && want.iter().all(|w| part.contains(w.as_str()))
+    let Some(parts) = review_parts(&body, qs) else {
+        return false;
+    };
+    let gap = expected.iter().any(Option::is_none);
+    if gap != body.contains(REVIEW_GAP) {
+        return false;
+    }
+    expected.iter().enumerate().all(|(i, want)| {
+        let part = parts.iter().find(|(j, _)| *j == i).map(|(_, p)| *p);
+        match (want, part) {
+            (None, None) => true,
+            (Some(w), Some(p)) => {
+                p.trim_start().starts_with('\u{2192}') && w.iter().all(|x| p.contains(x.as_str()))
+            }
+            _ => false,
+        }
     })
 }
 
-/// The review step of this call, ready to send: the line after the header
-/// reads "Review your answers", every question of the call is listed ("●
-/// <question>"), and the focus is on "1. Submit answers" (5.4 review: a
-/// question or option holding the words is not the review step, nor is
-/// another call's review, nor Cancel in focus).
+/// The review step of this call, ready to send (5.4 review; Ezra, gaps,
+/// 2026-11-25): the line after the header reads "Review your answers", every
+/// question it lists ("● <question>") is one of this call's, all of them are
+/// listed or it warns "⚠ Some questions are unanswered", and the focus is on
+/// "1. Submit answers". A question or option holding the words, another
+/// call's review, or Cancel in focus is not it.
 fn review_shown(dialog: &str, qs: &[Question]) -> bool {
     let body = fold(dialog.split_once('\n').map_or("", |(_, b)| b));
-    body.starts_with(REVIEW_TITLE)
-        && qs
+    if !body.starts_with(REVIEW_TITLE) || !body.contains(&format!("\u{276F} 1. {REVIEW}")) {
+        return false;
+    }
+    let listed = review_parts(&body, qs);
+    let Some(listed) = listed else {
+        return false;
+    };
+    listed.len() == qs.len() || body.contains(REVIEW_GAP)
+}
+
+/// The questions the review `body` (folded) lists, as (question index, its
+/// part after the bullet); none when it lists one that is not this call's.
+fn review_parts<'a>(body: &'a str, qs: &[Question]) -> Option<Vec<(usize, &'a str)>> {
+    let end = body
+        .rfind(&format!("\u{276F} 1. {REVIEW}"))
+        .unwrap_or(body.len());
+    let body = &body[..end];
+    let mut out = Vec::new();
+    for part in body.split("\u{25CF} ").skip(1) {
+        // The longest question text that starts the part (one may hold another).
+        let i = qs
             .iter()
-            .all(|q| body.contains(&format!("\u{25CF} {}", fold(&q.text))))
-        && body.contains(&format!("\u{276F} 1. {REVIEW}"))
+            .enumerate()
+            .filter(|(_, q)| {
+                let t = fold(&q.text);
+                !t.is_empty() && part.starts_with(&t)
+            })
+            .max_by_key(|(_, q)| fold(&q.text).len())
+            .map(|(i, _)| i)?;
+        out.push((i, &part[fold(&qs[i].text).len()..]));
+    }
+    Some(out)
 }
 
 /// Where the dialog is, as the screen shows it (design D4).
@@ -498,7 +538,9 @@ pub fn progress(screen: &str, qs: &[Question]) -> Progress {
 /// on that question; the review step for Submit; the dialog anywhere for Skip.
 pub fn before(answer: &Answer, step: usize, p: Progress) -> bool {
     match answer {
-        Answer::Option(_) | Answer::Other | Answer::Multi(_) => p == Progress::Question(step),
+        Answer::Option(_) | Answer::Other | Answer::Multi(_) | Answer::Pass => {
+            p == Progress::Question(step)
+        }
         Answer::Submit => p == Progress::Review,
         Answer::Skip => p != Progress::Gone,
     }
