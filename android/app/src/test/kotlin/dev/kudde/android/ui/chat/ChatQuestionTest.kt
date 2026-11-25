@@ -1023,6 +1023,22 @@ class ChatQuestionTest {
         assertTrue(focusOn("Answered: Database"))
     }
 
+    // Second review: Claude Code logs the call only with its result, so the
+    // card can go while an older answered line is the latest one.
+    @Test
+    fun theFocusWaitsForThisCallsLineNotAnOlderOne() {
+        val older = asked("Answered: Lunch").copy(key = "9:0")
+        val s = show(poll(question(plainDb), rows + older))
+        tap("Option 2 of 2, Postgres, Needs a running server.")
+        s.card.finished(ChatAnswer.Done, s.card.sentFor)
+        shown = poll(null, rows + older)
+        idle()
+        assertFalse(focused())
+        shown = poll(null, rows + older + asked("Answered: Database"))
+        idle()
+        assertTrue(focusOn("Answered: Database"))
+    }
+
     @Test
     fun aCardAnsweredAtTheDeskMovesNoFocus() {
         show(poll(question(plainDb), rows + asked("Which database should the todo app use?", done = false)))
