@@ -221,6 +221,9 @@ class QuestionCard {
      */
     var landOnLine by mutableStateOf(false)
 
+    /** The latest question line when the send began: the focus never lands there. */
+    var landPast: String? = null
+
     /** The question shown was opened from the review step: an answer goes back there. */
     private var fromReview = false
 

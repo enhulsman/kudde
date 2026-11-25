@@ -20,9 +20,18 @@ fun toolLine(calls: List<ChatCall>): String {
     return base + (if (failed > 0) " · $failed failed" else "") + (if (running) " · running" else "")
 }
 
-/** The key of the row holding the latest question call, once that call is done; else null. */
-fun landingRow(rows: List<ChatRow>): String? {
+/** The key of the latest row holding a done question call; null when there is none. */
+fun latestQuestionRow(rows: List<ChatRow>): String? =
+    rows.lastOrNull { r -> r.calls.any { it.name == QUESTION_TOOL && it.done } }?.key
+
+/**
+ * The key of the row holding the latest question call once that call is
+ * done, unless it is [past] (the latest when the send began: Claude Code logs
+ * a call only with its result, so an older line may be the latest a while).
+ */
+fun landingRow(rows: List<ChatRow>, past: String? = null): String? {
     val row = rows.lastOrNull { r -> r.calls.any { it.name == QUESTION_TOOL } } ?: return null
+    if (row.key == past) return null
     return row.key.takeIf { row.calls.last { it.name == QUESTION_TOOL }.done }
 }
 

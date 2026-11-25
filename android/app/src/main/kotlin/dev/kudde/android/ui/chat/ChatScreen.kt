@@ -302,7 +302,8 @@ private fun Messages(poll: ChatPoll, state: ChatState, images: ChatImageSource, 
     val list = remember { start?.let { LazyListState(it.first, it.second) } ?: LazyListState() }
     val shownRows by rememberUpdatedState(rows)
     // After the card's send: the row of its call, once the card is gone and the line is done.
-    val landKey = if (state.card.landOnLine && poll.question == null) landingRow(rows) else null
+    val landKey = if (state.card.landOnLine && poll.question == null) landingRow(rows, state.card.landPast) else null
+    LaunchedEffect(state.card.sending) { if (state.card.sending) state.card.landPast = latestQuestionRow(poll.rows) }
     DisposableEffect(list) {
         onDispose { state.keep(shownRows, list.firstVisibleItemIndex, list.firstVisibleItemScrollOffset) }
     }
