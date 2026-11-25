@@ -56,30 +56,32 @@ calls found in session logs:
   bare Esc was not among the logs (low: its text is assumed the same).
 - One call in 266 had no result (open, or the session ended).
 
-### B. How the terminal dialog is answered (from the program's own code)
+### B. How the terminal dialog is answered (from the program's own code, then the desk)
 
-Source: the installed 2.1.330 binary embeds its JavaScript; the question
-component's key handlers and strings were read (not run). Defaults only: the
-dialog's actions are named keybindings (`select:accept` Enter, `select:cancel`
-Esc, `select:next`/`select:previous` down and up, `tabs:next`/`tabs:previous`),
-which a user can rebind in a keybindings file.
+First read from the installed 2.1.330 binary's JavaScript (not run). Then,
+on 2026-11-25 (task 5.1, before the phone), each row was tried on the desk
+against a throwaway Claude Code 2.1.331 with `herdr-core keys` and `send
+--force`, the same calls the app makes. Defaults only: the dialog's actions
+are named keybindings, which a user can rebind in a keybindings file.
 
 | Claim | Confidence |
 |---|---|
-| Each option row is drawn "N." with its label; the digits 1 to 9 move the focus to option N and do not accept it | moderate |
-| Enter accepts the focused option and, in a multi-question call, moves on to the next question | moderate |
-| Down from the last option leaves the options; the footer rows are "Chat about this", and the free-text row ("Type something") | moderate |
-| Esc cancels the dialog (the call returns the rejected result, section A) | moderate |
-| A "Submit answers" / "Cancel" review step follows the last question of a multi-question call; a single single-choice question has no such step | moderate |
-| Left/right (`tabs:*`) move between questions; answered tabs show a check | low (names read, default keys not) |
-| In a multi-select question Enter or Space toggles an option and a final row submits | low (separate component, toggle key not found) |
-| Focusing the free-text row opens a text input that accepts a paste, and Enter submits it | low |
+| Each option row is drawn "N." with its label | high (desk) |
+| Single choice without previews: digit N answers option N at once and moves on (next question, the review step, or the end of the call); an Enter after it answers the next question's focused option (seen: `2` `enter` on the first of three questions also set the second to its option 1) | high (desk) |
+| Single choice with previews: the options sit beside the preview, a digit only moves the focus, and Enter answers; there is no "Type something" row, and "Chat about this" has no number | high (desk) |
+| The free-text row ("Type something.") is n+1; its digit opens it for typing, and a paste with Enter answers with that text | high (desk) |
+| Esc declines the call ("Declined to answer"), and the agent's turn ends | high (desk) |
+| A "Submit answers" / "Cancel" review step follows the last question of a call with several questions, and the only question of a call with a multi-select one; Enter (or 1) on it sends | high (desk) |
+| Multi-select: digit N toggles row N in place and the focus stays; Enter toggles the focused row; rows read "N. [ ]" and "N. [✔]" | high (desk) |
+| Multi-select: "Type something" is row n+1 with a box; "Submit" below it has no number; n+2 is "Chat about this" | high (desk) |
+| Multi-select with own words: a paste with Enter moves the focus to row n+1, puts the text in it and leaves it unticked (twice); one more Enter ticks it; the row stays in its editor | high (desk, two runs) |
+| Multi-select, leaving the question: Tab outside the editor goes to the next question or the review step; inside the editor Tab moves to Submit, and Enter there does the same | high (desk) |
+| Left/right move between questions when no editor is open; inside the editor they move the text cursor | high (desk) |
 | The dialog may close by itself after an idle timeout (code names `CLAUDE_AFK_TIMEOUT_MS`, with a countdown) | low (default not found) |
 | Focus starts on the previously chosen option when a question is revisited, so a plan must not count arrow presses from the top | moderate |
 
-What I could not verify and the phone check must settle: every "low" row,
-the digit-then-Enter behaviour on the real terminal, whether `terminal.keys`
-spells the keys the dialog binds, and the delay the "quiet" rule adds.
+Still for the phone round: the same keys sent by the app through its card,
+the delay the "quiet" rule adds, and the result texts.
 
 ### C. What the chat knows today (high, from the code)
 
@@ -121,22 +123,26 @@ proposal puts it to the owner. An unconfirmed keys call (no reply, lost
 connection) is treated like an unconfirmed send: the card says so and does
 not repeat the keys.
 
-**D3. The key plan is a pure function in Rust**, tested against fixtures.
-`plan(question, choice, state) -> Vec<Key>`: single choice option i is
-`[digit(i+1), enter]`; "Something else" is `[digit(n+1)]`, then the text
-goes through `terminal.send` with `force: true` (the core refuses a blocked
-program otherwise; the text lands in the focused row), then Enter is part of
-that send; Skip is `[esc]`; the last step's Send answers is `[enter]` on the
-Submit row after the screen shows "Submit answers". Multi-select with a
-typed answer (owner, 2026-11-25: it joins the ticks and goes out with the
-one send): the toggles and `[digit(n+1)]` in one `terminal.keys`, the text
-through `terminal.send` with `force` (its Enter takes it as one more
-answer), then `[digit(n+2), enter]` for the submit row, with a screen check
-before the text and before the submit (low confidence, phone check).
-Multi-select toggles then
-submits (low confidence, shape fixed by the phone check). Digits above 9 are
-never planned (options are at most 4 plus the free row). The plan never counts
-arrows from the top.
+**D3. The key plan is a pure function in Rust**, tested against fixtures
+(keys from the 5.1 desk round, section B). Single choice option i is
+`[digit(i+1)]` alone when no option has a preview (the digit answers; an
+Enter after it would answer the next question), and `[digit(i+1), enter]`
+with previews (the digit only focuses). "Something else" is `[digit(n+1)]`,
+then the text goes through `terminal.send` with `force: true` (the core
+refuses a blocked program otherwise; the text lands in the focused row), and
+Enter is part of that send; Skip is `[esc]`; the last step's Send answers is
+`[enter]` after the screen shows "Submit answers". Multi-select (owner,
+2026-11-25: a typed answer joins the ticks and goes out with the one send)
+runs in steps with a screen check before each: the ticks as digits alone in
+one `terminal.keys` (a digit toggles; an Enter would untoggle); the screen
+shows them; with own words, the text through `terminal.send` with `force`,
+then, once the screen shows the text in row n+1, an Enter if that row shows
+unticked; the screen shows exactly the planned ticks; `[tab]` (or `[tab,
+enter]` from the free row's editor) leaves the question; in a call of one
+question the screen then shows the review step and `[enter]` sends it.
+Digits above 9 are never planned (options are at most 4 plus the free row),
+no digit ever names the free row or "Chat about this" on a multi-select
+question, and the plan never counts arrows from the top.
 
 **D4. The screen decides progress, not the app's memory.** After each step
 the app reads the screen again: the dialog is on the next question (tab
