@@ -130,7 +130,8 @@ internal fun StepNav(text: String, back: (() -> Unit)?, forward: (() -> Unit)?) 
         verticalAlignment = Alignment.CenterVertically,
     ) {
         NavChevron(LineIcon.ChevronLeft, PREVIOUS_QUESTION, back)
-        BasicText(text, style = KuddeType.secondary.copy(color = KuddeTheme.colors.dim), modifier = Modifier.weight(1f))
+        // Read with the question below it (one stop), not here.
+        BasicText(text, style = KuddeType.secondary.copy(color = KuddeTheme.colors.dim), modifier = Modifier.weight(1f).clearAndSetSemantics {})
         NavChevron(LineIcon.ChevronRight, NEXT_QUESTION, forward)
     }
 }
@@ -153,26 +154,34 @@ private fun NavChevron(icon: LineIcon, label: String, onClick: (() -> Unit)?) {
  * goes back to the question.
  */
 @Composable
-internal fun AnswerRow(question: String, answer: String, note: String?, enabled: Boolean, onChange: () -> Unit) {
+internal fun AnswerRow(
+    question: String,
+    answer: String,
+    note: String?,
+    enabled: Boolean,
+    answered: Boolean = true,
+    modifier: Modifier = Modifier,
+    onChange: () -> Unit,
+) {
     val c = KuddeTheme.colors
     Row(
         Modifier.fillMaxWidth().drawBehind { hairline(c.border) },
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(
-            Modifier.weight(1f).padding(start = ROW_START, top = KuddeSpacing.s8, bottom = KuddeSpacing.s8)
+            modifier.weight(1f).padding(start = ROW_START, top = KuddeSpacing.s8, bottom = KuddeSpacing.s8)
                 .clearAndSetSemantics { contentDescription = listOfNotNull(question, answer, note).joinToString(", ") },
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
             BasicText(question, style = KuddeType.secondary.copy(color = c.muted, lineHeight = 18.sp))
-            BasicText(answer, style = KuddeType.rowName.copy(color = c.fg, lineHeight = 20.sp))
+            BasicText(answer, style = KuddeType.rowName.copy(color = if (answered) c.fg else c.dim, lineHeight = 20.sp))
             if (note != null) BasicText(note, style = KuddeType.secondary.copy(color = c.muted, lineHeight = 18.sp))
         }
         Box(
             Modifier.heightIn(min = TOUCH).padding(end = INSET - 12.dp)
                 .clickable(enabled = enabled, role = Role.Button, onClick = onChange)
                 .clearAndSetSemantics {
-                    contentDescription = changeSpoken(question)
+                    contentDescription = if (answered) changeSpoken(question) else answerSpoken(question)
                     role = Role.Button
                     if (!enabled) disabled()
                     onClick { onChange(); true }
@@ -180,17 +189,17 @@ internal fun AnswerRow(question: String, answer: String, note: String?, enabled:
                 .padding(horizontal = 12.dp),
             contentAlignment = Alignment.Center,
         ) {
-            BasicText(CHANGE, style = KuddeType.settingRow.copy(color = if (enabled) c.fg else c.dim, fontWeight = FontWeight.Medium))
+            BasicText(if (answered) CHANGE else ANSWER, style = KuddeType.settingRow.copy(color = if (enabled) c.fg else c.dim, fontWeight = FontWeight.Medium))
         }
     }
 }
 
 @Composable
-internal fun QuestionTitle(text: String) {
+internal fun QuestionTitle(text: String, modifier: Modifier = Modifier) {
     BasicText(
         text,
         style = KuddeType.subScreenTitle.copy(color = KuddeTheme.colors.fg, fontWeight = FontWeight.Medium, lineHeight = 27.sp, letterSpacing = (-0.01).em),
-        modifier = Modifier.padding(start = TEXT_START, end = TEXT_START, bottom = KuddeSpacing.s8),
+        modifier = modifier.padding(start = TEXT_START, end = TEXT_START, bottom = KuddeSpacing.s8),
     )
 }
 
@@ -201,8 +210,8 @@ internal fun Hint(text: String) {
 
 /** A plain sentence in the card's body: what is left to do (the review step, no hook). */
 @Composable
-internal fun CardText(text: String) {
-    BasicText(text, style = KuddeType.body.copy(color = KuddeTheme.colors.fg), modifier = Modifier.padding(start = TEXT_START, end = TEXT_START, bottom = KuddeSpacing.s8))
+internal fun CardText(text: String, modifier: Modifier = Modifier) {
+    BasicText(text, style = KuddeType.body.copy(color = KuddeTheme.colors.fg), modifier = modifier.padding(start = TEXT_START, end = TEXT_START, bottom = KuddeSpacing.s8))
 }
 
 /** Why nothing was sent: a quiet strip with a hollow ring, and the way to the terminal where it helps. */

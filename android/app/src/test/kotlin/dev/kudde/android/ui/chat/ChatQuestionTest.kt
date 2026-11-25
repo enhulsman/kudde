@@ -129,6 +129,16 @@ class ChatQuestionTest {
 
     private fun focused() = semanticsNodes().any { it.config.getOrNull(SemanticsProperties.Focused) == true }
 
+    /** A text field holds the focus: the keyboard is up. */
+    private fun typing() = (semanticsNodes() + unmergedSemanticsNodes()).any {
+        it.config.contains(SemanticsProperties.EditableText) && it.config.getOrNull(SemanticsProperties.Focused) == true
+    }
+
+    /** The node reading [text] holds the focus. */
+    private fun focusOn(text: String) = semanticsNodes().any { n ->
+        n.config.getOrNull(SemanticsProperties.Focused) == true && (text in n.descriptions() || text in n.texts())
+    }
+
     private fun spoken(n: SemanticsNode): String = (n.descriptions() + n.texts()).joinToString(" | ")
 
     /** What a swipe through the chat reads, in order, from the question on. */
@@ -237,11 +247,56 @@ class ChatQuestionTest {
         assertTrue(answers.isEmpty())
     }
 
+    // Ezra's try (2026-11-25): forward is free, before an answer too.
     @Test
-    fun nextWaitsForAnAnswer() {
-        show(poll(question(plainDb, login), rows))
-        assertTrue(node(NEXT_QUESTION)!!.config.contains(SemanticsProperties.Disabled))
+    fun nextIsOpenBeforeAnAnswerAndTheReviewShowsWhatIsMissing() {
+        val s = show(poll(question(plainDb, login), rows))
         assertTrue(node(PREVIOUS_QUESTION)!!.config.contains(SemanticsProperties.Disabled))
+        assertFalse(node(NEXT_QUESTION)!!.config.contains(SemanticsProperties.Disabled))
+        tap(NEXT_QUESTION)
+        assertTrue(shows("Question 2 of 2"))
+        tap("Option 2 of 2, Passkey, The phone signs in.")
+        // The first question has no answer: on to it, then the review step.
+        assertTrue(shows("Question 1 of 2"))
+        tap(NEXT_QUESTION)
+        tap(NEXT_QUESTION)
+        assertTrue(s.card.onReview)
+        assertTrue(shows(SOME_UNANSWERED))
+        assertNotNull(node("Which database should the todo app use?, $NO_ANSWER_YET"))
+        assertTrue("Send answers waits for every answer", node(SEND_ANSWERS)!!.config.contains(SemanticsProperties.Disabled))
+        assertNotNull("Skip still declines", node(SKIP))
+        tap(answerSpoken("Which database should the todo app use?"))
+        tap("Option 1 of 2, SQLite (Recommended), One file, no server.")
+        assertTrue("back on the review step", s.card.onReview)
+        assertTrue(shows(ALL_ANSWERED))
+        tap(SEND_ANSWERS)
+        assertEquals(listOf<ChatChoice>(ChatChoice.Submit), answers)
+    }
+
+    // Ezra's try (2026-11-25): with TalkBack the focus jumped to the title bar's Back.
+    @Test
+    fun aStepLandsTheFocusOnTheNewQuestionAtOnce() {
+        show(poll(question(plainDb, login, tests), rows))
+        assertFalse("the card's arrival moves no focus", focused())
+        tap(NEXT_QUESTION)
+        assertTrue(focusOn("Question 2 of 3. Which login should it have?"))
+        tap(PREVIOUS_QUESTION)
+        assertTrue(focusOn("Question 1 of 3. Which database should the todo app use?"))
+        tap("Option 2 of 2, Postgres, Needs a running server.")
+        assertTrue("an answer lands it on the next question", focusOn("Question 2 of 3. Which login should it have?"))
+    }
+
+    @Test
+    fun aChangeLandsTheFocusBackOnTheChangedAnswer() {
+        show(poll(question(plainDb, login), rows))
+        tap("Option 2 of 2, Postgres, Needs a running server.")
+        tap("Option 2 of 2, Passkey, The phone signs in.")
+        assertTrue(focusOn(ALL_ANSWERED))
+        tap(changeSpoken("Which login should it have?"))
+        assertTrue(focusOn("Question 2 of 2. Which login should it have?"))
+        tap("Option 1 of 2, Password, A form.")
+        assertTrue(focusOn("Which login should it have?, Password"))
+        assertFalse(typing())
     }
 
     @Test
@@ -326,7 +381,7 @@ class ChatQuestionTest {
         val c2 = at(changeSpoken("Which login should it have?"))
         val send = at(SEND_ANSWERS)
         assertTrue(order.toString(), a1 < c1 && c1 < a2 && a2 < c2 && c2 < send)
-        assertFalse("focus never moves by itself", focused())
+        assertTrue("the step lands the focus on the review step", focusOn(ALL_ANSWERED))
     }
 
     @Test
@@ -481,10 +536,10 @@ class ChatQuestionTest {
         s.card.otherText = "Berries"
         idle()
         tap(NEXT)
-        assertFalse("no keyboard once the answer is kept", focused())
+        assertFalse("no keyboard once the answer is kept", typing())
         tap(SEND_ANSWERS)
         assertEquals(listOf<ChatChoice>(ChatChoice.Submit), answers)
-        assertFalse("no keyboard at the send", focused())
+        assertFalse("no keyboard at the send", typing())
         val field = semanticsNodes().firstOrNull { it.config.contains(SemanticsProperties.EditableText) }
         field?.config?.getOrNull(SemanticsActions.RequestFocus)?.action?.invoke()
         idle()
@@ -826,20 +881,16 @@ class ChatQuestionTest {
         assertFalse("nothing took the focus", semanticsNodes().any { it.config.getOrNull(SemanticsProperties.Focused) == true })
     }
 
-    fun theCardIsAnnouncedOnceAndEachStepAndRefusalOnce() {
+    fun theCardIsAnnouncedOnceAndEachRefusalOnce() {
         val heard = CardHeard()
         val q = question(database, login, tests)
         assertEquals(listOf("Question from the agent. Which database should the todo app use?"), heard.next(q, null, 0))
         assertEquals(emptyList<String>(), heard.next(q, null, 0))
-        assertEquals(listOf("Question 2 of 3"), heard.next(q, null, 1))
-        assertEquals(emptyList<String>(), heard.next(q.copy(step = 2u), null, 1))
-        // Back is heard too.
-        assertEquals(listOf("Question 1 of 3"), heard.next(q, null, 0))
+        // A step on the phone is heard where the focus lands, not announced (Ezra's try).
+        assertEquals(emptyList<String>(), heard.next(q, null, 1))
+        assertEquals(emptyList<String>(), heard.next(q, null, 3))
         assertEquals(listOf(ALREADY_ANSWERED), heard.next(q, ALREADY_ANSWERED, 0))
         assertEquals(emptyList<String>(), heard.next(q, ALREADY_ANSWERED, 0))
-        // The review step is heard as its button (owner, 2026-11-24), once.
-        assertEquals(listOf(SEND_ANSWERS), heard.next(q, ALREADY_ANSWERED, 3))
-        assertEquals(emptyList<String>(), heard.next(q, ALREADY_ANSWERED, 3))
         assertEquals(emptyList<String>(), heard.next(null, null))
         assertEquals(
             "a new call is a new card",
@@ -892,5 +943,10 @@ class ChatQuestionTest {
         assertEquals("Change the answer to: Which login?", changeSpoken("Which login?"))
         assertEquals("Note: Bigger titles", noteLine("Bigger titles"))
         assertEquals("Typed 2 of 3 answers, then stopped. Check the terminal.", stoppedText(2, 3))
+        // Drafts (Ezra's try), to the owner before they ship.
+        assertEquals("Some questions have no answer yet. Answer them to send, or skip them all.", SOME_UNANSWERED)
+        assertEquals("No answer yet", NO_ANSWER_YET)
+        assertEquals("Answer", ANSWER)
+        assertEquals("Answer the question: Which login?", answerSpoken("Which login?"))
     }
 }

@@ -2,6 +2,7 @@ package dev.kudde.android.ui.chat
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.text.BasicTextField
@@ -60,6 +61,14 @@ const val PREVIOUS_QUESTION = "Previous question"
 const val NEXT_QUESTION = "Next question"
 const val NEXT = "Next"
 const val CHANGE = "Change"
+// Drafts (Ezra's try, 2026-11-25), to the owner verbatim before they ship.
+const val SOME_UNANSWERED = "Some questions have no answer yet. Answer them to send, or skip them all."
+const val NO_ANSWER_YET = "No answer yet"
+const val ANSWER = "Answer"
+fun answerSpoken(question: String) = "Answer the question: $question"
+
+/** Claude Code asks at most four questions in one call. */
+const val MAX_QUESTIONS = 4
 fun changeSpoken(question: String) = "Change the answer to: $question"
 fun noteLine(note: String) = "Note: $note"
 fun stoppedText(sent: Int, of: Int) = "Typed $sent of $of answers, then stopped. Check the terminal."
@@ -186,8 +195,22 @@ class QuestionCard {
     /** The phone shows the review step. */
     val onReview: Boolean get() = count > 0 && at >= count
 
-    /** The next question is open: the one shown has an answer. */
-    val canNext: Boolean get() = !onReview && at in answers
+    /** Moving on is free (Ezra's try): any question, then the review step. */
+    val canNext: Boolean get() = !onReview
+
+    /** Every question has an answer: Send answers is possible. */
+    val allAnswered: Boolean get() = count > 0 && (0 until count).all { it in answers }
+
+    /** A step the person took (not a new call): the card moves the focus to what it shows. */
+    var stepped by mutableStateOf(0)
+        private set
+
+    /** On the review step after a change: the answer to put the focus on. */
+    var focusRow by mutableStateOf<Int?>(null)
+        private set
+
+    /** The question shown was opened from the review step: an answer goes back there. */
+    private var fromReview = false
 
     fun toggle(i: Int) {
         if (!busy) ticked = if (i in ticked) ticked - i else ticked + i
@@ -209,6 +232,8 @@ class QuestionCard {
         sending = false
         done = false
         problem = null
+        stepped = 0
+        fromReview = false
         show(0)
     }
 
@@ -233,11 +258,25 @@ class QuestionCard {
     }
 
     fun previous() {
-        if (!busy && at > 0) show(at - 1)
+        if (!busy && at > 0) step(at - 1)
     }
 
     fun next() {
-        if (!busy && canNext) show(at + 1)
+        if (!busy && canNext) step(at + 1)
+    }
+
+    /** "Change" on the review step: question [i], whose answer then comes back to the review step. */
+    fun change(i: Int) {
+        if (busy || !onReview) return
+        step(i)
+        fromReview = true
+    }
+
+    private fun step(i: Int, row: Int? = null) {
+        fromReview = false
+        show(i)
+        focusRow = row
+        stepped++
     }
 
     /**
@@ -249,8 +288,10 @@ class QuestionCard {
         if (busy || onReview) return
         answers = answers + (at to choice)
         problem = null
+        val was = at
+        if (fromReview) return step(count, row = was)
         val open = ((at + 1 until count) + (0 until at)).firstOrNull { it !in answers }
-        show(open ?: count)
+        step(open ?: count)
     }
 
     /** The kept answers in the call's order, for Send answers. */
@@ -299,8 +340,8 @@ class QuestionCard {
 
 /**
  * What TalkBack hears of the card, each once: the card's arrival with its
- * question, a step change on the phone ("Send answers" for the review step),
- * and a refusal when it appears.
+ * question and a refusal when it appears. A step on the phone moves the
+ * focus instead ([QuestionCard.stepped]).
  */
 class CardHeard {
     private var id: String? = null
@@ -316,12 +357,9 @@ class CardHeard {
             return emptyList()
         }
         val out = mutableListOf<String>()
-        if (q.id != id) {
-            out += "$QUESTION_FROM_AGENT. ${shownText(q, at)}"
-        } else if (at != step) {
-            // The review step is heard as its button (owner, 2026-11-24).
-            out += if (at >= q.questions.size) SEND_ANSWERS else stepLine(at + 1, q.questions.size)
-        }
+        // A step on the phone is heard where the focus lands (the new question, or the
+        // review step), so only the card's arrival is announced (Ezra's try, 2026-11-25).
+        if (q.id != id) out += "$QUESTION_FROM_AGENT. ${shownText(q, at)}"
         id = q.id
         step = at
         if (problem != null && problem != this.problem) out += problem
@@ -361,14 +399,30 @@ fun QuestionCard(
     }
     // Back closes the own-words field (and its keyboard), keeping the card.
     BackHandler(enabled = card.otherOpen) { card.otherOpen = false }
-    // A send on its way, or an answer kept, from any button or TalkBack: no keyboard.
+    // A send on its way, from any button or TalkBack: no keyboard.
     val focusManager = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
-    LaunchedEffect(card.busy, card.at) {
-        if (card.busy || !card.otherOpen) {
+    LaunchedEffect(card.busy) {
+        if (card.busy) {
             focusManager.clearFocus()
             keyboard?.hide()
         }
+    }
+    // A step the person took lands the focus on what it shows, at once (Ezra's try,
+    // 2026-11-25): the new question, the review step, or the answer just changed.
+    val titleFocus = remember { FocusRequester() }
+    val reviewFocus = remember { FocusRequester() }
+    val rowFocus = remember { List(MAX_QUESTIONS) { FocusRequester() } }
+    LaunchedEffect(card.stepped) {
+        if (card.stepped == 0) return@LaunchedEffect
+        keyboard?.hide()
+        val row = card.focusRow
+        val target = when {
+            !card.onReview -> titleFocus
+            row != null && row < MAX_QUESTIONS -> rowFocus[row]
+            else -> reviewFocus
+        }
+        runCatching { target.requestFocus() }
     }
     CardSurface(
         modifier,
@@ -376,21 +430,34 @@ fun QuestionCard(
             if (!q.readable) for (t in q.texts) QuestionTitle(t)
             if (!q.readable && q.hookMissing) CardText(NO_HOOK)
             if (q.readable && card.onReview) {
-                CardText(ALL_ANSWERED)
+                CardText(if (card.allAnswered) ALL_ANSWERED else SOME_UNANSWERED, Modifier.focusRequester(reviewFocus).focusable())
                 for ((i, a) in q.questions.withIndex()) {
-                    val c = card.answers[i] ?: continue
-                    AnswerRow(a.text, answerText(a, c), answerNote(c)?.let(::noteLine), enabled = !card.busy) { card.show(i) }
+                    val c = card.answers[i]
+                    AnswerRow(
+                        a.text,
+                        c?.let { answerText(a, it) } ?: NO_ANSWER_YET,
+                        c?.let(::answerNote)?.let(::noteLine),
+                        enabled = !card.busy,
+                        answered = c != null,
+                        modifier = rowFocus.getOrNull(i)?.let { Modifier.focusRequester(it).focusable() } ?: Modifier,
+                    ) { card.change(i) }
                 }
             }
             if (ask != null) {
-                if (q.questions.size > 1) {
+                val step = stepLine(card.at + 1, q.questions.size).takeIf { q.questions.size > 1 }
+                if (step != null) {
                     StepNav(
-                        stepLine(card.at + 1, q.questions.size),
-                        back = (card.at > 0 && !card.busy).takeIf { card.at > 0 }?.let { { card.previous() } },
-                        forward = card.canNext.takeIf { it && !card.busy }?.let { { card.next() } },
+                        step,
+                        back = { card.previous() }.takeIf { card.at > 0 && !card.busy },
+                        forward = { card.next() }.takeIf { card.canNext && !card.busy },
                     )
                 }
-                QuestionTitle(ask.text)
+                // The step is read with the question, one stop that a step lands the focus on.
+                QuestionTitle(
+                    ask.text,
+                    Modifier.focusRequester(titleFocus).focusable()
+                        .clearAndSetSemantics { contentDescription = listOfNotNull(step, ask.text).joinToString(". ") },
+                )
                 if (ask.multi && ask.answerable) Hint(CHOOSE_ANY)
             }
             card.problem?.let { p -> Notice(p.text, if (p.terminal) onTerminal else null) }
@@ -401,7 +468,7 @@ fun QuestionCard(
                 q.readable && card.onReview -> Footer(
                     left = {},
                     right = {
-                        SolidButton(SEND_ANSWERS, enabled = !card.busy) { send(ChatChoice.Submit) }
+                        SolidButton(SEND_ANSWERS, enabled = !card.busy && card.allAnswered) { send(ChatChoice.Submit) }
                         OutlineButton(SKIP, enabled = !card.busy) { send(ChatChoice.Skip) }
                     },
                 )
