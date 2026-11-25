@@ -183,6 +183,22 @@ class ChatScreenshotTest {
         }
     }
 
+    /** Render first-run-hint, chat: the hint over the messages' top, the message box uncovered; both themes. */
+    @Test
+    fun hintOverTheChat() {
+        for (dark in listOf(false, true)) {
+            val hint = dev.kudde.android.ui.hint.TitleBarHintSetting(
+                RuntimeEnvironment.getApplication().getSharedPreferences("hint-golden-${dark}", android.content.Context.MODE_PRIVATE).also { it.edit().clear().commit() },
+            )
+            captureRoboImage("src/test/snapshots/first-run-hint-chat-${if (dark) "graphite" else "paper"}.png") {
+                KuddeTheme(dark = dark) {
+                    ChatScreen(header, actions, poll(), ChatState(), source, { now }, onTerminal = {}, onPick = {}, onSend = {},
+                        animate = false, onChanges = {}, map = TitleBarFixtures.pricingMap, onMap = {}, hint = hint)
+                }
+            }
+        }
+    }
+
     @Test
     fun thinkingUpdate() = capture(
         "update",

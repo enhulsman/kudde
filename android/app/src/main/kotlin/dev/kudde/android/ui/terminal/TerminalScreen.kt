@@ -61,6 +61,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.layout.onSizeChanged
+import dev.kudde.android.ui.hint.hintAtTop
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -250,6 +254,8 @@ fun TerminalScreen(
     onMap: (() -> Unit)? = null,
     /** Whether the title bar's menu is open. */
     menuState: TitleBarMenuState = remember { TitleBarMenuState() },
+    /** The title bar's hint (task 4.8): shown over the area's top while the bar has a map and it is due. */
+    hint: dev.kudde.android.ui.hint.TitleBarHintSetting? = null,
     renderer: TerminalRenderer? = null,
 ) {
     val c = KuddeTheme.colors
@@ -269,7 +275,7 @@ fun TerminalScreen(
             )
             ui.queue?.let { QueueStripRow(it) { actions.onOpen(it.next) } }
             Box(Modifier.fillMaxWidth().weight(1f)) {
-                TerminalArea(session, screen, actions, input, keysShown, ui.key.machine, renderer)
+                TerminalArea(session, screen, actions, input, keysShown, ui.key.machine, renderer, hint.takeIf { ui.map != null })
             }
             if (keysShown) {
                 KeysRow(
@@ -635,6 +641,7 @@ private fun TerminalArea(
     keysShown: Boolean,
     machine: String,
     heldRenderer: TerminalRenderer?,
+    hint: dev.kudde.android.ui.hint.TitleBarHintSetting? = null,
 ) {
     val c = KuddeTheme.colors
     val density = LocalDensity.current
@@ -740,6 +747,25 @@ private fun TerminalArea(
             }
         }
         StatusChip(session, screen, machine, grid, input)
+        if (hint != null) {
+            // The cursor row as drawn, in px from this area's top, so the hint can leave it uncovered (design D11).
+            val cursorRow by remember(session) { derivedStateOf { session.version.let { session.grid.takeIf { g -> g.cursorShown && !g.isEmpty }?.cursorY ?: -1 } } }
+            var hintHeight by remember { mutableIntStateOf(0) }
+            val margin = with(density) { 8.dp.toPx() }
+            val lineHeight = (watch?.fitFontPx ?: phoneFont) * TerminalMetrics.LINE_EM
+            val cursorTop = if (cursorRow < 0) null else if (watch == null) padTop + cursorRow * lineHeight
+                else view.panY + view.zoom * (padTop + cursorRow * lineHeight)
+            val cursorBottom = cursorTop?.let { it + lineHeight * (if (watch == null) 1f else view.zoom) }
+            val atTop = hintAtTop(cursorTop, cursorBottom, margin + hintHeight)
+            dev.kudde.android.ui.hint.TitleBarHintCard(
+                visible = !hint.seen,
+                onClose = hint::close,
+                modifier = Modifier
+                    .align(if (atTop) Alignment.TopCenter else Alignment.BottomCenter)
+                    .padding(top = 8.dp, bottom = if (screen.typing) 8.dp else 64.dp)
+                    .onSizeChanged { hintHeight = it.height },
+            )
+        }
         if (screen.typing && shape != null) SizeTag(shape.cols, shape.rows)
         if (shape != null && !shape.live) {
             LiveControl(

@@ -281,6 +281,8 @@ class AgentRouteStepTest {
         val row = listOf("website", "Review the navigation behaviour", "Run the phone checks", "Keep the current pane open")
         val table = listOf(header, divider, row).joinToString("\n") { it.joinToString(" | ", "| ", " |") }
         it.rig.ports.chat(it.rig.key).answer(ChatRow("wide-table", "said", table, "", emptyList(), emptyList()))
+        // The title bar's hint is closed: it would sit over the table's top, which this swipe is about.
+        it.rig.app.titleBarHint.close()
         it.show(chat = true)
         it.rig.await("the wide table can scroll sideways") {
             unmergedSemanticsNodes().any { node ->

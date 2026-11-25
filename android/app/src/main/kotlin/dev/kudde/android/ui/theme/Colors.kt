@@ -57,6 +57,8 @@ data class KuddeColors(
     val accent: Color,
     val solid: Color,
     val solidFg: Color,
+    /** The connected colour at 18%: the ring round first setup's success disc. */
+    val successHalo: Color,
     val selection: Color,
     /** The 16 ANSI colours, 0-7 normal then 8-15 bright. */
     val ansi: List<Color>,
@@ -97,6 +99,7 @@ private val GraphiteMac = KuddeColors(
     accent = rgb(0x96b2d7),
     solid = rgb(0xeeeeef),
     solidFg = rgb(0x111215),
+    successHalo = rgba(0xa6bd912e),
     selection = rgb(0x394454),
     ansi = listOf(
         0x45484f, 0xdc8c95, 0xa6bd91, 0xd8be87, 0x96b2d7, 0xb5a2ce, 0x8cbdc3, 0xd2d4d9,
@@ -130,6 +133,7 @@ private val PaperMac = KuddeColors(
     accent = rgb(0x1f62d0),
     solid = rgb(0x1b1b1e),
     solidFg = rgb(0xffffff),
+    successHalo = rgba(0x1a7f372e),
     selection = rgb(0xcfdcf5),
     ansi = listOf(
         0x25272c, 0xc62a2a, 0x1a7f37, 0x8f5d00, 0x1f62d0, 0x7a45c8, 0x0f6f74, 0x5f6068,

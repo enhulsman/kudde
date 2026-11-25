@@ -136,6 +136,8 @@ fun ChatScreen(
     onMap: (() -> Unit)? = null,
     /** Whether the title bar's menu is open. */
     menuState: TitleBarMenuState = remember { TitleBarMenuState() },
+    /** The title bar's hint (task 4.8): shown over the messages' top while the bar has a map and it is due. */
+    hint: dev.kudde.android.ui.hint.TitleBarHintSetting? = null,
     /** A tap on the question card: the hub answers it. */
     onAnswer: (ChatChoice) -> Unit = {},
     /** The own-words field takes the focus when it opens; false in still screenshots (a focused cursor blinks forever). */
@@ -164,6 +166,13 @@ fun ChatScreen(
                     chatLooking(poll) -> Centered(LOOKING)
                     !found -> Centered(NO_CONVERSATION, onTerminal)
                     else -> Messages(poll, state, images, now, animate, onOlder, onTerminal)
+                }
+                if (hint != null && map != null) {
+                    dev.kudde.android.ui.hint.TitleBarHintCard(
+                        visible = !hint.seen,
+                        onClose = hint::close,
+                        modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp),
+                    )
                 }
             }
             when {
