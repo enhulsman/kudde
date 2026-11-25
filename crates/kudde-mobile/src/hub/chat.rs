@@ -1528,53 +1528,69 @@ impl Chat {
         submit: bool,
     ) -> ChatAnswer {
         let q = &qs[step];
+        let free = q.options.len() + 1;
         let here = |s: &str| question::progress(s, qs) == Progress::Question(step);
         if !m.ticks.is_empty() && !self.press(c, &m.ticks).await {
             return ChatAnswer::Unconfirmed;
         }
-        if self
-            .screen_until(c, |s| here(s) && question::ticks_shown(s, q, ticked, false))
+        // The option rows as planned; without own words the free row unticked.
+        let Some(mut s) = self
+            .screen_until(c, |s| {
+                here(s)
+                    && question::options_ticked(s, q, ticked)
+                    && (typed.is_some() || question::row_ticked(s, free) == Some(false))
+            })
             .await
-            .is_none()
-        {
-            return ChatAnswer::Unconfirmed;
-        }
-        if let Some(text) = typed {
-            if !self.type_forced(c, text).await {
-                return ChatAnswer::Unconfirmed;
-            }
-            let Some(s) = self
-                .screen_until(c, |s| here(s) && question::typed_row(s, q, text).is_some())
-                .await
-            else {
-                return ChatAnswer::Unconfirmed;
-            };
-            if question::typed_row(&s, q, text) == Some(false)
-                && !self.press(c, &["enter".to_string()]).await
-            {
-                return ChatAnswer::Unconfirmed;
-            }
-            if self
-                .screen_until(c, |s| {
-                    here(s)
-                        && question::typed_row(s, q, text) == Some(true)
-                        && question::ticks_shown(s, q, ticked, true)
-                })
-                .await
-                .is_none()
-            {
-                return ChatAnswer::Unconfirmed;
-            }
-        }
-        // From the editor, Tab moves the focus to Submit; its Enter goes only
-        // once the screen shows that focus (5.4 review).
-        let Some((tab, rest)) = m.next.split_first() else {
+        else {
             return ChatAnswer::Unconfirmed;
         };
-        if !self.press(c, std::slice::from_ref(tab)).await {
-            return ChatAnswer::Unconfirmed;
+        if let Some(text) = typed {
+            // Already in its row and ticked (a send that stopped after it): not again.
+            if question::typed_row(&s, q, text) != Some(true) {
+                if question::typed_row(&s, q, text).is_none() {
+                    if !self.type_forced(c, text).await {
+                        return ChatAnswer::Unconfirmed;
+                    }
+                    let Some(after) = self
+                        .screen_until(c, |s| here(s) && question::typed_row(s, q, text).is_some())
+                        .await
+                    else {
+                        return ChatAnswer::Unconfirmed;
+                    };
+                    s = after;
+                }
+                if question::typed_row(&s, q, text) == Some(false)
+                    && !self.press(c, &["enter".to_string()]).await
+                {
+                    return ChatAnswer::Unconfirmed;
+                }
+                let Some(after) = self
+                    .screen_until(c, |s| {
+                        here(s)
+                            && question::typed_row(s, q, text) == Some(true)
+                            && question::ticks_shown(s, q, ticked, true)
+                    })
+                    .await
+                else {
+                    return ChatAnswer::Unconfirmed;
+                };
+                s = after;
+            }
         }
-        if !rest.is_empty() {
+        // Leaving the question, from where the screen shows the focus: on the
+        // unnumbered button row ("Submit", or "Next" before another question;
+        // Ezra's try) Enter; in the free row's editor Tab, then Enter once the
+        // screen shows the button row in focus (5.4 review); on an option row
+        // Tab alone.
+        let _ = m.next;
+        if question::submit_focused(&s) {
+            if !self.press(c, &["enter".to_string()]).await {
+                return ChatAnswer::Unconfirmed;
+            }
+        } else if question::focused(&s, free) {
+            if !self.press(c, &["tab".to_string()]).await {
+                return ChatAnswer::Unconfirmed;
+            }
             if self
                 .screen_until(c, |s| here(s) && question::submit_focused(s))
                 .await
@@ -1582,9 +1598,11 @@ impl Chat {
             {
                 return ChatAnswer::Unconfirmed;
             }
-            if !self.press(c, rest).await {
+            if !self.press(c, &["enter".to_string()]).await {
                 return ChatAnswer::Unconfirmed;
             }
+        } else if !self.press(c, &["tab".to_string()]).await {
+            return ChatAnswer::Unconfirmed;
         }
         if qs.len() > 1 || !submit {
             return self

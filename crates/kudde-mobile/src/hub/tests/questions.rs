@@ -1096,7 +1096,13 @@ fn fruit_screen(ticked: [bool; 3], free: &str, free_on: bool) -> String {
 fn on_submit(screen: &str) -> String {
     screen
         .replace("❯ 1.", "  1.")
+        .replace("❯ 4.", "  4.")
         .replace("     Submit", "❯    Submit")
+}
+
+/// `screen` with the focus in the free row, where a paste leaves it (desk, 2.1.332).
+fn in_free(screen: &str) -> String {
+    screen.replace("❯ 1.", "  1.").replace("  4. [", "❯ 4. [")
 }
 
 const FRUIT_REVIEW: &str = "\
@@ -1193,20 +1199,28 @@ async fn a_typed_answer_is_pasted_ticked_then_sent_with_the_ticks() {
     core.reply(&send, json!({"turn": 3, "status": "blocked"}))
         .await;
     // The text is in the free row, unticked: one Enter ticks it.
-    core.serves_screen(&fruit_screen([true, false, true], "Berries", false))
-        .await;
+    core.serves_screen(&in_free(&fruit_screen(
+        [true, false, true],
+        "Berries",
+        false,
+    )))
+    .await;
     let k = core.takes_keys(&["enter"]).await;
     core.reply(&k, json!({"turn": 3})).await;
-    core.serves_screen(&fruit_screen([true, false, true], "Berries", true))
-        .await;
-    let k = core.takes_keys(&["tab"]).await;
-    core.reply(&k, json!({"turn": 3})).await;
-    // From the editor Tab moves the focus to Submit; Enter only once the screen shows it.
-    core.serves_screen(&on_submit(&fruit_screen(
+    core.serves_screen(&in_free(&fruit_screen(
         [true, false, true],
         "Berries",
         true,
     )))
+    .await;
+    let k = core.takes_keys(&["tab"]).await;
+    core.reply(&k, json!({"turn": 3})).await;
+    // From the editor Tab moves the focus to Submit; Enter only once the screen shows it.
+    core.serves_screen(&on_submit(&in_free(&fruit_screen(
+        [true, false, true],
+        "Berries",
+        true,
+    ))))
     .await;
     let k = core.takes_keys(&["enter"]).await;
     core.reply(&k, json!({"turn": 3})).await;
@@ -1242,14 +1256,16 @@ async fn a_free_row_already_ticked_gets_no_extra_enter() {
     let send = core.expect("terminal.send").await;
     core.reply(&send, json!({"turn": 3, "status": "blocked"}))
         .await;
-    core.serves_screen(&fruit_screen([false; 3], "Berries", true))
+    core.serves_screen(&in_free(&fruit_screen([false; 3], "Berries", true)))
         .await;
-    core.serves_screen(&fruit_screen([false; 3], "Berries", true))
+    core.serves_screen(&in_free(&fruit_screen([false; 3], "Berries", true)))
         .await;
     let k = core.takes_keys(&["tab"]).await;
     core.reply(&k, json!({"turn": 3})).await;
-    core.serves_screen(&on_submit(&fruit_screen([false; 3], "Berries", true)))
-        .await;
+    core.serves_screen(&on_submit(&in_free(&fruit_screen(
+        [false; 3], "Berries", true,
+    ))))
+    .await;
     let k = core.takes_keys(&["enter"]).await;
     core.reply(&k, json!({"turn": 3})).await;
     // A call with a second question: the screen moves on to it; no Enter.
@@ -1315,13 +1331,13 @@ async fn no_enter_unless_submit_shows_in_focus() {
     let send = core.expect("terminal.send").await;
     core.reply(&send, json!({"turn": 3, "status": "blocked"}))
         .await;
-    core.serves_screen(&fruit_screen([false; 3], "Berries", true))
+    core.serves_screen(&in_free(&fruit_screen([false; 3], "Berries", true)))
         .await;
-    core.serves_screen(&fruit_screen([false; 3], "Berries", true))
+    core.serves_screen(&in_free(&fruit_screen([false; 3], "Berries", true)))
         .await;
     let k = core.takes_keys(&["tab"]).await;
     core.reply(&k, json!({"turn": 3})).await;
-    let stuck = fruit_screen([false; 3], "Berries", true);
+    let stuck = in_free(&fruit_screen([false; 3], "Berries", true));
     assert_eq!(
         only_reads_until(&mut core, got, &stuck).await,
         ChatAnswer::Unconfirmed
@@ -1607,19 +1623,27 @@ async fn one_multi_select_question_with_a_typed_answer_ends_on_its_review() {
     assert_eq!(send["params"]["text"], "Berries");
     core.reply(&send, json!({"turn": 3, "status": "blocked"}))
         .await;
-    core.serves_screen(&fruit_screen([true, false, false], "Berries", false))
-        .await;
+    core.serves_screen(&in_free(&fruit_screen(
+        [true, false, false],
+        "Berries",
+        false,
+    )))
+    .await;
     let k = core.takes_keys(&["enter"]).await;
     core.reply(&k, json!({"turn": 3})).await;
-    core.serves_screen(&fruit_screen([true, false, false], "Berries", true))
-        .await;
-    let k = core.takes_keys(&["tab"]).await;
-    core.reply(&k, json!({"turn": 3})).await;
-    core.serves_screen(&on_submit(&fruit_screen(
+    core.serves_screen(&in_free(&fruit_screen(
         [true, false, false],
         "Berries",
         true,
     )))
+    .await;
+    let k = core.takes_keys(&["tab"]).await;
+    core.reply(&k, json!({"turn": 3})).await;
+    core.serves_screen(&on_submit(&in_free(&fruit_screen(
+        [true, false, false],
+        "Berries",
+        true,
+    ))))
     .await;
     let k = core.takes_keys(&["enter"]).await;
     core.reply(&k, json!({"turn": 3})).await;
@@ -1738,5 +1762,145 @@ async fn answers_that_do_not_fit_the_call_send_nothing() {
     }
     let got = spawn_send(&chat, "toolu_02", vec![pick(1), pick(1), pick(0)], 0);
     assert_eq!(got.await.unwrap(), ChatAnswer::Changed);
+    core.nothing_more().await;
+}
+
+// ---- Ezra's try (2026-11-25): a multi-select question before another one
+
+fn lunch_call() -> Value {
+    json!([
+        {"question": "Where should we get lunch today?", "header": "Lunch", "multiSelect": false,
+         "options": [{"label": "Bakery", "description": "-"}, {"label": "Noodle bar", "description": "-"},
+                     {"label": "Leftovers", "description": "-"}]},
+        {"question": "What should we bring back?", "header": "Extras", "multiSelect": true,
+         "options": [{"label": "Coffee", "description": "Coffee"}, {"label": "Fruit", "description": "Fruit"},
+                     {"label": "Cake", "description": "Cake"}]},
+        {"question": "When do we leave?", "header": "When", "multiSelect": false,
+         "options": [{"label": "Noon", "description": "-"}, {"label": "Half past twelve", "description": "-"},
+                     {"label": "One o clock", "description": "-"}]}
+    ])
+}
+
+const LUNCH: &str = "←  ☐ Lunch  ☐ Extras  ☐ When  ✔ Submit  →\nWhere should we get lunch today?\n❯ 1. Bakery\n  2. Noodle bar\n  3. Leftovers\n  4. Type something.\n";
+const WHEN: &str = "←  ☒ Lunch  ☒ Extras  ☐ When  ✔ Submit  →\nWhen do we leave?\n❯ 1. Noon\n  2. Half past twelve\n  3. One o clock\n  4. Type something.\n";
+
+/// The Extras question as the desk draws it: these ticks, the free row's
+/// text and tick, and the focus on row `focus` (1-based) or, with 0, on the
+/// unnumbered "Next" row (this question is not the call's last).
+fn extras(ticks: [bool; 3], free: &str, free_on: bool, focus: usize) -> String {
+    let b = |on: bool| if on { "[✔]" } else { "[ ]" };
+    let p = |row: usize| if focus == row { "❯" } else { " " };
+    format!(
+        "←  ☒ Lunch  ☐ Extras  ☐ When  ✔ Submit  →\nWhat should we bring back?\n{} 1. {} Coffee\n         Coffee\n{} 2. {} Fruit\n         Fruit\n{} 3. {} Cake\n         Cake\n{} 4. {} {free}\n{}    Next\n  5. Chat about this\n",
+        p(1),
+        b(ticks[0]),
+        p(2),
+        b(ticks[1]),
+        p(3),
+        b(ticks[2]),
+        p(4),
+        b(free_on),
+        p(0)
+    )
+}
+
+const LUNCH_REVIEW: &str = "←  ☒ Lunch  ☒ Extras  ☒ When  ✔ Submit  →\nReview your answers\n ● Where should we get lunch today?\n   → Noodle bar\n ● What should we bring back?\n   → Coffee, Cake, tea\n ● When do we leave?\n   → Half past twelve\n❯ 1. Submit answers\n  2. Cancel\n";
+
+fn lunch_answers() -> Vec<ChatChoice> {
+    vec![
+        pick(1),
+        ChatChoice::Multi {
+            indices: vec![0, 2],
+            text: Some("tea".into()),
+        },
+        pick(1),
+    ]
+}
+
+impl Core {
+    /// The last question typed, then the review step and its Enter.
+    async fn ends_on_when_and_review(&mut self, end: u64) {
+        self.types(WHEN, &["2"], LUNCH_REVIEW).await;
+        self.serves_check("blocked").await;
+        self.serves_screen(LUNCH_REVIEW).await;
+        let k = self.takes_keys(&["enter"]).await;
+        self.reply(&k, json!({"turn": 3})).await;
+        self.serves_screen(PROMPT).await;
+        self.serves_log(end, &[result_line("toolu_01", false)])
+            .await;
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_multi_select_with_own_words_before_another_question_leaves_through_next() {
+    let mut r = rig("send-lunch");
+    let (mut core, chat, end) = with_log(&mut r, &[ask_line("toolu_01", lunch_call())]).await;
+    let got = spawn_send(&chat, "toolu_01", lunch_answers(), 0);
+    let fresh = extras([false; 3], "Type something", false, 1);
+    core.types(LUNCH, &["2"], &fresh).await;
+    core.serves_check("blocked").await;
+    core.serves_screen(&fresh).await;
+    let k = core.takes_keys(&["1", "3"]).await;
+    core.reply(&k, json!({"turn": 3})).await;
+    core.serves_screen(&extras([true, false, true], "Type something", false, 1))
+        .await;
+    let send = core.expect("terminal.send").await;
+    assert_eq!(send["params"]["text"], "tea");
+    core.reply(&send, json!({"turn": 3, "status": "blocked"}))
+        .await;
+    // The paste leaves the text in the free row, unticked, in focus: Enter ticks it.
+    core.serves_screen(&extras([true, false, true], "tea", false, 4))
+        .await;
+    let k = core.takes_keys(&["enter"]).await;
+    core.reply(&k, json!({"turn": 3})).await;
+    core.serves_screen(&extras([true, false, true], "tea", true, 4))
+        .await;
+    // From the editor Tab reaches the "Next" row; Enter there moves on.
+    let k = core.takes_keys(&["tab"]).await;
+    core.reply(&k, json!({"turn": 3})).await;
+    core.serves_screen(&extras([true, false, true], "tea", true, 0))
+        .await;
+    let k = core.takes_keys(&["enter"]).await;
+    core.reply(&k, json!({"turn": 3})).await;
+    core.serves_screen(WHEN).await;
+    core.ends_on_when_and_review(end).await;
+    assert_eq!(got.await.unwrap(), ChatAnswer::Done);
+    core.nothing_more().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_partly_typed_multi_select_goes_on_without_typing_it_again() {
+    // Where Ezra's try stopped: the ticks and "tea" in, the focus on "Next".
+    let mut r = rig("send-lunch-rest");
+    let (mut core, chat, end) = with_log(&mut r, &[ask_line("toolu_01", lunch_call())]).await;
+    let got = spawn_send(&chat, "toolu_01", lunch_answers(), 1);
+    let stuck = extras([true, false, true], "tea", true, 0);
+    core.serves_check("blocked").await;
+    core.serves_screen(&stuck).await;
+    // Nothing toggled, nothing pasted: the screen already shows them.
+    core.serves_screen(&stuck).await;
+    let k = core.takes_keys(&["enter"]).await;
+    core.reply(&k, json!({"turn": 3})).await;
+    core.serves_screen(WHEN).await;
+    core.ends_on_when_and_review(end).await;
+    assert_eq!(got.await.unwrap(), ChatAnswer::Done);
+    core.nothing_more().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_multi_select_revisited_with_its_answer_in_place_leaves_with_tab() {
+    // Back on the question at the desk, the focus starts on row 1 (desk, 2.1.332).
+    let mut r = rig("send-lunch-revisit");
+    let (mut core, chat, end) = with_log(&mut r, &[ask_line("toolu_01", lunch_call())]).await;
+    let got = spawn_send(&chat, "toolu_01", lunch_answers(), 1);
+    let back = extras([true, false, true], "tea", true, 1);
+    core.serves_check("blocked").await;
+    core.serves_screen(&back).await;
+    core.serves_screen(&back).await;
+    let k = core.takes_keys(&["tab"]).await;
+    core.reply(&k, json!({"turn": 3})).await;
+    core.serves_screen(WHEN).await;
+    core.ends_on_when_and_review(end).await;
+    assert_eq!(got.await.unwrap(), ChatAnswer::Done);
     core.nothing_more().await;
 }

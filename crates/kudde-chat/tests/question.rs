@@ -974,6 +974,51 @@ Which fruits?
         assert!(!question::submit_focused(off));
     }
 
+    /// Ezra's try (2026-11-25): on a multi-select question that is not the
+    /// call's last, the unnumbered row reads "Next", not "Submit"; the plan
+    /// stopped there. Captured from the desk (2.1.332).
+    const EXTRAS_ON_NEXT: &str = "\
+←  ☒ Lunch  ☒ Extras  ☐ When  ✔ Submit  →
+What should we bring back?
+  1. [✔] Coffee
+         Coffee
+  2. [ ] Fruit
+         Fruit
+  3. [✔] Cake
+         Cake
+  4. [✔] tea
+❯    Next
+────────────────────────────────────────
+  5. Chat about this
+Enter to select · Tab/Arrow keys to navigate · ctrl+g to edit in Vim · Esc to cancel
+";
+
+    #[test]
+    fn next_in_focus_is_the_same_row_on_an_earlier_question() {
+        assert!(question::submit_focused(EXTRAS_ON_NEXT));
+        let off = EXTRAS_ON_NEXT
+            .replace("❯    Next", "     Next")
+            .replace("  4. [✔] tea", "❯ 4. [✔] tea");
+        assert!(!question::submit_focused(&off));
+        let mut v = q(
+            "What should we bring back?",
+            "Extras",
+            &["Coffee", "Fruit", "Cake"],
+        );
+        v["multiSelect"] = json!(true);
+        let extras = readable(json!([v])).remove(0);
+        assert_eq!(
+            question::typed_row(EXTRAS_ON_NEXT, &extras, "tea"),
+            Some(true)
+        );
+        assert!(question::ticks_shown(
+            EXTRAS_ON_NEXT,
+            &extras,
+            &[0, 2],
+            true
+        ));
+    }
+
     #[test]
     fn toggles_only_change_rows_the_screen_shows_otherwise() {
         // A retry after a lost reply, or ticks made at the desk: only the difference is sent.
