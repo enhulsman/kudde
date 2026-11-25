@@ -37,8 +37,9 @@ order: `terminal.get` shows the same target and the status still `blocked`;
 `terminal.read` shows the call's question text (box-drawing characters and
 runs of spaces folded) and the first label of each of its options; then one
 `terminal.keys` call carries the whole key list of the step. For a single
-choice option N the list SHALL be the digit N and Enter; it SHALL NOT count
-arrow presses. If either check fails nothing SHALL be sent: a status that is
+choice option N the list SHALL be the digit N alone when no option of the
+question has a preview, and the digit N and Enter when one has; it SHALL NOT
+count arrow presses, and no key of a step SHALL answer a later question. If either check fails nothing SHALL be sent: a status that is
 no longer `blocked` says "Already answered at the desk. Nothing was sent.",
 and another agent, process or session in front (or none) or a screen without
 the question says "The question changed. Nothing was sent." The card SHALL
@@ -56,8 +57,16 @@ connected. Nothing was sent." The app SHALL NOT read the result text of the
 call to learn the answer.
 
 #### Scenario: Choosing the second option
-- **WHEN** Ezra taps "2. Postgres" while the same dialog shows on the desk
-- **THEN** one `terminal.keys` call sends `2` and Enter, the card marks Postgres as chosen, and when the log's result arrives the card collapses to "Answered: Database"
+- **WHEN** Ezra taps "2. Postgres" on a question whose options have no preview while the same dialog shows on the desk
+- **THEN** one `terminal.keys` call sends `2` alone, the card marks Postgres as chosen, and when the log's result arrives the card collapses to "Answered: Database"
+
+#### Scenario: Choosing an option of a question with previews
+- **WHEN** Ezra taps "2. Postgres" and an option of the question has a preview
+- **THEN** one `terminal.keys` call sends `2` and Enter
+
+#### Scenario: The first of three questions
+- **WHEN** a call holds three questions without previews and Ezra taps "2. Postgres" on the first
+- **THEN** only `2` is sent, the dialog moves to the second question with nothing chosen there, and the card moves on to it
 
 #### Scenario: The status is no longer blocked
 - **WHEN** Ezra taps an option and `terminal.get` reports the status working
@@ -151,24 +160,32 @@ answer there SHALL show as a ticked row with its text, SHALL count as one
 chosen, and SHALL go out with the ticked options through the footer's Send:
 the field gets no send button of its own on a multi-select question (a
 single-choice question keeps the field's own Send). Tapping Send SHALL send,
-after the checks, the keys that toggle each ticked option, then, with a
-typed answer, the key that focuses the free-text row, the text as one
-`terminal.send` with `force` (after the screen still shows the question),
-and then (again after that screen check) the key that submits the
-question; without a typed answer the toggles and the submit go as one
-`terminal.keys` call. The card SHALL report "Could not confirm the answer arrived. Check
-the terminal." when the screen does not move on. The keys for this question
+after the checks, the digit of each ticked option alone (a digit toggles its
+row) and no digit for the free-text row or the rows after it; with a typed
+answer, once the screen shows the ticks, the text as one `terminal.send`
+with `force`, and an Enter when the screen then shows the text in the
+free-text row unticked; once the screen shows exactly the planned rows
+ticked, the key that leaves the question (Tab, or Tab and Enter from the
+free-text row); and in a call of one question, once the screen shows the
+review step, Enter. Each of these steps SHALL wait for the screen it
+depends on, and a screen that does not come SHALL stop the answer with
+"Could not confirm the answer arrived. Check the terminal.", sending nothing
+again. The card SHALL report the same when the screen does not move on. The keys for this question
 kind are not confirmed against the program (design, section B); until the
 phone check confirms them, a multi-select question SHALL show "Open the
 terminal" with its options as plain text.
 
 #### Scenario: Two of three ticked
 - **WHEN** a multi-select question lists A, B and C and Ezra ticks A and C and taps Send
-- **THEN** the keys for A, for C and the submit are sent after the checks and the card moves on
+- **THEN** `1` and `3` are sent after the checks, then, once the screen shows A and C ticked, Tab, and the card moves on
 
 #### Scenario: A typed answer joins the ticks
 - **WHEN** a multi-select question lists Apple, Banana and Mango, Ezra ticks Apple, types "Berries" in "Something else" and taps the footer's Send
-- **THEN** the card reads "2 selected", the Berries row shows ticked, and the keys for Apple, the free-text row, the text "Berries" and the submit are sent in that order after the checks
+- **THEN** the card reads "2 selected", the Berries row shows ticked, and after the checks `1`, the text "Berries" (with an Enter to tick its row when the screen shows it unticked), Tab and Enter, and on the review step Enter are sent in that order, each after the screen it depends on
+
+#### Scenario: A tick the screen does not show
+- **WHEN** the ticks were sent and the screen never shows the planned rows ticked
+- **THEN** nothing more is sent and the card says "Could not confirm the answer arrived. Check the terminal."
 
 #### Scenario: Nothing ticked
 - **WHEN** no option is ticked and no text is typed
