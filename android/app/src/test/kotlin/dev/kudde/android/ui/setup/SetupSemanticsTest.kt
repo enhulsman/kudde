@@ -64,7 +64,20 @@ class SetupSemanticsTest {
         show { AlertsStep(AlertsUi("workstation", AlertsState.Before, 0), AlertsActions({}, {}, {}, {}, {}, {}, {}, {})) }
         assertTrue(texts().contains("Alerts (optional)"))
         assertEquals(1, stepBars("Step 4 of 4"))
+        show { AlertsStep(AlertsUi("workstation", AlertsState.On, 0), AlertsActions({}, {}, {}, {}, {}, {}, {}, {})) }
+        assertTrue(texts().contains("Alerts are already on for this phone."))
+        assertTrue(texts().none { it == "Alerts are on on this phone." })
         assertTrue("no separate step text", texts().none { it.startsWith("Step ") })
+    }
+
+    @Test fun theUnfinishedHomeTellsARefusedKeyFromAnUnfinishedSetup() {
+        show { UnfinishedHome("workstation", {}) }
+        assertTrue(texts().contains("Its setup is not finished."))
+        assertTrue(texts().none { it == "It no longer accepts this phone's key." })
+        show { UnfinishedHome("workstation", {}, keyRefused = true) }
+        assertTrue(texts().contains("workstation is not connected yet"))
+        assertTrue(texts().contains("It no longer accepts this phone's key."))
+        assertTrue(texts().none { it == "Its setup is not finished." })
     }
 
     /** The step bar: one node whose spoken text is "Step n of 4", never four segments. */
