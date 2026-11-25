@@ -840,3 +840,13 @@ These preferences are excluded from backup and transfer. An installed app with m
 README's "Setting up" is rewritten to the app's steps, and its herdr-core
 link (`README.md:75`, which points at a repository that does not exist)
 is corrected.
+
+## Review (task 7.1, Codex adversarial review, 2026-11-25)
+
+Focus: the command's quoting, nothing signed before trust, setup state after process death, the password way. Verdict "needs attention". Confirmed fine: no material defect in the generated command's quoting, and host-key verification comes before phone-key signing or password authentication on every reviewed path. Seven findings:
+
+- Fixed, tests first: a cold restart restored step 2 before the hub's first snapshot and dropped the saved machine (now kept pending and reconciled at the first snapshot, which reopens the saved choice once); a changed host key before the first connection let Back, Forget or a vanished mismatch reach Machines (now they return to setup); after "dropped" the field and "Add the key" did nothing (now they retry); the password UI model printed the typed text in its generated `toString` (now redacted); the native password handle was closed only by garbage collection (now closed when the call returns).
+- Open, needs the owner: Cancel during the run only drops the answer, while the session may still send the password and add the key (a real fix is a cancel token in the Rust session, or hiding Cancel while it runs, which changes a signed-off render). The password field still advertises the password content type to Compose autofill while the parent view is excluded; whether a service receives anything must be checked on a phone (6.5), and removing the content type contradicts task 4.9's semantics line.
+
+The full review text is kept with the coordinator's reports.
+
