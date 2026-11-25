@@ -80,8 +80,16 @@ are named keybindings, which a user can rebind in a keybindings file.
 | The dialog may close by itself after an idle timeout (code names `CLAUDE_AFK_TIMEOUT_MS`, with a countdown) | low (default not found) |
 | Focus starts on the previously chosen option when a question is revisited, so a plan must not count arrow presses from the top | moderate |
 
-Still for the phone round: the same keys sent by the app through its card,
-the delay the "quiet" rule adds, and the result texts.
+Phone round (2026-11-25, task 5.1, Pixel 7 Pro, Claude Code 2.1.332, the
+question read from the hook): the same keys sent by the app through its card
+matched every row above. Tap to answer, end to end: single choice about 3 s;
+preview with a note about 1 s (the note lands in the call's annotations);
+three questions step by step, then the review step and Send answers;
+multi-select with two ticks and own words about 7 s ("Apple, Mango, Berries");
+free text about 1 s; Skip gives "Skipped: Theme". No desk typing happened, so
+the quiet rule added nothing beyond those times. Found and fixed there: the
+screen check read the chat above the dialog, which could match an earlier
+question; it now reads the dialog only.
 
 ### C. What the chat knows today (high, from the code)
 
@@ -241,7 +249,7 @@ Codex: the card shows the question as read-only text and "Open the terminal".
   instead, with the same checks.
 - **Rebound keys or a changed dialog** in a later Claude Code: D4 notices
   and stops; a compatibility note joins the supported-version list.
-- **Free-text paste and multi-select** are low confidence (section B).
+- **Free-text paste and multi-select** were confirmed on the desk and the phone (section B); the multi-select gate in the core stays shut until the owner lifts it.
 - **Long text**: a 700-character description wraps; a card taller than the
   screen scrolls inside its own area, with the options reachable.
 
