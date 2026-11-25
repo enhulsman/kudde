@@ -312,6 +312,7 @@ class FakeAgentChat(private val io: AgentIoTracker) : ChatInterface {
     override fun send(text: String): ChatSent = ChatSent.Typed
     override fun sendWithImages(text: String, images: List<ChatUpload>): ChatSent = ChatSent.Typed
     override fun answerQuestion(id: String, step: UInt, choice: ChatChoice): ChatAnswer = io.call { ChatAnswer.Done }
+    override fun sendAnswers(id: String, answers: List<ChatChoice>, from: UInt): ChatAnswer = io.call { ChatAnswer.Done }
     fun answer(row: ChatRow) {
         current = current.copy(rows = current.rows + row)
         signal.release()

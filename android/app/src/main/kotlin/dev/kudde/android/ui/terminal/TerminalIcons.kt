@@ -67,6 +67,9 @@ enum class LineIcon(val strokeWidth: Float, val paths: List<String>) {
         listOf("M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z", "M14 3v5h5", "M12 10.5v5", "M9.5 13h5", "M9.5 17.5h5"),
     ),
     Back(2f, listOf("m12 19-7-7 7-7", "M19 12H5")),
+    // The question card's previous and next question (lucide chevron-left, chevron-right; ISC).
+    ChevronLeft(2f, listOf("m15 18-6-6 6-6")),
+    ChevronRight(2f, listOf("m9 18 6-6-6-6")),
     // The quieter title bar (render terminal-map, `ico.more`, `ico.chat`, `ico.term`; lucide, ISC):
     // the menu button's three dots (ellipsis-vertical, circles of radius 1 as two arcs), and the
     // view switch's chat (message-square-text) and terminal (square-terminal, the square as a path).

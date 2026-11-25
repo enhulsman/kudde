@@ -159,47 +159,174 @@ class ChatQuestionTest {
     // ---- 4.1 state
 
     @Test
-    fun theCardFollowsItsStepAndForgetsWhatWasTapped() {
+    fun theCardKeepsItsAnswersUntilANewCall() {
         val card = QuestionCard()
         val q = question(database, login)
         card.follow(q)
-        assertTrue(card.start(ChatChoice.Pick(1u)))
-        assertEquals(1, card.chosen)
-        assertTrue(card.sending)
-        assertFalse("a second tap while sending", card.start(ChatChoice.Pick(0u)))
-        card.finished(ChatAnswer.Done)
-        assertTrue("disabled until the step ends", card.busy)
+        card.keep(ChatChoice.Pick(1u))
+        assertEquals(1, card.at)
+        assertFalse("nothing is on its way", card.sending)
+        // The dialog's own step (the poll's) does not move the card.
         card.follow(q.copy(step = 1u))
-        assertNull(card.chosen)
-        assertFalse(card.busy)
+        assertEquals(mapOf<Int, ChatChoice>(0 to ChatChoice.Pick(1u)), card.answers)
+        card.follow(question(login, id = "toolu_02"))
+        assertTrue("a new call starts afresh", card.answers.isEmpty())
+        assertEquals(0, card.at)
         card.follow(null)
         assertNull(card.chosen)
     }
 
     // 5.4 review (Codex): a tap carries the card it was made on.
+    // 5.4 review (Codex): a send carries the call it was made on.
     @Test
-    fun aTapMadeOnAStepThatMovedOnIsDropped() {
+    fun aSendMadeOnACallThatMovedOnIsDropped() {
         val card = QuestionCard()
         val q = question(database, login)
         card.follow(q)
-        card.follow(q.copy(step = 1u))
-        assertFalse("the old frame's option must not answer the new step", card.start(ChatChoice.Pick(1u), q))
+        card.follow(question(login, id = "toolu_02"))
+        assertFalse("the old frame's button must not answer the new call", card.start(ChatChoice.Submit, q))
         assertFalse(card.sending)
-        assertTrue(card.start(ChatChoice.Pick(0u), q.copy(step = 1u)))
-        assertEquals("toolu_01" to 1u, card.sentFor)
+        assertTrue(card.start(ChatChoice.Skip, question(login, id = "toolu_02")))
+        assertEquals("toolu_02" to 0u, card.sentFor)
     }
 
     @Test
-    fun anOldAnswersResultLeavesTheNewStepAlone() {
+    fun anOldSendsResultLeavesTheNewCallAlone() {
         val card = QuestionCard()
         val q = question(database, login)
         card.follow(q)
-        assertTrue(card.start(ChatChoice.Pick(1u), q))
+        assertTrue(card.start(ChatChoice.Skip, q))
         val key = card.sentFor
-        card.follow(q.copy(step = 1u))
+        card.follow(question(login, id = "toolu_02"))
         card.finished(ChatAnswer.Changed, key)
-        assertNull("the new step shows no refusal of the old one", card.problem)
+        assertNull("the new call shows no refusal of the old one", card.problem)
         assertFalse(card.busy)
+    }
+
+    // ---- 7.3 the phone keeps the answers until Send (D11, owner 2026-11-25)
+
+    @Test
+    fun answersAreKeptAndTheCardMovesOnWithoutSending() {
+        val s = show(poll(question(plainDb, login, tests), rows))
+        tap("Option 2 of 2, Postgres, Needs a running server.")
+        assertTrue("nothing sent", answers.isEmpty())
+        assertTrue(shows("Question 2 of 3"))
+        tap("Option 2 of 2, Passkey, The phone signs in.")
+        assertTrue(shows("Question 3 of 3"))
+        tap("Option 1 of 2, Unit")
+        assertTrue(answers.isEmpty())
+        assertTrue(s.card.onReview)
+        assertNotNull(node("Which tests first?, Unit"))
+    }
+
+    @Test
+    fun previousGoesBackWithTheAnswerMarkedAndANewTapReplacesIt() {
+        val s = show(poll(question(plainDb, login, tests), rows))
+        tap("Option 2 of 2, Postgres, Needs a running server.")
+        assertFalse("question 2 can go back", node(PREVIOUS_QUESTION)!!.config.contains(SemanticsProperties.Disabled))
+        tap(PREVIOUS_QUESTION)
+        assertTrue(shows("Question 1 of 3"))
+        val marked = node("Option 2 of 2, Postgres, Needs a running server.")!!
+        assertTrue("the kept answer shows chosen", marked.config.getOrNull(SemanticsProperties.Selected) == true)
+        tap(NEXT_QUESTION)
+        assertTrue(shows("Question 2 of 3"))
+        tap(PREVIOUS_QUESTION)
+        tap("Option 1 of 2, SQLite (Recommended), One file, no server.")
+        assertEquals(ChatChoice.Pick(0u), s.card.answers[0])
+        assertTrue("on to the first question without an answer", shows("Question 2 of 3"))
+        assertTrue(answers.isEmpty())
+    }
+
+    @Test
+    fun nextWaitsForAnAnswer() {
+        show(poll(question(plainDb, login), rows))
+        assertTrue(node(NEXT_QUESTION)!!.config.contains(SemanticsProperties.Disabled))
+        assertTrue(node(PREVIOUS_QUESTION)!!.config.contains(SemanticsProperties.Disabled))
+    }
+
+    @Test
+    fun aChangeFromTheReviewStepComesBackToIt() {
+        val s = show(poll(question(plainDb, login), rows))
+        tap("Option 2 of 2, Postgres, Needs a running server.")
+        tap("Option 2 of 2, Passkey, The phone signs in.")
+        tap(changeSpoken("Which database should the todo app use?"))
+        assertTrue(shows("Question 1 of 2"))
+        tap("Option 1 of 2, SQLite (Recommended), One file, no server.")
+        assertTrue("back on the review step", s.card.onReview)
+        assertNotNull(node("Which database should the todo app use?, SQLite (Recommended)"))
+        assertTrue(answers.isEmpty())
+    }
+
+    @Test
+    fun ownWordsAndANoteAreListed() {
+        val s = show(poll(question(plainDb, database.copy(text = "Which database for the tests?", header = "Tests")), rows))
+        tap(SOMETHING_ELSE)
+        s.card.otherText = "Through Docker"
+        idle()
+        tap(NEXT)
+        assertTrue(answers.isEmpty())
+        assertTrue(shows("Question 2 of 2"))
+        tap(PREVIEW)
+        s.card.note = "Bigger titles please"
+        idle()
+        tap(CHOOSE_THIS)
+        assertTrue("Choose this keeps the answer", answers.isEmpty())
+        assertNotNull(node("Which database should the todo app use?, Through Docker"))
+        assertNotNull(node("Which database for the tests?, Postgres, ${noteLine("Bigger titles please")}"))
+        assertEquals(
+            listOf(ChatChoice.Other("Through Docker"), ChatChoice.Note(1u, "Bigger titles please")),
+            s.card.answersToSend(),
+        )
+    }
+
+    @Test
+    fun oneSingleChoiceQuestionStillAnswersAtTheTap() {
+        show(poll(question(plainDb), rows))
+        assertNull("no step controls", node(PREVIOUS_QUESTION))
+        tap("Option 2 of 2, Postgres, Needs a running server.")
+        assertEquals(listOf<ChatChoice>(ChatChoice.Pick(1u)), answers)
+    }
+
+    @Test
+    fun skipDeclinesFromAnyStep() {
+        show(poll(question(plainDb, login), rows))
+        tap("Option 2 of 2, Postgres, Needs a running server.")
+        tap(SKIP)
+        assertEquals(listOf<ChatChoice>(ChatChoice.Skip), answers)
+    }
+
+    @Test
+    fun sendingThatStopsHalfwaySaysHowManyAndKeepsTheAnswers() {
+        val s = show(poll(question(plainDb, login, tests), rows))
+        tap("Option 2 of 2, Postgres, Needs a running server.")
+        tap("Option 2 of 2, Passkey, The phone signs in.")
+        tap("Option 1 of 2, Unit")
+        tap(SEND_ANSWERS)
+        s.card.finished(ChatAnswer.Stopped(2u), s.card.sentFor)
+        idle()
+        assertTrue(shows(stoppedText(2, 3)))
+        assertNotNull(node(SHOW_TERMINAL))
+        assertEquals(2, s.card.sent)
+        assertEquals(3, s.card.answersToSend().size)
+        // Send answers again goes on from there.
+        tap(SEND_ANSWERS)
+        assertEquals(listOf<ChatChoice>(ChatChoice.Submit, ChatChoice.Submit), answers)
+    }
+
+    @Test
+    fun theAnswerListIsReadInOrderBeforeSendAnswers() {
+        show(poll(question(plainDb, login), rows))
+        tap("Option 2 of 2, Postgres, Needs a running server.")
+        tap("Option 2 of 2, Passkey, The phone signs in.")
+        val order = reading(ALL_ANSWERED)
+        val at = { t: String -> order.indexOfFirst { t in it }.also { assertTrue("\"$t\" not read: $order", it >= 0) } }
+        val a1 = at("Which database should the todo app use?, Postgres")
+        val c1 = at(changeSpoken("Which database should the todo app use?"))
+        val a2 = at("Which login should it have?, Passkey")
+        val c2 = at(changeSpoken("Which login should it have?"))
+        val send = at(SEND_ANSWERS)
+        assertTrue(order.toString(), a1 < c1 && c1 < a2 && a2 < c2 && c2 < send)
+        assertFalse("focus never moves by itself", focused())
     }
 
     @Test
@@ -271,7 +398,6 @@ class ChatQuestionTest {
     @Test
     fun somethingElseTakesTheFocusAndSendGivesItBack() {
         val s = show(poll(question(plainDb), rows))
-        s.card.follow(s.poll?.question)
         tap(SOMETHING_ELSE)
         val field = semanticsNodes().first { it.config.contains(SemanticsProperties.EditableText) }
         assertEquals("the keyboard opens for the field", true, field.config.getOrNull(SemanticsProperties.Focused))
@@ -306,12 +432,16 @@ class ChatQuestionTest {
         val s = show(poll(question(fruit), rows))
         tap("Option 1 of 3, Apple, Crisp., not checked")
         tap(SOMETHING_ELSE)
-        assertEquals("the field has no send of its own", 1, semanticsNodes().count { SEND in it.descriptions() })
+        assertEquals("the field has no button of its own", 1, semanticsNodes().count { NEXT in it.descriptions() })
         s.card.otherText = "Berries"
         idle()
         assertTrue(shows("2 selected"))
-        tap(SEND)
-        assertEquals(listOf<ChatChoice>(ChatChoice.Multi(listOf(0u), "Berries")), answers)
+        tap(NEXT)
+        // The review step lists the ticks and the typed answer.
+        assertNotNull(node("Which fruits would you put in a fruit salad?, Apple, Berries"))
+        tap(SEND_ANSWERS)
+        assertEquals(listOf<ChatChoice>(ChatChoice.Submit), s.card.let { answers })
+        assertEquals(listOf<ChatChoice>(ChatChoice.Multi(listOf(0u), "Berries")), s.card.answersToSend())
     }
 
     @Test
@@ -326,8 +456,8 @@ class ChatQuestionTest {
         assertFalse(focused())
         assertNotNull("the typed row reads as ticked", node("Something else, Berries, checked"))
         assertTrue(shows("1 selected"))
-        tap(SEND)
-        assertEquals(listOf<ChatChoice>(ChatChoice.Multi(emptyList(), "Berries")), answers)
+        tap(NEXT)
+        assertNotNull(node("Which fruits would you put in a fruit salad?, Berries"))
     }
 
     @Test
@@ -338,7 +468,7 @@ class ChatQuestionTest {
         s.card.otherText = "x".repeat(2001)
         idle()
         assertTrue(shows(TOO_LONG))
-        assertTrue(node(SEND)!!.config.contains(SemanticsProperties.Disabled))
+        assertTrue(node(NEXT)!!.config.contains(SemanticsProperties.Disabled))
     }
 
     // Coordinator, after the phone round (2026-11-25): the keyboard stayed up for the ~7 s multi-select send.
@@ -350,9 +480,11 @@ class ChatQuestionTest {
         assertTrue("the keyboard opens for the field", focused())
         s.card.otherText = "Berries"
         idle()
-        tap(SEND)
-        assertEquals(listOf<ChatChoice>(ChatChoice.Multi(listOf(0u), "Berries")), answers)
-        assertFalse("no keyboard at the tap", focused())
+        tap(NEXT)
+        assertFalse("no keyboard once the answer is kept", focused())
+        tap(SEND_ANSWERS)
+        assertEquals(listOf<ChatChoice>(ChatChoice.Submit), answers)
+        assertFalse("no keyboard at the send", focused())
         val field = semanticsNodes().firstOrNull { it.config.contains(SemanticsProperties.EditableText) }
         field?.config?.getOrNull(SemanticsActions.RequestFocus)?.action?.invoke()
         idle()
@@ -373,7 +505,6 @@ class ChatQuestionTest {
     @Test
     fun chooseThisWithANoteLeavesNoKeyboard() {
         val s = show(poll(question(database), rows))
-        s.card.follow(s.poll?.question)
         tap(PREVIEW)
         val note = semanticsNodes().first { it.config.contains(SemanticsProperties.EditableText) }
         note.config[SemanticsActions.RequestFocus].action!!.invoke()
@@ -419,13 +550,17 @@ class ChatQuestionTest {
         show(poll(question(ask), rows))
         assertTrue(shows(CHOOSE_ANY))
         assertTrue(shows("0 selected"))
-        assertTrue("Send waits for a tick", node(SEND)!!.config.contains(SemanticsProperties.Disabled))
+        assertTrue("the button waits for a tick", node(NEXT)!!.config.contains(SemanticsProperties.Disabled))
         tap("Option 1 of 3, SQLite (Recommended), One file, no server., not checked")
         tap("Option 3 of 3, Plain JSON files, not checked")
         assertTrue(shows("2 selected"))
         assertNotNull(node("Option 1 of 3, SQLite (Recommended), One file, no server., checked"))
-        tap(SEND)
-        assertEquals(listOf<ChatChoice>(ChatChoice.Multi(listOf(0u, 2u), null)), answers)
+        // A multi-select call has a review step: the answer is kept, then sent with Send answers.
+        tap(NEXT)
+        assertTrue(answers.isEmpty())
+        assertNotNull(node("Which database should the todo app use?, SQLite (Recommended), Plain JSON files"))
+        tap(SEND_ANSWERS)
+        assertEquals(listOf<ChatChoice>(ChatChoice.Submit), answers)
     }
 
     @Test
@@ -462,7 +597,6 @@ class ChatQuestionTest {
     @Test
     fun aTapAnswersAndMarksTheOptionChosen() {
         val s = show(poll(question(database), rows))
-        s.card.follow(s.poll?.question)
         tap("Option 2 of 2, Postgres, Needs a running server., Preview available")
         assertEquals(listOf<ChatChoice>(ChatChoice.Pick(1u)), answers)
         s.card.start(ChatChoice.Pick(1u))
@@ -519,23 +653,30 @@ class ChatQuestionTest {
     }
 
     @Test
-    fun severalQuestionsShowTheirStep() {
+    fun severalQuestionsShowTheirStepOnThePhone() {
+        // The dialog's step does not matter: the phone starts on question 1.
         show(poll(question(database, login, tests, step = 1u), rows))
-        assertTrue(shows("Question 2 of 3"))
-        assertTrue(shows("Which login should it have?"))
-        assertFalse(shows("Which database should the todo app use?"))
+        assertTrue(shows("Question 1 of 3"))
+        assertTrue(shows("Which database should the todo app use?"))
+        assertFalse(shows("Which login should it have?"))
     }
 
     @Test
-    fun theReviewStepShowsSendAnswersAndSkipOnly() {
-        show(poll(question(database, login, step = 2u, review = true), rows))
-        tap(SEND_ANSWERS)
-        assertEquals(listOf<ChatChoice>(ChatChoice.Submit), answers)
-        assertNotNull(node(SKIP))
+    fun theReviewStepListsTheAnswersWithSendAnswersAndSkip() {
+        val s = show(poll(question(plainDb, login), rows))
+        tap("Option 2 of 2, Postgres, Needs a running server.")
+        tap("Option 2 of 2, Passkey, The phone signs in.")
+        assertTrue(answers.isEmpty())
+        // Owner, 2026-11-25: the review step says what is left to do and lists the answers.
+        assertTrue(shows(ALL_ANSWERED))
+        assertNotNull(node("Which database should the todo app use?, Postgres"))
+        assertNotNull(node("Which login should it have?, Passkey"))
         assertNull(node(SOMETHING_ELSE))
         assertFalse(shows("Question "))
-        // Owner, 2026-11-25: the review step says what is left to do.
-        assertTrue(shows(ALL_ANSWERED))
+        assertNotNull(node(SKIP))
+        tap(SEND_ANSWERS)
+        assertEquals(listOf<ChatChoice>(ChatChoice.Submit), answers)
+        assertEquals(listOf<ChatChoice>(ChatChoice.Pick(1u), ChatChoice.Pick(1u)), s.card.answersToSend())
     }
 
     @Test
@@ -574,7 +715,6 @@ class ChatQuestionTest {
     @Test
     fun chooseThisAnswersTheOptionAndClosesTheSheet() {
         val s = show(poll(question(database), rows))
-        s.card.follow(s.poll?.question)
         tap(PREVIEW)
         assertNotNull(node(NOTE_HINT))
         tap(CHOOSE_THIS)
@@ -585,7 +725,6 @@ class ChatQuestionTest {
     @Test
     fun aNoteGoesWithChooseThis() {
         val s = show(poll(question(database), rows))
-        s.card.follow(s.poll?.question)
         tap(PREVIEW)
         s.card.note = "Through Docker, please"
         idle()
@@ -687,19 +826,20 @@ class ChatQuestionTest {
         assertFalse("nothing took the focus", semanticsNodes().any { it.config.getOrNull(SemanticsProperties.Focused) == true })
     }
 
-    @Test
     fun theCardIsAnnouncedOnceAndEachStepAndRefusalOnce() {
         val heard = CardHeard()
         val q = question(database, login, tests)
-        assertEquals(listOf("Question from the agent. Which database should the todo app use?"), heard.next(q, null))
-        assertEquals(emptyList<String>(), heard.next(q, null))
-        assertEquals(listOf("Question 2 of 3"), heard.next(q.copy(step = 1u), null))
-        assertEquals(emptyList<String>(), heard.next(q.copy(step = 1u), null))
-        assertEquals(listOf(ALREADY_ANSWERED), heard.next(q.copy(step = 1u), ALREADY_ANSWERED))
-        assertEquals(emptyList<String>(), heard.next(q.copy(step = 1u), ALREADY_ANSWERED))
-        // The last step is heard as its button (owner, 2026-11-24), once.
-        assertEquals(listOf(SEND_ANSWERS), heard.next(q.copy(step = 3u, review = true), ALREADY_ANSWERED))
-        assertEquals(emptyList<String>(), heard.next(q.copy(step = 3u, review = true), ALREADY_ANSWERED))
+        assertEquals(listOf("Question from the agent. Which database should the todo app use?"), heard.next(q, null, 0))
+        assertEquals(emptyList<String>(), heard.next(q, null, 0))
+        assertEquals(listOf("Question 2 of 3"), heard.next(q, null, 1))
+        assertEquals(emptyList<String>(), heard.next(q.copy(step = 2u), null, 1))
+        // Back is heard too.
+        assertEquals(listOf("Question 1 of 3"), heard.next(q, null, 0))
+        assertEquals(listOf(ALREADY_ANSWERED), heard.next(q, ALREADY_ANSWERED, 0))
+        assertEquals(emptyList<String>(), heard.next(q, ALREADY_ANSWERED, 0))
+        // The review step is heard as its button (owner, 2026-11-24), once.
+        assertEquals(listOf(SEND_ANSWERS), heard.next(q, ALREADY_ANSWERED, 3))
+        assertEquals(emptyList<String>(), heard.next(q, ALREADY_ANSWERED, 3))
         assertEquals(emptyList<String>(), heard.next(null, null))
         assertEquals(
             "a new call is a new card",
@@ -744,5 +884,13 @@ class ChatQuestionTest {
         assertEquals("Choose this", CHOOSE_THIS)
         assertEquals("All questions answered. Send your answers, or skip them all.", ALL_ANSWERED)
         assertEquals("The agent asked a question in the terminal. To answer it here, add the question hook on the desk.", NO_HOOK)
+        // Drafts (D11), to the owner before they ship.
+        assertEquals("Previous question", PREVIOUS_QUESTION)
+        assertEquals("Next question", NEXT_QUESTION)
+        assertEquals("Next", NEXT)
+        assertEquals("Change", CHANGE)
+        assertEquals("Change the answer to: Which login?", changeSpoken("Which login?"))
+        assertEquals("Note: Bigger titles", noteLine("Bigger titles"))
+        assertEquals("Typed 2 of 3 answers, then stopped. Check the terminal.", stoppedText(2, 3))
     }
 }

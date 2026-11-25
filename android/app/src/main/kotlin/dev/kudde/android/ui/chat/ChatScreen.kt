@@ -195,7 +195,7 @@ fun ChatScreen(
         sheetCalls(rows, state.sheet)?.let { calls -> ToolSheet(calls, state, images) }
         state.card.preview?.let { o ->
             val q = poll?.question
-            val ask = q?.questions?.getOrNull(q.step.toInt())
+            val ask = q?.questions?.getOrNull(state.card.at)
             val i = ask?.options?.indexOf(o) ?: -1
             // The note and "Choose this" only where the dialog takes them: a single-choice question.
             val choose = ask != null && !ask.multi && ask.answerable && i >= 0
@@ -207,7 +207,12 @@ fun ChatScreen(
                 onChoose = {
                     val choice = chooseThis(i, state.card.note)
                     state.card.preview = null
-                    if (state.card.start(choice, q)) onAnswer(choice)
+                    // Kept until Send answers in a call with a review step (D11), sent at once otherwise.
+                    if (q != null && hasReview(q)) {
+                        state.card.keep(choice)
+                    } else if (state.card.start(choice, q)) {
+                        onAnswer(choice)
+                    }
                 },
                 onClose = { state.card.preview = null },
             )
