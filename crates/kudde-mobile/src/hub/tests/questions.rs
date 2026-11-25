@@ -336,6 +336,48 @@ async fn free_text_focuses_the_row_then_types_with_force() {
     core.nothing_more().await;
 }
 
+/// Ezra's third try (2026-11-25): herdr-core answers a send only after its
+/// ~5 s wait for a turn to start, which text typed into the dialog never
+/// starts. The screen showing the text arrived is the answer; the reply is
+/// not waited for.
+#[tokio::test(start_paused = true)]
+async fn typed_text_goes_on_once_the_screen_shows_it_without_the_sends_reply() {
+    let mut r = rig("q-text-fast");
+    let (mut core, chat, end) =
+        with_log(&mut r, &[ask_line("toolu_01", json!([database()]))]).await;
+    let began = Instant::now();
+    let got = spawn_answer(
+        &chat,
+        "toolu_01",
+        0,
+        ChatChoice::Other {
+            text: "Use Postgres, but through Docker".into(),
+        },
+    );
+    core.serves_check("blocked").await;
+    core.serves_screen(DIALOG).await;
+    let keys = core.takes_keys(&["3"]).await;
+    core.reply(&keys, json!({"turn": 3})).await;
+    core.serves_screen(DIALOG_FREE).await;
+    let _send = core.expect("terminal.send").await;
+    // No reply: the screen still shows the row, then the dialog gone.
+    core.serves_screen(DIALOG_FREE).await;
+    core.serves_screen(PROMPT).await;
+    // An empty keys call waits behind the paste and its Enter in the core.
+    let after = core.takes_keys(&[]).await;
+    core.reply(&after, json!({"turn": 3})).await;
+    // The step's own check afterwards, as before.
+    core.serves_screen(PROMPT).await;
+    core.serves_log(end, &[result_line("toolu_01", false)])
+        .await;
+    assert_eq!(got.await.unwrap(), ChatAnswer::Done);
+    assert!(
+        began.elapsed() < Duration::from_secs(2),
+        "{:?}",
+        began.elapsed()
+    );
+}
+
 /// 5.4 review: the text goes only once the screen shows the free row focused.
 #[tokio::test(start_paused = true)]
 async fn free_text_waits_for_its_row_in_focus_and_never_types_without_it() {
@@ -1866,6 +1908,46 @@ async fn a_multi_select_with_own_words_before_another_question_leaves_through_ne
     core.ends_on_when_and_review(end).await;
     assert_eq!(got.await.unwrap(), ChatAnswer::Done);
     core.nothing_more().await;
+}
+
+/// Desk, 2026-11-25: the pasted text shows ticked until the paste's own
+/// Enter, which unticks it. Going on from the screen before that Enter
+/// lost "tea"; nothing is decided until the core says the Enter is written.
+#[tokio::test(start_paused = true)]
+async fn a_paste_seen_before_its_enter_is_not_decided_on() {
+    let mut r = rig("send-lunch-fast");
+    let (mut core, chat, end) = with_log(&mut r, &[ask_line("toolu_01", lunch_call())]).await;
+    let got = spawn_send(&chat, "toolu_01", lunch_answers(), 0);
+    let fresh = extras([false; 3], "Type something", false, 1);
+    core.types(LUNCH, &["2"], &fresh).await;
+    core.serves_check("blocked").await;
+    core.serves_screen(&fresh).await;
+    let k = core.takes_keys(&["1", "3"]).await;
+    core.reply(&k, json!({"turn": 3})).await;
+    core.serves_screen(&extras([true, false, true], "Type something", false, 1))
+        .await;
+    let _send = core.expect("terminal.send").await;
+    // No reply yet; the text shows, ticked, before the paste's Enter.
+    core.serves_screen(&extras([true, false, true], "tea", true, 4))
+        .await;
+    let after = core.takes_keys(&[]).await;
+    core.reply(&after, json!({"turn": 3})).await;
+    // Behind the empty call the Enter is written: the row shows unticked.
+    core.serves_screen(&extras([true, false, true], "tea", false, 4))
+        .await;
+    let k = core.takes_keys(&["enter"]).await;
+    core.reply(&k, json!({"turn": 3})).await;
+    core.serves_screen(&extras([true, false, true], "tea", true, 4))
+        .await;
+    let k = core.takes_keys(&["tab"]).await;
+    core.reply(&k, json!({"turn": 3})).await;
+    core.serves_screen(&extras([true, false, true], "tea", true, 0))
+        .await;
+    let k = core.takes_keys(&["enter"]).await;
+    core.reply(&k, json!({"turn": 3})).await;
+    core.serves_screen(WHEN).await;
+    core.ends_on_when_and_review(end).await;
+    assert_eq!(got.await.unwrap(), ChatAnswer::Done);
 }
 
 #[tokio::test(start_paused = true)]
