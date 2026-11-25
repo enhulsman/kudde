@@ -76,7 +76,8 @@ the phone keeps the answers until Send (requirement "The phone keeps the
 answers until Send"), which types them one question after the other. Either
 way each question's keys SHALL be sent only after, in this
 order: `terminal.get` shows the same target and the status still `blocked`;
-`terminal.read` shows the call's question text (box-drawing characters and
+the hook's record, read again, still names the card's call (a new call
+asking the same words is not it); `terminal.read` shows the call's question text (box-drawing characters and
 runs of spaces folded) and each of its options as its numbered row, in the
 call's order; then one
 `terminal.keys` call carries the whole key list of the step. For a single
@@ -214,7 +215,8 @@ typed on the desk after its checks" and once the screen shows that question,
 and one Tab for a question without an answer, which moves the dialog on
 without answering it; then, once the screen shows the dialog's review step
 (the line after the header reads "Review your answers", it lists exactly the
-questions the phone answered, each with the answer the phone typed, it shows
+questions the phone answered, each with exactly the answer the phone typed
+(not one that only holds it), it shows
 "⚠ Some questions are unanswered" when one has no answer and only then, and
 "1. Submit answers" is in focus; words in a question or an option, another
 call's review, other answers, a question listed that was left unanswered,
