@@ -315,6 +315,64 @@ class ChatQuestionTest {
         assertTrue(node(SEND)!!.config.contains(SemanticsProperties.Disabled))
     }
 
+    // Coordinator, after the phone round (2026-11-25): the keyboard stayed up for the ~7 s multi-select send.
+    @Test
+    fun theMultiSelectSendClosesTheKeyboardForTheWholeSend() {
+        val s = show(poll(question(fruit), rows))
+        tap("Option 1 of 3, Apple, Crisp., not checked")
+        tap(SOMETHING_ELSE)
+        assertTrue("the keyboard opens for the field", focused())
+        s.card.otherText = "Berries"
+        idle()
+        tap(SEND)
+        assertEquals(listOf<ChatChoice>(ChatChoice.Multi(listOf(0u), "Berries")), answers)
+        assertFalse("no keyboard at the tap", focused())
+        val field = semanticsNodes().firstOrNull { it.config.contains(SemanticsProperties.EditableText) }
+        field?.config?.getOrNull(SemanticsActions.RequestFocus)?.action?.invoke()
+        idle()
+        assertFalse("nothing takes the focus while the answer is on its way", focused())
+    }
+
+    @Test
+    fun anAnswerOnItsWayClosesAKeyboardWhateverSentIt() {
+        val s = show(poll(question(fruit), rows))
+        tap(SOMETHING_ELSE)
+        assertTrue(focused())
+        // TalkBack or any other path that starts an answer without the button's own hide.
+        s.card.start(ChatChoice.Skip)
+        idle()
+        assertFalse(focused())
+    }
+
+    @Test
+    fun chooseThisWithANoteLeavesNoKeyboard() {
+        val s = show(poll(question(database), rows))
+        s.card.follow(s.poll?.question)
+        tap(PREVIEW)
+        val note = semanticsNodes().first { it.config.contains(SemanticsProperties.EditableText) }
+        note.config[SemanticsActions.RequestFocus].action!!.invoke()
+        idle()
+        assertTrue(focused())
+        s.card.note = "Through Docker, please"
+        idle()
+        tap(CHOOSE_THIS)
+        assertFalse(focused())
+    }
+
+    @Test
+    fun theRunningQuestionLineHidesWhileItsCardShows() {
+        val waiting = ChatRow(
+            "11:0", "tools", "", "", emptyList(),
+            listOf(ChatCall("AskUserQuestion", "AskUserQuestion", "{}", "", done = false, failed = false, images = emptyList())),
+        )
+        show(poll(question(database), rows + waiting))
+        assertFalse(shows("AskUserQuestion · running"))
+        assertTrue(shows("Let me ask first."))
+        shown = poll(null, rows + waiting.copy(calls = listOf(waiting.calls[0].copy(title = "Answered: Database", output = "x", done = true))))
+        idle()
+        assertTrue(shows("Answered: Database"))
+    }
+
     @Test
     fun aKeycapSitsInTheMiddleOfItsRow() {
         val ask = database.copy(options = listOf(ChatOption("SQLite", "One file.\nNo server.\nEnough for one desk.", null), ChatOption("Postgres", "", null)))
