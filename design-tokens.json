@@ -96,6 +96,7 @@
         "accent": "#96b2d7",
         "solid": "#eeeeef",
         "solidFg": "#111215",
+        "successHalo": "#a6bd912e",
         "selection": "#394454",
         "ansi": [
           "#45484f",
@@ -136,6 +137,7 @@
         "accent": "#1f62d0",
         "solid": "#1b1b1e",
         "solidFg": "#ffffff",
+        "successHalo": "#1a7f372e",
         "selection": "#cfdcf5",
         "ansi": [
           "#25272c",
@@ -186,7 +188,7 @@
       "connected": {
         "graphite": "#a6bd91",
         "paper": "#1a7f37",
-        "note": "ansi 2; machine status dot only"
+        "note": "ansi 2; the machine status dot, and in first setup the done ticks and the success disc (filled, with solidFg inside); successHalo is the same colour at 18%, the ring round that disc"
       },
       "unreachable": {
         "mark": "idle ring",
@@ -559,6 +561,28 @@
       "radius": 12,
       "outline": "1 input",
       "solid": "solid background, solidFg, 500"
+    },
+    "firstRunStepBar": {
+      "render": "first-run-final",
+      "parts": "four segments, 3 dp high, 5 dp apart, full width under the title bar; segments up to the current step in fg, the rest in border; the current segment is 2.2 times as wide as the others",
+      "spoken": "one element, 'Step n of 4', never the segments; the step text above the heading is gone",
+      "motion": "the current segment sweeps in over 200 ms; none with animations off"
+    },
+    "firstRunChoiceCard": {
+      "render": "first-run-final",
+      "parts": "one tappable card per key choice, stacked at every text size, 12 dp apart; radius 20, 18 dp padding (44 dp on the right for a chevron), title 16/500, explanation 14/1.45 in muted; the first ('kudde adds it for you') filled with solid and solidFg (explanation at 74%), the second plain with a 1 dp input outline; no second colour",
+      "spoken": "one node per card: title, then explanation, button role"
+    },
+    "firstRunChecklist": {
+      "render": "first-run-final",
+      "parts": "three rows (Signing in as dev, Adding the key, Signing out), 18 dp apart; a 26 dp mark: done = connected fill with solidFg tick, now = 2 dp border ring with a fg arc turning, to do = border ring, failed = blocked ring with a cross; labels 16 in fg, to-do labels dim; an error's title (500) and help (14, muted) sit under the failed row",
+      "spoken": "a polite live region; each step change announced once; the error announced once",
+      "motion": "the tick draws over 180 ms; the arc turns while working; static with animations off"
+    },
+    "firstRunSuccess": {
+      "render": "first-run-final",
+      "parts": "a card (radius 20) with a 104 dp disc of successHalo around a 68 dp connected-coloured disc holding a solidFg tick, the machine's 'is connected.' line (500), and one line under it",
+      "motion": "the disc pops once (scale .85 to 1, 250 ms); nothing repeats; none with animations off"
     },
     "toggle": {
       "size": "44x26",

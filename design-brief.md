@@ -103,10 +103,10 @@ in v1.1.
 | `question-other-paper` | The Something else field open on a single-choice card, with its own send |
 | `question-large-text-paper` | The card at a large font scale |
 
-## First-run drafts (awaiting owner sign-off)
+## First-run screens (signed off 2026-11-25, look in `first-run-walkthrough` D14)
 
 Each ID shows graphite and paper. Open `design/renders/screens.html?only=<id>`;
-existing `?s=<id>` links still work. These drafts follow
+existing `?s=<id>` links still work. The look: a four-segment step bar (3 dp, the current segment wider) in place of the step text, a 27 sp heading, two stacked choice cards (the first filled, the second plain, no second colour), a live checklist for the password way ("Signing in as dev", "Adding the key", "Signing out") with errors on the step that failed, and a tick disc in a `successHalo` ring on step 3 ("Your first machine is set up." for the first machine only). These screens follow
 `openspec/changes/first-run-walkthrough/design.md`, including D13's fourth step.
 
 | Render | Shows |
@@ -115,11 +115,16 @@ existing `?s=<id>` links still work. These drafts follow
 | `first-run-lock` | Lock notice before step 1, plus its home-notice variant after completion; no bypass |
 | `first-run-address` | Step 1: Address, User, Port, optional Name; waiting and F1 no-answer variants |
 | `first-run-manual` | Step 2 manual detail: exact D3 design command in a scrollable MonoBox, Copy/Share, restriction notes, both choices and Compare the fingerprint |
-| `first-run-key-refused` | Step 2 rejection: K1, password-once choice first, manual second, retry and Change the address |
-| `first-run-connected` | Step 3: machine, core version, agent count and Continue |
+| `first-run-key-refused` | Step 2 rejection: K1, both choice cards (password-once first), retry and Change the address |
+| `first-run-connected` | Step 3: the success disc, machine, core version, agent count and Continue; the first-machine line and the later-machine variant |
 | `first-run-alerts` | Step 4 after Turn on alerts: AL6 test received, plus AL7 no-test variant; both retain Show my agents |
 | `first-run-trust` | Existing trust-dialog look with D1/D2 manual wording, fingerprint and unchanged trust actions |
 | `first-run-home` | Unfinished setup notice, Continue setup and New terminal; WL11/WL12 empty-home variant after completion |
+| `first-run-hint` | The title bar hint over a terminal and a chat, one-pane variant, TalkBack variant (G1 to G6) |
+| `first-run-key-choices` | Step 2: the two stacked choice cards, normal and large text |
+| `first-run-password-trust` | Trust dialog for the password way (R3 to R5) before any field |
+| `first-run-password` | The password field, the working checklist and each outcome (R9 to R16) on the step that failed |
+| `machines-key-choices` | A rejected-key machine card with both choice cards; listed, imported and previously connected |
 
 The D3 command keeps the spec's abbreviated example public key. Its complete
 text is scrollable at the existing MonoBox type size; it is not reduced to fit.
