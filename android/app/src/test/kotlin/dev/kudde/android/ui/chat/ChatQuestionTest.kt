@@ -1002,6 +1002,35 @@ class ChatQuestionTest {
         assertEquals(listOf("Question from the agent. $NO_HOOK"), CardHeard().next(q, null))
     }
 
+    private fun asked(title: String, done: Boolean = true) = ChatRow(
+        "11:0", "tools", "", "", emptyList(),
+        listOf(ChatCall("AskUserQuestion", title, "{}", "", done = done, failed = false, images = emptyList())),
+    )
+
+    // Ezra's third try (2026-11-25): after Send the focus went back to the title bar's Back.
+    @Test
+    fun afterSendTheFocusLandsOnTheCollapsedLine() {
+        val s = show(poll(question(plainDb), rows + asked("Which database should the todo app use?", done = false)))
+        tap("Option 2 of 2, Postgres, Needs a running server.")
+        s.card.finished(ChatAnswer.Done, s.card.sentFor)
+        idle()
+        // The card goes before the log has the result: the focus waits for the line.
+        shown = poll(null, rows + asked("Which database should the todo app use?", done = false))
+        idle()
+        assertFalse(focused())
+        shown = poll(null, rows + asked("Answered: Database"))
+        idle()
+        assertTrue(focusOn("Answered: Database"))
+    }
+
+    @Test
+    fun aCardAnsweredAtTheDeskMovesNoFocus() {
+        show(poll(question(plainDb), rows + asked("Which database should the todo app use?", done = false)))
+        shown = poll(null, rows + asked("Answered: Database"))
+        idle()
+        assertFalse(focused())
+    }
+
     @Test
     fun theQuietLineReadsLikeItsText() {
         val row = ChatRow(

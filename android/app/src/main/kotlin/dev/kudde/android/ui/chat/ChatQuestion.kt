@@ -215,6 +215,12 @@ class QuestionCard {
     var focusRow by mutableStateOf<Int?>(null)
         private set
 
+    /**
+     * The card's send arrived: once the card is gone and its call's line is
+     * done, the focus lands on that line (Ezra's third try, 2026-11-25).
+     */
+    var landOnLine by mutableStateOf(false)
+
     /** The question shown was opened from the review step: an answer goes back there. */
     private var fromReview = false
 
@@ -228,6 +234,7 @@ class QuestionCard {
     /** The poll's card: a new call forgets everything; the dialog's step does not move the card. */
     fun follow(q: ChatQuestion?) {
         if (q?.id == shownId) return
+        if (q != null) landOnLine = false
         // A card that never held a call has nothing to forget (what was set on it before stays).
         val fresh = shownId == null && answers.isEmpty() && !sending && !done
         shownId = q?.id
@@ -354,6 +361,7 @@ class QuestionCard {
         if (forKey != null && forKey.first != shownId) return
         sending = false
         done = a == ChatAnswer.Done
+        if (done) landOnLine = true
         if (a is ChatAnswer.Stopped) sent = a.sent.toInt()
         problem = problemOf(a, count)
         if (!done && !onReview) chosen = answers[at]?.let { (it as? ChatChoice.Pick)?.index?.toInt() ?: (it as? ChatChoice.Note)?.index?.toInt() }
