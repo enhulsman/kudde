@@ -148,25 +148,29 @@ fun DialogButtons(content: @Composable () -> Unit) {
         val room = constraints.maxWidth
         val natural = measurables.map { it.maxIntrinsicWidth(Constraints.Infinity) }
         val sideBySide = natural.sum() + gap * (measurables.size - 1).coerceAtLeast(0) <= room
+        // Children are always placed in input order (Cancel first): Compose's Tab order follows placement
+        // order, and the confirmation must come after Cancel whatever it looks like on screen.
         if (sideBySide) {
             val placeables = measurables.map { it.measure(Constraints()) }
             val height = placeables.maxOfOrNull { it.height } ?: 0
+            val total = placeables.sumOf { it.width } + gap * (placeables.size - 1).coerceAtLeast(0)
             layout(room, height) {
-                var x = room
-                for (p in placeables.asReversed()) {
-                    x -= p.width
+                var x = room - total
+                for (p in placeables) {
                     p.placeRelative(x, 0)
-                    x -= gap
+                    x += p.width + gap
                 }
             }
         } else {
-            val placeables = measurables.asReversed().map { it.measure(Constraints(minWidth = room, maxWidth = room)) }
+            val placeables = measurables.map { it.measure(Constraints(minWidth = room, maxWidth = room)) }
             val height = placeables.sumOf { it.height } + gap * (placeables.size - 1).coerceAtLeast(0)
             layout(room, height) {
-                var y = 0
+                // The last child (the primary) on top: work out each top edge from the bottom up, place in input order.
+                var bottom = height
                 for (p in placeables) {
-                    p.placeRelative(0, y)
-                    y += p.height + gap
+                    bottom -= p.height
+                    p.placeRelative(0, bottom)
+                    bottom -= gap
                 }
             }
         }
