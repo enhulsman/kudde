@@ -33,6 +33,17 @@ class PasswordViewTest {
         assertEquals(listOf(PanelButton.AddKey, PanelButton.Manual, PanelButton.Cancel), v.buttons)
     }
 
+    @Test fun aBarePasswordPromptGetsThePlainLabel() {
+        for (prompt in listOf("Password:", "password: ", "Password", "  PASSWORD:  ")) {
+            assertEquals(prompt, "Password for dev on workstation", view(PasswordPanel.Field(prompt)).field)
+        }
+    }
+
+    @Test fun anyOtherPromptIsAppended() {
+        assertEquals("Password for dev on workstation: Verification code:", view(PasswordPanel.Field("Verification code:")).field)
+        assertEquals("Password for dev on workstation: Password for root:", view(PasswordPanel.Field("Password for root:")).field)
+    }
+
     @Test fun aKeyboardInteractivePromptJoinsTheLabelAsTheMachineSentIt() {
         assertEquals("Password for dev on workstation: Verification code:", view(PasswordPanel.Field("Verification code:")).field)
     }

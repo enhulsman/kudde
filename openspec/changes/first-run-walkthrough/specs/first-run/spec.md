@@ -496,7 +496,7 @@ when another key is presented. Before showing the password field the app
 SHALL learn from the machine which sign-in methods it offers; with neither
 `password` nor `keyboard-interactive` it SHALL say so in plain words and
 point to the command, without a field; with `keyboard-interactive` only,
-the field's label SHALL carry the machine's first prompt as it sent it.
+the field's label SHALL carry the machine's first prompt as it sent it, except a prompt that is just "Password" (any case, with or without a trailing colon), which would only repeat the label and SHALL leave it as "Password for <user> on <machine>".
 Signing in SHALL use `password` when offered, else `keyboard-interactive`.
 The password SHALL be sent at most once across all rounds, to a single
 non-echoing prompt; any non-empty prompt after it, a prompt that echoes,
@@ -542,7 +542,7 @@ nothing on this path.
 #### Scenario: Keyboard-interactive only
 - **GIVEN** the machine offers only `keyboard-interactive`, with one prompt "Password:" that does not echo
 - **WHEN** the person confirms the fingerprint, types the right password and taps "Add the key"
-- **THEN** the field was labelled with "Password:", the password was sent once, the setup ran, and step 3 shows
+- **THEN** the field was labelled "Password for <user> on <machine>", the password was sent once, the setup ran, and step 3 shows
 
 #### Scenario: A code is asked first
 - **GIVEN** the machine's first keyboard-interactive prompt asks for a verification code

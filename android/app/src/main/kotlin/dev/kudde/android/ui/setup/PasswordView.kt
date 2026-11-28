@@ -32,7 +32,7 @@ private val fieldButtons = listOf(PanelButton.AddKey, PanelButton.Manual, PanelB
 
 fun passwordView(panel: PasswordPanel, machine: String, user: String, host: String, port: Int, res: Resources): PasswordView {
     fun label(prompt: String? = null) =
-        if (prompt.isNullOrBlank()) res.getString(R.string.r_field_label, machine, user)
+        if (prompt.isNullOrBlank() || prompt.trim().removeSuffix(":").trim().equals("password", ignoreCase = true)) res.getString(R.string.r_field_label, machine, user)
         else res.getString(R.string.r_field_label_prompt, machine, user, prompt)
     fun failed(row: Int, title: String, detail: String?, field: Boolean, buttons: List<PanelButton>) = PasswordView(
         marks = List(3) { if (it < row) StepMark.Done else if (it == row) StepMark.Failed else StepMark.Todo },
