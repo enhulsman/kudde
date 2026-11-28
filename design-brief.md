@@ -107,7 +107,7 @@ in v1.1.
 
 Each ID shows graphite and paper. Open `design/renders/screens.html?only=<id>`;
 existing `?s=<id>` links still work. The look: a four-segment step bar (3 dp, the current segment wider) in place of the step text, a 27 sp heading, two stacked choice cards (the first filled, the second plain, no second colour), a live checklist for the password way ("Signing in as dev", "Adding the key", "Signing out") with errors on the step that failed, and a tick disc in a `successHalo` ring on step 3 ("Your first machine is set up." for the first machine only). These screens follow
-`openspec/changes/first-run-walkthrough/design.md`, including D13's fourth step.
+`openspec/changes/archive/2026-11-28-first-run-walkthrough/design.md`, including D13's fourth step.
 
 | Render | Shows |
 |---|---|

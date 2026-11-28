@@ -837,7 +837,7 @@ mod tests {
 
     #[test]
     fn setup_command_matches_design_d3_byte_for_byte() {
-        let design = include_str!("../../../openspec/changes/first-run-walkthrough/design.md");
+        let design = include_str!("../../../openspec/changes/archive/2026-11-28-first-run-walkthrough/design.md");
         let d3 = design.split("### D3.").nth(1).unwrap();
         let template = d3
             .split("```sh\n")
