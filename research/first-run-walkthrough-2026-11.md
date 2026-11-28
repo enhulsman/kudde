@@ -1,6 +1,6 @@
 # First setup: what exists, what others do, what we take
 
-Research for `openspec/changes/first-run-walkthrough/`, 2026-11-20. Code
+Research for `openspec/changes/archive/2026-11-28-first-run-walkthrough/`, 2026-11-20. Code
 and docs were read at the v1.0.0 commit. Web sources were read the same
 day; "not verified" marks what could not be confirmed.
 
