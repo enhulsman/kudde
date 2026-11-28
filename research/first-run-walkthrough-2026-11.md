@@ -205,6 +205,10 @@ Blink and Prompt.
   a person can switch access off for an app that targets 36.
   kudde targets 36 (`android/app/build.gradle.kts:24`), so this is work
   for the move to 37, not for now.
+  On an Android 17 test phone (task 6.3, 2026-11-28), kudde as built
+  (target 36) connected to a machine on the Wi-Fi with no system dialog,
+  and the package dump lists `ACCESS_LOCAL_NETWORK` as granted. Whether
+  the settings switch can turn it off was not tried.
 - **Screen lock**: `KeyguardManager.isDeviceSecure` tells whether one is
   set; the documented way to send someone to set one is
   `Settings.ACTION_BIOMETRIC_ENROLL` with device credential allowed
