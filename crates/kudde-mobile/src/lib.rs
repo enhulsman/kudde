@@ -13,8 +13,8 @@ mod term;
 mod vt;
 
 pub use password_setup::{
-    ProbeOutcome, SetupCancel, SetupLimits, SetupOutcome, SetupPassword, probe_password_methods,
-    setup_with_password, setup_with_password_limits,
+    ProbeOutcome, SetupCancel, SetupLimits, SetupListener, SetupOutcome, SetupPassword,
+    probe_password_methods, setup_with_password, setup_with_password_limits,
 };
 #[cfg(feature = "spike")]
 pub use ssh::ssh_run_spike;

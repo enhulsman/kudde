@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use kudde_mobile::{
-    ProbeOutcome, ReachKind, SetupCancel, SetupLimits, SetupOutcome, SetupPassword,
+    ProbeOutcome, ReachKind, SetupCancel, SetupLimits, SetupListener, SetupOutcome, SetupPassword,
     host_key_fingerprint_command, probe_password_methods, setup_command, setup_with_password,
     setup_with_password_limits,
 };
@@ -431,6 +431,42 @@ fn setup(m: &Machine, password: &str) -> SetupOutcome {
     .unwrap()
 }
 
+/// Records how many times the core said the machine accepted the password, and how many
+/// key lines had been seen on the machine at that moment.
+struct Heard {
+    seen: Arc<Mutex<Seen>>,
+    signed_in: Mutex<Vec<usize>>,
+}
+
+impl SetupListener for Heard {
+    fn signed_in(&self) {
+        let execs = self.seen.lock().unwrap().execs.len();
+        self.signed_in.lock().unwrap().push(execs);
+    }
+}
+
+fn setup_heard(m: &Machine, password: &str) -> (SetupOutcome, Vec<usize>) {
+    let heard = Arc::new(Heard {
+        seen: m.seen.clone(),
+        signed_in: Mutex::new(Vec::new()),
+    });
+    let cancel = SetupCancel::new();
+    cancel.set_listener(heard.clone());
+    let outcome = setup_with_password(
+        "127.0.0.1".into(),
+        m.port,
+        "alice".into(),
+        m.pinned.clone(),
+        SetupPassword::new(password.into()),
+        phone_spki(),
+        COMMENT.into(),
+        cancel,
+    )
+    .unwrap();
+    let at = heard.signed_in.lock().unwrap().clone();
+    (outcome, at)
+}
+
 fn probe(m: &Machine) -> ProbeOutcome {
     probe_password_methods("127.0.0.1".into(), m.port, "alice".into(), m.pinned.clone())
 }
@@ -613,6 +649,22 @@ fn a_wrong_password_runs_nothing() {
     let m = machine(Script::password(), 1);
     assert!(matches!(setup(&m, "not it"), SetupOutcome::WrongPassword));
     assert!(m.seen.lock().unwrap().execs.is_empty());
+}
+
+#[test]
+fn a_refused_password_is_never_announced_as_signed_in() {
+    let m = machine(Script::password(), 1);
+    let (outcome, at) = setup_heard(&m, "not it");
+    assert!(matches!(outcome, SetupOutcome::WrongPassword));
+    assert!(at.is_empty(), "signed_in fired for a refused password");
+}
+
+#[test]
+fn the_accepted_password_is_announced_once_before_the_key_line_runs() {
+    let m = machine(Script::password(), 1);
+    let (outcome, at) = setup_heard(&m, GOOD);
+    assert!(matches!(outcome, SetupOutcome::Done), "{outcome:?}");
+    assert_eq!(at, vec![0], "once, with no script run yet");
 }
 
 #[test]

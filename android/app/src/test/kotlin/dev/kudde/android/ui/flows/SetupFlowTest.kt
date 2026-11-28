@@ -476,6 +476,29 @@ class SetupFlowTest {
         assertEquals(PasswordPanel.Working, flows.password.panel)
     }
 
+    // Row 1 spins while the password is checked; it gets its tick only once the machine accepted it
+    // (PasswordViewTest maps Working to Now/Todo/Todo and WorkingKey to Done/Now/Todo).
+    @Test fun aWrongPasswordNeverReachesTheAddingTheKeyState() {
+        working()
+        val seen = mutableListOf(flows.password.panel)
+        ports.answerSetup(SetupOutcome.WrongPassword)
+        seen += flows.password.panel
+        assertTrue("never WorkingKey: $seen", PasswordPanel.WorkingKey !in seen)
+        assertEquals(PasswordPanel.Working, seen[0])
+        assertEquals(PasswordPanel.WrongPassword(again = false), seen[1])
+    }
+
+    @Test fun theRightPasswordMovesToAddingTheKeyOnlyWhenTheMachineAcceptedIt() {
+        working()
+        assertEquals(PasswordPanel.Working, flows.password.panel)
+        ports.answerSignedIn()
+        assertEquals(PasswordPanel.WorkingKey, flows.password.panel)
+        assertTrue("Cancel still reaches the core", flows.back())
+        assertEquals(1, ports.cancels)
+        ports.answerSetup(SetupOutcome.Done)
+        assertEquals(PasswordPanel.Done, flows.password.panel)
+    }
+
     @Test fun cancelWhileWorkingAsksTheCoreToStopAndWaitsForItsAnswer() {
         working()
         assertTrue(flows.back())
@@ -623,6 +646,7 @@ class SetupFlowTest {
         var onSetup: () -> Unit = {}
         private var probeDone: ((ProbeOutcome) -> Unit)? = null
         private var setupDone: ((SetupOutcome) -> Unit)? = null
+        private var signedIn: (() -> Unit)? = null
 
         override fun probe(host: String, port: Int, user: String, pinned: String, done: (ProbeOutcome) -> Unit) {
             probes += Probe(host, port, user, pinned)
@@ -631,15 +655,17 @@ class SetupFlowTest {
 
         var cancels = 0
 
-        override fun setup(host: String, port: Int, user: String, pinned: String, password: String, done: (SetupOutcome) -> Unit): SetupHandle {
+        override fun setup(host: String, port: Int, user: String, pinned: String, password: String, signedIn: () -> Unit, done: (SetupOutcome) -> Unit): SetupHandle {
             onSetup()
             setups += Setup(pinned, password)
+            this.signedIn = signedIn
             setupDone = done
             return object : SetupHandle { override fun cancel() { cancels++ } }
         }
 
         fun answerProbe(outcome: ProbeOutcome) = probeDone!!(outcome)
         fun answerSetup(outcome: SetupOutcome) = setupDone!!(outcome)
+        fun answerSignedIn() = signedIn!!()
     }
 
     companion object {
