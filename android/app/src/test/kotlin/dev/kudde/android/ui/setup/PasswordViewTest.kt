@@ -38,10 +38,16 @@ class PasswordViewTest {
     }
 
     @Test fun workingIsTheChecklistMidWay() {
-        val v = view(PasswordPanel.Working)
+        val v = view(PasswordPanel.WorkingKey)
         assertEquals(listOf(StepMark.Done, StepMark.Now, StepMark.Todo), v.marks)
         assertNull(v.outcome)
         assertNull(v.field)
+        assertEquals(listOf(PanelButton.Manual, PanelButton.Cancel), v.buttons)
+    }
+
+    @Test fun whileThePasswordIsBeingCheckedSigningInSpinsAndNothingIsTicked() {
+        val v = view(PasswordPanel.Working)
+        assertEquals(listOf(StepMark.Now, StepMark.Todo, StepMark.Todo), v.marks)
         assertEquals(listOf(PanelButton.Manual, PanelButton.Cancel), v.buttons)
     }
 

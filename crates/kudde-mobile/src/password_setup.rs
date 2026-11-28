@@ -47,12 +47,20 @@ impl std::fmt::Debug for SetupPassword {
     }
 }
 
+/// Told when the machine has accepted the password, so the screen can tick "signing in" only then.
+/// Implemented in Kotlin; called on the setup thread, once, and never for a refused password.
+#[uniffi::export(foreign)]
+pub trait SetupListener: Send + Sync {
+    fn signed_in(&self);
+}
+
 /// The person's Cancel for a running setup. Checked before the password is sent and before the key
 /// line is written; a dial in progress stops at once. It cannot undo a key already written.
 #[derive(uniffi::Object)]
 pub struct SetupCancel {
     flag: AtomicBool,
     notify: tokio::sync::Notify,
+    listener: Mutex<Option<Arc<dyn SetupListener>>>,
 }
 
 #[uniffi::export]
@@ -62,7 +70,16 @@ impl SetupCancel {
         Arc::new(Self {
             flag: AtomicBool::new(false),
             notify: tokio::sync::Notify::new(),
+            listener: Mutex::new(None),
         })
+    }
+
+    /// Where to report that the password was accepted (optional).
+    pub fn set_listener(&self, listener: Arc<dyn SetupListener>) {
+        *self
+            .listener
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(listener);
     }
 
     pub fn cancel(&self) {
@@ -76,6 +93,17 @@ impl SetupCancel {
 }
 
 impl SetupCancel {
+    fn announce_signed_in(&self) {
+        let listener = self
+            .listener
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+        if let Some(l) = listener {
+            l.signed_in();
+        }
+    }
+
     /// Completes once cancelled (at once when it already was).
     async fn cancelled(&self) {
         loop {
@@ -421,6 +449,7 @@ async fn setup_async(
             return Ok(ended);
         }
         signed_in.store(true, Ordering::Relaxed);
+        cancel.announce_signed_in();
         // Signed in, the key line not written yet: the last place a cancel can stop it.
         if cancel.is_cancelled() {
             let _ = handle

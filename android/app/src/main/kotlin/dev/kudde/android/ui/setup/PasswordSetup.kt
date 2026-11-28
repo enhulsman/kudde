@@ -38,12 +38,12 @@ interface SetupHandle {
 /** The two Rust calls of the password way; each answers once, off the caller's thread. */
 interface PasswordPorts {
     fun probe(host: String, port: Int, user: String, pinned: String, done: (ProbeOutcome) -> Unit)
-    fun setup(host: String, port: Int, user: String, pinned: String, password: String, done: (SetupOutcome) -> Unit): SetupHandle
+    fun setup(host: String, port: Int, user: String, pinned: String, password: String, signedIn: () -> Unit, done: (SetupOutcome) -> Unit): SetupHandle
 
     /** For flows that never use the password way. */
     object None : PasswordPorts {
         override fun probe(host: String, port: Int, user: String, pinned: String, done: (ProbeOutcome) -> Unit) = Unit
-        override fun setup(host: String, port: Int, user: String, pinned: String, password: String, done: (SetupOutcome) -> Unit): SetupHandle = SetupHandle.None
+        override fun setup(host: String, port: Int, user: String, pinned: String, password: String, signedIn: () -> Unit, done: (SetupOutcome) -> Unit): SetupHandle = SetupHandle.None
     }
 }
 
@@ -54,7 +54,11 @@ sealed interface PasswordPanel {
 
     /** The field; [prompt] is the machine's own first prompt for keyboard-interactive. */
     data class Field(val prompt: String?) : PasswordPanel
+    /** The password is being checked: "Signing in" spins, nothing is ticked. */
     data object Working : PasswordPanel
+
+    /** The machine accepted the password: "Signing in" is ticked and "Adding the key" spins. */
+    data object WorkingKey : PasswordPanel
 
     /** R10: no password to give. */
     data object NoPassword : PasswordPanel
@@ -105,9 +109,11 @@ class PasswordSetup(private val ports: PasswordPorts, val field: SecretField) {
     private var run = 0
     private var handle: SetupHandle? = null
 
+    private val running get() = panel == PasswordPanel.Working || panel == PasswordPanel.WorkingKey
+
     /** "Cancel" while the key is being added: the core is asked to stop, and the panel waits for what it says. */
     fun cancelRun(): Boolean {
-        if (panel != PasswordPanel.Working) return false
+        if (!running) return false
         handle?.cancel()
         return true
     }
@@ -120,7 +126,7 @@ class PasswordSetup(private val ports: PasswordPorts, val field: SecretField) {
     }
 
     fun close() {
-        if (panel == PasswordPanel.Working) handle?.cancel()
+        if (running) handle?.cancel()
         handle = null
         run++
         field.clear()
@@ -155,7 +161,9 @@ class PasswordSetup(private val ports: PasswordPorts, val field: SecretField) {
         field.clear()
         val mine = ++run
         panel = PasswordPanel.Working
-        handle = ports.setup(host, port, user, pinned, password) { outcome ->
+        handle = ports.setup(host, port, user, pinned, password, signedIn = {
+            if (mine == run && panel == PasswordPanel.Working) panel = PasswordPanel.WorkingKey
+        }) { outcome ->
             if (mine != run) return@setup
             handle = null
             panel = when (outcome) {

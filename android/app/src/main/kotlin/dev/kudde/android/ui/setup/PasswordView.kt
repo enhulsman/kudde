@@ -46,6 +46,9 @@ fun passwordView(panel: PasswordPanel, machine: String, user: String, host: Stri
         )
         is PasswordPanel.Field -> PasswordView(null, null, null, label(panel.prompt), true, null, fieldButtons)
         PasswordPanel.Working -> PasswordView(
+            listOf(StepMark.Now, StepMark.Todo, StepMark.Todo), null, null, null, false, null, listOf(PanelButton.Manual, PanelButton.Cancel),
+        )
+        PasswordPanel.WorkingKey -> PasswordView(
             listOf(StepMark.Done, StepMark.Now, StepMark.Todo), null, null, null, false, null, listOf(PanelButton.Manual, PanelButton.Cancel),
         )
         is PasswordPanel.WrongPassword ->
