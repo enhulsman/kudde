@@ -98,9 +98,9 @@ class SetupScreenshotTest {
     @Test fun passwordFieldGraphite() = pw("field", PasswordPanel.Field(null), "hunter2x")
     @Test fun passwordFieldPaper() = pw("field", PasswordPanel.Field(null), "hunter2x", dark = false)
     @Test fun passwordField2x() = font2x { pw("field-2x", PasswordPanel.Field(null), "hunter2x") }
-    @Test fun passwordWorkingGraphite() = pw("working", PasswordPanel.Working)
-    @Test fun passwordWorkingPaper() = pw("working", PasswordPanel.Working, dark = false)
-    @Test fun passwordWorking2x() = font2x { pw("working-2x", PasswordPanel.Working) }
+    @Test fun passwordWorkingGraphite() = pw("working", PasswordPanel.WorkingKey)
+    @Test fun passwordWorkingPaper() = pw("working", PasswordPanel.WorkingKey, dark = false)
+    @Test fun passwordWorking2x() = font2x { pw("working-2x", PasswordPanel.WorkingKey) }
     @Test fun passwordWrongGraphite() = pw("wrong", PasswordPanel.WrongPassword(false))
     @Test fun passwordWrongPaper() = pw("wrong", PasswordPanel.WrongPassword(false), dark = false)
     @Test fun passwordWrong2x() = font2x { pw("wrong-2x", PasswordPanel.WrongPassword(false)) }
